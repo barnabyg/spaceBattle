@@ -84,16 +84,46 @@ export interface LaserDesign {
   readonly wavelength: number;
 }
 
+/**
+ * A weapon firing solid slugs accelerated electromagnetically. Each shot takes ½mv²/efficiency
+ * of electrical energy, which it draws from the ship between shots, and one slug of ammunition.
+ */
+export interface KineticGunDesign {
+  readonly type: 'kinetic-gun';
+  /** kg */
+  readonly mass: number;
+  /** Mass of each slug, kg. */
+  readonly slugMass: number;
+  /** Speed it gives a slug relative to the ship, m/s. */
+  readonly muzzleVelocity: number;
+  /** Fraction of the electrical energy drawn that the slug carries off; the rest is heat (0–1). */
+  readonly efficiency: number;
+  /** Shots per second, given full power. */
+  readonly rateOfFire: number;
+}
+
+/** Stores ammunition inside a section: slugs for the ship's kinetic guns. */
+export interface MagazineDesign {
+  readonly type: 'magazine';
+  /**
+   * kg, with its slugs. The slugs are a small part of a ship's mass, so it is taken as constant
+   * as they are fired.
+   */
+  readonly mass: number;
+  /** How many slugs it holds; it starts every battle full. */
+  readonly slugs: number;
+}
+
 /** Components that sit inside a section's armour. */
 export type InternalComponentDesign =
-  DriveDesign | ThrustersDesign | ReactorDesign | CapacitorDesign;
+  DriveDesign | ThrustersDesign | ReactorDesign | CapacitorDesign | MagazineDesign;
 /** Components that must be exposed, on a section's mounts. */
-export type MountedComponentDesign = RadiatorDesign | LaserDesign;
+export type MountedComponentDesign = RadiatorDesign | LaserDesign | KineticGunDesign;
 export type ComponentDesign = InternalComponentDesign | MountedComponentDesign;
 export type ComponentType = ComponentDesign['type'];
 
-const INTERNAL_TYPES = ['drive', 'thrusters', 'reactor', 'capacitor'] as const;
-const MOUNTED_TYPES = ['radiator', 'laser'] as const;
+const INTERNAL_TYPES = ['drive', 'thrusters', 'reactor', 'capacitor', 'magazine'] as const;
+const MOUNTED_TYPES = ['radiator', 'laser', 'kinetic-gun'] as const;
 
 export const ARMOUR_TYPES = ['heavy', 'ablative'] as const;
 export type ArmourType = (typeof ARMOUR_TYPES)[number];
@@ -274,6 +304,20 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
         aperture: requireNumber(data, 'aperture', where),
         wavelength: requireNumber(data, 'wavelength', where),
       };
+    case 'kinetic-gun':
+      return {
+        type,
+        mass,
+        slugMass: requireNumber(data, 'slugMass', where),
+        muzzleVelocity: requireNumber(data, 'muzzleVelocity', where),
+        efficiency: requireFraction(data, 'efficiency', where),
+        rateOfFire: requireNumber(data, 'rateOfFire', where),
+      };
+    case 'magazine': {
+      const slugs = requireNumber(data, 'slugs', where);
+      if (!Number.isInteger(slugs)) throw new Error(`${where}: "slugs" must be a whole number`);
+      return { type, mass, slugs };
+    }
   }
 };
 
@@ -334,6 +378,12 @@ export const parseDesign = (data: unknown): Design => {
     !designComponents(design).some((c) => c.component.type === 'drive' && c.section === 'engine')
   ) {
     throw new Error(`${where}: the drive must be in the engine section`);
+  }
+  if (
+    designComponentsOfType(design, 'kinetic-gun').length > 0 &&
+    designComponentsOfType(design, 'magazine').length === 0
+  ) {
+    throw new Error(`${where}: kinetic guns need a magazine for their slugs`);
   }
   return design;
 };

@@ -4,7 +4,9 @@ import {
   type ComponentDesign,
   type ComponentType,
   type Design,
+  type KineticGunDesign,
   type LaserDesign,
+  type MagazineDesign,
   type SectionDesign,
   type SectionKind,
 } from './design';
@@ -104,6 +106,33 @@ export const TEST_LASER: LaserDesign = {
 /** The test design with the test laser on a forward mount. */
 export const armedTestDesign = (): Design =>
   withSection(testDesign(), 'forward', { mounts: [TEST_LASER] });
+
+/**
+ * A kinetic gun for test designs: 1 kg slugs at 20 km/s, one a second. Each shot takes
+ * ½mv²/efficiency = 400 MJ, so it draws 400 MW while it fires.
+ */
+export const TEST_KINETIC_GUN: KineticGunDesign = {
+  type: 'kinetic-gun',
+  mass: 20e3,
+  slugMass: 1,
+  muzzleVelocity: 20e3,
+  efficiency: 0.5,
+  rateOfFire: 1,
+};
+
+/** A magazine for test designs holding `slugs` slugs. */
+export const testMagazine = (slugs: number): MagazineDesign => ({
+  type: 'magazine',
+  mass: 5e3,
+  slugs,
+});
+
+/** The test design with the test kinetic gun on a forward mount and a magazine of `slugs`. */
+export const gunnedTestDesign = (slugs: number): Design =>
+  withSection(testDesign(), 'forward', {
+    components: [testMagazine(slugs)],
+    mounts: [TEST_KINETIC_GUN],
+  });
 
 /** Turns red's nose (+x) to point back along −x, at blue. */
 export const FACING_BLUE: Quat = fromAxisAngle(vec3(0, 0, 1), Math.PI);

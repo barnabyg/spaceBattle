@@ -8,6 +8,7 @@ export type TimeCompression = (typeof TIME_COMPRESSIONS)[number];
 /** Events that drop time compression back to real time, so the captain can respond. */
 const SIGNIFICANT_EVENTS: ReadonlySet<BattleEvent['type']> = new Set([
   'hit',
+  'impact',
   'armour-breached',
   'component-lost',
   'structural-failure',

@@ -1,6 +1,12 @@
 import { componentSlots } from './components';
-import { intactShape, overheat, strike, type DamageContext } from './damage';
-import type { ArmourType, ComponentType, Design, SectionKind } from './design';
+import { impactSlug, intactShape, overheat, strike, type DamageContext } from './damage';
+import {
+  designComponentsOfType,
+  type ArmourType,
+  type ComponentType,
+  type Design,
+  type SectionKind,
+} from './design';
 import { involves, type BattleEvent, type HitEvent } from './events';
 import {
   manoeuvreCommand,
@@ -11,6 +17,16 @@ import {
   type ContactMotion,
 } from './manoeuvre';
 import { thermalLimit, thermalProperties, workingRadiators } from './heat';
+import {
+  kineticGunRange,
+  shapeRadius,
+  shotEnergy,
+  slugPassed,
+  sweepSlug,
+  type Motion,
+  type Slug,
+  type Target,
+} from './kinetic';
 import type { AttitudeOrder, FireMode, Order } from './orders';
 import {
   POWER_SYSTEMS,
@@ -38,8 +54,15 @@ import {
   type ShipState,
 } from './ship';
 import { TIME_STEP } from './time';
-import { add, distance, length, normalize, scale, sub, type Vec3 } from './vector';
-import { aimWeapons, effectiveRange, emitBeams, type Beam } from './weapons';
+import { add, distance, dot, length, normalize, scale, sub, type Vec3 } from './vector';
+import {
+  aimWeapons,
+  effectiveRange,
+  emitBeams,
+  fireKineticGuns,
+  slugsLeft,
+  type Beam,
+} from './weapons';
 
 export { TIME_STEP };
 export type { BattleEvent, BattleOutcome };
@@ -152,11 +175,43 @@ export interface LaserObservation {
   readonly effectiveRange: number;
 }
 
-/** The ship's weapons: the captain's weapons order, the lasers and the latest hit scored. */
+/** One kinetic gun and what it is doing. */
+export interface KineticGunObservation {
+  readonly section: SectionKind;
+  /** Its place in the section's mounts. */
+  readonly mount: number;
+  readonly integrity: number;
+  /** Whether it is firing at the target: drawing power for its next shot, or loosing one. */
+  readonly firing: boolean;
+  /** How much of the energy for its next shot it has drawn (0–1). */
+  readonly charge: number;
+  /** Electrical energy each shot takes, J. */
+  readonly shotEnergy: number;
+  /** m/s */
+  readonly muzzleVelocity: number;
+  /** kg */
+  readonly slugMass: number;
+  /** Shots per second, given full power. */
+  readonly rateOfFire: number;
+  /** How far it fires: out to the longest flight fire control allows a slug, m. */
+  readonly effectiveRange: number;
+}
+
+/** The ship's ammunition. */
+export interface AmmunitionObservation {
+  /** Slugs left in working magazines. */
+  readonly slugs: number;
+  /** Slugs the magazines hold when full. */
+  readonly capacity: number;
+}
+
+/** The ship's weapons: the captain's weapons order, each weapon and the latest laser hit scored. */
 export interface WeaponsObservation {
   readonly target: SideId | null;
   readonly mode: FireMode;
   readonly lasers: readonly LaserObservation[];
+  readonly kineticGuns: readonly KineticGunObservation[];
+  readonly ammunition: AmmunitionObservation;
   readonly lastHit: HitEvent | null;
 }
 
@@ -168,6 +223,14 @@ export interface BeamLanding {
   readonly power: number;
   /** m */
   readonly spotRadius: number;
+}
+
+/** A slug striking a ship. */
+export interface ImpactLanding {
+  /** Where it struck, in the ship's body frame, m. */
+  readonly point: Vec3;
+  /** Its kinetic energy relative to the ship, J. */
+  readonly energy: number;
 }
 
 /** How a ship looks from outside: what an instrument view needs to draw it. */
@@ -183,6 +246,8 @@ export interface ShipAppearance {
   readonly parts: readonly ShapePart[];
   /** Where beams landed on the ship in the last step. */
   readonly beamsLanding: readonly BeamLanding[];
+  /** Where slugs struck the ship in the last step. */
+  readonly impacts: readonly ImpactLanding[];
 }
 
 /** A side's own ship, which it knows in full. */
@@ -191,6 +256,8 @@ export interface OwnShipObservation {
   readonly designName: string;
   readonly position: Vec3;
   readonly velocity: Vec3;
+  /** The drive's acceleration over the last step, m/s². */
+  readonly acceleration: Vec3;
   readonly orientation: Quat;
   /** World unit vector along the ship's long axis. */
   readonly nose: Vec3;
@@ -225,15 +292,33 @@ export interface ContactObservation {
   readonly sideId: SideId;
   readonly position: Vec3;
   readonly velocity: Vec3;
+  /** Its acceleration over the last step, m/s². */
+  readonly acceleration: Vec3;
   readonly orientation: Quat;
   /** Full detail until sensors limit what a side can make out (a later phase). */
   readonly appearance: ShipAppearance;
+}
+
+/** A munition in flight: for now, a slug from a kinetic gun. */
+export interface MunitionObservation {
+  /** Unique within the battle. */
+  readonly id: number;
+  readonly kind: 'slug';
+  /** The side that fired it. */
+  readonly attacker: SideId;
+  readonly target: SideId;
+  /** kg */
+  readonly mass: number;
+  readonly position: Vec3;
+  readonly velocity: Vec3;
 }
 
 export interface SideObservation {
   readonly time: number;
   readonly ownShip: OwnShipObservation;
   readonly contacts: readonly ContactObservation[];
+  /** Every munition in flight, whichever side fired it. */
+  readonly munitions: readonly MunitionObservation[];
   /** The latest events about this side's ship or hits it scored, oldest first. */
   readonly events: readonly BattleEvent[];
   /** How the battle ended, or null while it goes on. */
@@ -273,6 +358,8 @@ interface Combatant {
   readonly ship: ShipState;
   /** Beams that landed on the ship in the last step. */
   beamsLanding: BeamLanding[];
+  /** Slugs that struck the ship in the last step. */
+  impacts: ImpactLanding[];
 }
 
 const checkOrder = (order: Order): Order => {
@@ -380,18 +467,41 @@ const observeWeapons = (ship: ShipState): WeaponsObservation => {
       fullBeamPower: laser.laser.beamPower,
       effectiveRange: effectiveRange(laser.laser),
     })),
+    kineticGuns: weapons.kineticGuns.map((state) => ({
+      section: slots[state.slot]?.section ?? 'forward',
+      mount: slots[state.slot]?.index ?? 0,
+      integrity: ship.integrity[state.slot] ?? 0,
+      firing: state.firing,
+      charge: state.charge / shotEnergy(state.gun),
+      shotEnergy: shotEnergy(state.gun),
+      muzzleVelocity: state.gun.muzzleVelocity,
+      slugMass: state.gun.slugMass,
+      rateOfFire: state.gun.rateOfFire,
+      effectiveRange: kineticGunRange(state.gun),
+    })),
+    ammunition: {
+      slugs: slugsLeft(ship),
+      capacity: designComponentsOfType(ship.design, 'magazine').reduce((n, m) => n + m.slugs, 0),
+    },
     lastHit: weapons.lastHit,
   };
 };
 
-const observeAppearance = ({ ship, beamsLanding }: Combatant): ShipAppearance => ({
+const observeAppearance = ({ ship, beamsLanding, impacts }: Combatant): ShipAppearance => ({
   propellantMass: ship.propellantMass,
   radiatorsDeployed: ship.radiatorsDeployed,
   temperature: temperatureOf(ship),
   thrust: ship.thrust,
   parts: intactShape(ship),
   beamsLanding,
+  impacts,
 });
+
+/** A ship's shape as slugs meet it now. */
+const targetOfSlugs = (ship: ShipState): Target => {
+  const parts = intactShape(ship);
+  return { parts, reach: shapeRadius(parts), orientation: ship.orientation };
+};
 
 export const createBattle = (setup: BattleSetup): Battle => {
   if (setup.sides.length !== setup.scenario.starts.length) {
@@ -404,12 +514,17 @@ export const createBattle = (setup: BattleSetup): Battle => {
       side,
       ship: createShip(side.design, start.position, start.velocity, start.orientation ?? IDENTITY),
       beamsLanding: [],
+      impacts: [],
     };
   });
   let steps = 0;
   const random = createRandom(setup.seed);
   /** Beams on their way to their targets, in the order fired. */
   let beams: Beam[] = [];
+  /** Slugs in flight, in the order fired. */
+  let slugs: Slug[] = [];
+  let slugsFired = 0;
+  const nextSlugId = () => ++slugsFired;
   const logs = new Map<SideId, BattleEvent[]>(setup.sides.map((side) => [side.id, []]));
   let outcome: BattleOutcome | null = null;
 
@@ -492,9 +607,76 @@ export const createBattle = (setup: BattleSetup): Battle => {
     };
   };
 
+  /**
+   * Slugs moving from `before` to their positions now, while each ship moved from where it was at
+   * `shipsBefore`: each one whose path crosses a ship other than the one that fired it strikes it,
+   * and one that has passed its target for good flies on out of the battle.
+   */
+  const resolveSlugs = (
+    before: ReadonlyMap<number, Vec3>,
+    shipsBefore: ReadonlyMap<SideId, Vec3>,
+    ctx: Omit<DamageContext, 'side'>,
+  ) => {
+    const shapes = new Map<SideId, Target>();
+    const shapeOf = (c: Combatant) => {
+      const known = shapes.get(c.side.id);
+      if (known) return known;
+      const shape = targetOfSlugs(c.ship);
+      shapes.set(c.side.id, shape);
+      return shape;
+    };
+    slugs = slugs.filter((slug) => {
+      const from = before.get(slug.id) ?? slug.position;
+      for (const c of combatants) {
+        if (c.side.id === slug.attacker) continue;
+        const relative = sub(slug.velocity, c.ship.velocity);
+        const hit = sweepSlug(
+          shapeOf(c),
+          sub(from, shipsBefore.get(c.side.id) ?? c.ship.position),
+          sub(slug.position, c.ship.position),
+        );
+        if (hit) {
+          const energy = 0.5 * slug.mass * dot(relative, relative);
+          impactSlug(c.ship, hit, energy, slug.mass, { ...ctx, side: c.side.id });
+          shapes.delete(c.side.id);
+          c.impacts.push({ point: hit.point, energy });
+          ctx.events.push({
+            type: 'impact',
+            time: ctx.time,
+            attacker: slug.attacker,
+            target: c.side.id,
+            section: hit.part.section,
+            mount: hit.part.mount,
+            energy,
+            speed: length(relative),
+          });
+          return false;
+        }
+        if (
+          c.side.id === slug.target &&
+          slugPassed(
+            { position: sub(slug.position, c.ship.position), velocity: relative },
+            shapeOf(c).reach,
+          )
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+  };
+
   const step = (): readonly BattleEvent[] => {
     if (outcome) return [];
     const start = steps * TIME_STEP;
+    // Fire control sees every ship as it was at the start of the step, so the order of sides
+    // never matters.
+    const motions = new Map<SideId, Motion>(
+      combatants.map(({ side, ship }) => [
+        side.id,
+        { position: ship.position, velocity: ship.velocity, acceleration: ship.acceleration },
+      ]),
+    );
     // Weapons choose whether to fire first, so the drive knows what power they will ask for.
     combatants.forEach((c) => {
       const target = targetOf(c);
@@ -513,12 +695,14 @@ export const createBattle = (setup: BattleSetup): Battle => {
       const { ship } = combatant;
       const { heading, command } = plans[i] ?? { heading: null, command: null };
       steer(ship, heading, TIME_STEP);
+      const coasting = ship.velocity;
       if (command && ship.manoeuvre) {
         ship.manoeuvre = { ...ship.manoeuvre, correcting: command.correcting };
         fireDrive(ship, manoeuvreThrottle(ship, command, TIME_STEP), TIME_STEP);
       } else {
         burn(ship, TIME_STEP);
       }
+      ship.acceleration = scale(sub(ship.velocity, coasting), 1 / TIME_STEP);
       settlePowerAndHeat(ship, TIME_STEP);
       const target = targetOf(combatant);
       beams.push(
@@ -529,11 +713,28 @@ export const createBattle = (setup: BattleSetup): Battle => {
           start,
         ),
       );
+      const motion = target && motions.get(target.side.id);
+      slugs.push(
+        ...fireKineticGuns(
+          ship,
+          combatant.side.id,
+          target && motion ? { id: target.side.id, motion } : null,
+          TIME_STEP,
+          nextSlugId,
+        ),
+      );
     });
-    // Ships move after all have fired, so every beam leaves from the same snapshot.
+    // Ships and slugs move after all have fired, so every beam and slug leaves from the same
+    // snapshot.
+    const shipsBefore = new Map(combatants.map(({ side, ship }) => [side.id, ship.position]));
+    const slugsBefore = new Map(slugs.map((slug) => [slug.id, slug.position]));
     combatants.forEach(({ ship }) => {
       ship.position = add(ship.position, scale(ship.velocity, TIME_STEP));
     });
+    slugs = slugs.map((slug) => ({
+      ...slug,
+      position: add(slug.position, scale(slug.velocity, TIME_STEP)),
+    }));
     steps += 1;
 
     // Beams that reach their targets by the end of the step strike them, in the order fired.
@@ -543,8 +744,10 @@ export const createBattle = (setup: BattleSetup): Battle => {
     beams = beams.filter((b) => b.arrival > time + 1e-9);
     combatants.forEach((c) => {
       if (c.beamsLanding.length > 0) c.beamsLanding = [];
+      if (c.impacts.length > 0) c.impacts = [];
     });
     for (const beam of arriving) resolveBeam(beam, { time, random, events });
+    resolveSlugs(slugsBefore, shipsBefore, { time, random, events });
     combatants.forEach(({ side, ship }) => {
       overheat(ship, TIME_STEP, { side: side.id, time, random, events });
     });
@@ -619,6 +822,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
           designName: own.side.design.name,
           position: ship.position,
           velocity: ship.velocity,
+          acceleration: ship.acceleration,
           orientation: ship.orientation,
           nose: noseOf(ship),
           angularVelocity: rotate(ship.orientation, ship.angularVelocity),
@@ -643,9 +847,11 @@ export const createBattle = (setup: BattleSetup): Battle => {
             sideId: c.side.id,
             position: c.ship.position,
             velocity: c.ship.velocity,
+            acceleration: c.ship.acceleration,
             orientation: c.ship.orientation,
             appearance: observeAppearance(c),
           })),
+        munitions: slugs.map((slug) => ({ kind: 'slug', ...slug })),
         events: [...(logs.get(sideId) ?? [])],
         outcome,
       };

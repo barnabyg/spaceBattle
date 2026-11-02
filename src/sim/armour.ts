@@ -11,11 +11,17 @@ export interface ArmourMaterial {
    * off, carrying its heat away with the vapour, so each kilogram soaks up several times more.
    */
   readonly ablationEnergy: number;
+  /**
+   * Energy a slug must spend on each kilogram of armour in the hole it punches, J/kg. Tough steel
+   * soaks up more per kilogram than brittle carbon-phenolic, which shatters; and being far less
+   * dense, ablative armour puts much less in a slug's way for each metre it is thick.
+   */
+  readonly penetrationEnergy: number;
 }
 
 export const ARMOUR: Readonly<Record<ArmourType, ArmourMaterial>> = {
-  heavy: { density: 7_800, ablationEnergy: 8e6 },
-  ablative: { density: 1_800, ablationEnergy: 30e6 },
+  heavy: { density: 7_800, ablationEnergy: 8e6, penetrationEnergy: 4e6 },
+  ablative: { density: 1_800, ablationEnergy: 30e6, penetrationEnergy: 3e6 },
 };
 
 /** Energy a beam must put into each square metre to burn through each metre of armour, J/m³. */

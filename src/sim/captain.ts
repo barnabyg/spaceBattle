@@ -38,10 +38,17 @@ const RANGE_TOLERANCE = 0.01;
 const COMBAT_PRIORITIES: readonly PowerSystem[] = ['weapons', 'shields', 'drive', 'capacitors'];
 const MANOEUVRE_PRIORITIES: readonly PowerSystem[] = ['drive', 'shields', 'weapons', 'capacitors'];
 
-/** The furthest any of a design's lasers fires, m; zero without lasers. */
-/** The furthest the ship's working lasers fire, m; zero once none is left. */
-const ownReach = (ship: OwnShipObservation): number =>
-  Math.max(0, ...ship.weapons.lasers.filter((l) => l.integrity > 0).map((l) => l.effectiveRange));
+/**
+ * The furthest the ship's working weapons fire, m: its lasers, and its kinetic guns while it has
+ * slugs left. Zero once none is left.
+ */
+const ownReach = ({ weapons }: OwnShipObservation): number =>
+  Math.max(
+    0,
+    ...[...weapons.lasers, ...(weapons.ammunition.slugs > 0 ? weapons.kineticGuns : [])]
+      .filter((weapon) => weapon.integrity > 0)
+      .map((weapon) => weapon.effectiveRange),
+  );
 
 /** Whether an order is already standing, so giving it again would change nothing. */
 const inForce = (ship: OwnShipObservation, order: Order): boolean => {
@@ -66,7 +73,7 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
 
 /**
  * A basic computer captain for one side. It knows the designs in the battle, so it knows how far
- * the enemy's lasers reach (contacts show every detail until sensors arrive), and otherwise
+ * the enemy's weapons reach (contacts show every detail until sensors arrive), and otherwise
  * decides only from its side's observations.
  *
  * It targets the enemy and fires freely throughout. If it outranges the enemy it holds just
@@ -85,8 +92,11 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
   /** Notes fire either way or a shrinking range; a long spell of neither sends it in. */
   const notice = (observation: SideObservation, range: number) => {
     const { ownShip, time } = observation;
+    const { weapons, appearance } = ownShip;
     const engaged =
-      ownShip.weapons.lasers.some((l) => l.firing) || ownShip.appearance.beamsLanding.length > 0;
+      [...weapons.lasers, ...weapons.kineticGuns].some((weapon) => weapon.firing) ||
+      appearance.beamsLanding.length > 0 ||
+      appearance.impacts.length > 0;
     if (!progress || engaged || range < progress.range * (1 - PROGRESS_FRACTION)) {
       progress = { time, range };
     } else {

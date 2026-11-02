@@ -30,6 +30,8 @@ const PLANNED_BURN_COLOUR = '#ffb347';
 const BEAM_COLOUR = '#7dffb0';
 /** Heading lines are this fraction of the camera's distance from the own ship. */
 const HEADING_SCALE = 0.06;
+/** Munitions in flight are drawn as dots this many pixels across. */
+const MUNITION_SIZE = 5;
 
 export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
 
@@ -195,6 +197,49 @@ export const createTacticalMap = (
   beam.visible = false;
   scene.add(beam);
 
+  // Munitions in flight: a dot each, in the colour of the side that fired it.
+  const munitionColours = new Map(
+    sides.map((side, index) => [side.id, new THREE.Color(colours[index] ?? '#ffffff')]),
+  );
+  const munitionGeometry = new THREE.BufferGeometry();
+  let munitionCapacity = 0;
+  const munitions = new THREE.Points(
+    munitionGeometry,
+    new THREE.PointsMaterial({ size: MUNITION_SIZE, sizeAttenuation: false, vertexColors: true }),
+  );
+  munitions.frustumCulled = false;
+  scene.add(munitions);
+  const showMunitions = (observation: SideObservation) => {
+    const shown = observation.munitions;
+    if (shown.length > munitionCapacity) {
+      munitionCapacity = Math.max(256, 2 * shown.length);
+      munitionGeometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(new Float32Array(munitionCapacity * 3), 3),
+      );
+      munitionGeometry.setAttribute(
+        'color',
+        new THREE.BufferAttribute(new Float32Array(munitionCapacity * 3), 3),
+      );
+    }
+    if (munitionCapacity === 0) return;
+    const positions = munitionGeometry.getAttribute('position');
+    const tints = munitionGeometry.getAttribute('color');
+    shown.forEach((munition, i) => {
+      positions.setXYZ(
+        i,
+        munition.position.x / KM,
+        munition.position.y / KM,
+        munition.position.z / KM,
+      );
+      const tint = munitionColours.get(munition.attacker);
+      tints.setXYZ(i, tint?.r ?? 1, tint?.g ?? 1, tint?.b ?? 1);
+    });
+    positions.needsUpdate = true;
+    tints.needsUpdate = true;
+    munitionGeometry.setDrawRange(0, shown.length);
+  };
+
   const resize = () => {
     const { clientWidth: width, clientHeight: height } = element;
     if (width === 0 || height === 0) return;
@@ -303,6 +348,7 @@ export const createTacticalMap = (
       if (target && beam.visible) {
         beam.geometry.setFromPoints([centre, toScene(target.position)]);
       }
+      showMunitions(observation);
 
       if (ownDrive) {
         const lastBurnEnd = Math.max(

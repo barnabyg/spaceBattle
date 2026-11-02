@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
 import { createBattle, type Battle, type BattleEvent } from '../sim/battle';
 import { IDENTITY } from '../sim/quaternion';
-import { armedTestDesign, duelSetup, testDesign, testSetup, testSides } from '../sim/testing';
+import {
+  armedTestDesign,
+  duelSetup,
+  gunnedTestDesign,
+  testDesign,
+  testSetup,
+  testSides,
+} from '../sim/testing';
 import { createBattleRunner, TIME_COMPRESSIONS, type TimeCompression } from './battleRunner';
 
 const runner = () => createBattleRunner(createBattle(testSetup()));
@@ -56,6 +63,17 @@ describe('battle runner', () => {
     expect(r.timeCompression).toBe(1);
     // The rest of the update's compressed time is not run.
     expect(r.battle.time).toBeLessThan(1);
+  });
+
+  it('drops to real time when a slug hits', () => {
+    const battle = createBattle(duelSetup(gunnedTestDesign(1), testDesign(), 1_000e3));
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    const r = createBattleRunner(battle);
+    r.setTimeCompression(1000);
+    const events = r.update(0.1);
+    expect(events.map((e) => e.type)).toEqual(['impact']);
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeLessThan(100);
   });
 
   it('drops to real time when a component is lost', () => {

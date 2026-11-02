@@ -71,6 +71,7 @@ const ledgerChecker = (battle: Battle, design: Design, side = 'blue') => {
         delivered.shields,
         delivered.weapons,
         -ledger.beamEmitted,
+        -ledger.slugEnergy,
       ],
     );
     // Heat: what came in less what was radiated away is what the ship now holds.

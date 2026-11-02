@@ -22,7 +22,22 @@ export interface HitEvent {
   readonly range: number;
 }
 
-/** A section's armour has been burnt through; beams now reach its structure and components. */
+/** A slug struck a part of its target: a section, or one of its mounts. */
+export interface ImpactEvent {
+  readonly type: 'impact';
+  readonly time: number;
+  readonly attacker: SideId;
+  readonly target: SideId;
+  readonly section: SectionKind;
+  /** The mount struck on that section, or null for the section itself. */
+  readonly mount: number | null;
+  /** The slug's kinetic energy relative to the target, J. */
+  readonly energy: number;
+  /** The slug's speed relative to the target, m/s. */
+  readonly speed: number;
+}
+
+/** A section's armour has been broken through; hits now reach its structure and components. */
 export interface ArmourBreachedEvent {
   readonly type: 'armour-breached';
   readonly time: number;
@@ -60,12 +75,18 @@ export interface BattleEndedEvent {
 
 /** Something significant that happened in a battle. */
 export type BattleEvent =
-  HitEvent | ArmourBreachedEvent | ComponentLostEvent | StructuralFailureEvent | BattleEndedEvent;
+  | HitEvent
+  | ImpactEvent
+  | ArmourBreachedEvent
+  | ComponentLostEvent
+  | StructuralFailureEvent
+  | BattleEndedEvent;
 
 /** Whether an event concerns a side: its own ship, a hit it scored, or the end of the battle. */
 export const involves = (event: BattleEvent, side: SideId): boolean => {
   switch (event.type) {
     case 'hit':
+    case 'impact':
       return event.attacker === side || event.target === side;
     case 'battle-ended':
       return true;

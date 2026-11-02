@@ -24,7 +24,12 @@ import {
 import { conjugate, integrate, rotate, type Quat } from './quaternion';
 import { TIME_STEP } from './time';
 import { add, cross, dot, length, scale, sub, vec3, ZERO, type Vec3 } from './vector';
-import { initialWeapons, type WeaponsState } from './weapons';
+import {
+  initialAmmunition,
+  initialWeapons,
+  type MagazineState,
+  type WeaponsState,
+} from './weapons';
 
 /** The ship's long axis in its own body frame: the drive pushes along it. */
 export const NOSE: Vec3 = vec3(1, 0, 0);
@@ -59,6 +64,8 @@ export interface ShipState {
   orientation: Quat;
   /** Body frame, rad/s. */
   angularVelocity: Vec3;
+  /** The drive's acceleration over the last step, world frame, m/s². */
+  acceleration: Vec3;
   propellantMass: number;
   attitude: AttitudeOrder | null;
   burn: BurnState | null;
@@ -84,6 +91,8 @@ export interface ShipState {
   integrity: readonly number[];
   sections: Record<SectionKind, SectionState>;
   weapons: WeaponsState;
+  /** The slugs left in each magazine. */
+  ammunition: readonly MagazineState[];
 }
 
 /** Mass, centre of mass and principal moments of inertia (body axes), from hull and contents. */
@@ -161,6 +170,7 @@ export const createShip = (
   velocity,
   orientation,
   angularVelocity: ZERO,
+  acceleration: ZERO,
   propellantMass: design.propellantMass,
   attitude: null,
   burn: null,
@@ -187,6 +197,7 @@ export const createShip = (
     ]),
   ) as Record<SectionKind, SectionState>,
   weapons: initialWeapons(design),
+  ammunition: initialAmmunition(design),
 });
 
 /** K */

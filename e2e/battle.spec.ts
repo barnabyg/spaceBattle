@@ -114,3 +114,17 @@ test('End battle asks first, then shows the player forfeited', async ({ page }) 
   await page.waitForTimeout(1_200);
   await expect(page.getByLabel('Battle time')).toHaveText(clock ?? '');
 });
+
+test('a ship with kinetic guns shows its guns, magazine and ammunition', async ({ page }) => {
+  await startFreeBattle(page, { blue: { design: 'Sling' } });
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Ammunition')).toHaveText('600 of 600 slugs');
+  await expect(page.getByLabel('Slugs in flight')).toHaveText('0 ours · 0 incoming');
+  const damage = page.getByRole('region', { name: 'Damage' });
+  await expect(damage.getByText('Kinetic gun (mount)')).toHaveCount(2);
+  await expect(damage.getByText('Magazine', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Fire freely' }).click();
+  // The opening pass starts beyond the guns' reach.
+  await expect(page.getByLabel('Weapons state')).toHaveText('Out of range · reach 30,000 km');
+});

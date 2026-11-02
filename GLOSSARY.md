@@ -140,6 +140,10 @@ A weapon firing a beam of uncharged particles; it stays tight over long range an
 A weapon that fires solid slugs accelerated electromagnetically; it needs power and ammunition, and its slugs are slow enough to dodge at long range.
 _Avoid_: Railgun, coilgun, mass driver (as the class name)
 
+**Slug**:
+A solid round fired by a kinetic gun. It flies in a straight line, and the kinetic energy it carries into the target does the damage.
+_Avoid_: Shell, bullet, projectile
+
 **Missile**:
 A self-propelled, guided munition with its own propellant, launched at enemy ships.
 _Avoid_: Torpedo

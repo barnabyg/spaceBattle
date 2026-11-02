@@ -1,10 +1,11 @@
 import { laserResistance } from './armour';
 import type { SideId } from './battle';
 import { componentSlots } from './components';
-import type { SectionKind } from './design';
+import type { ArmourType, SectionKind } from './design';
 import type { BattleEvent } from './events';
 import { DAMAGE_TEMPERATURE, thermalProperties } from './heat';
 import { HULLS } from './hull';
+import { penetrationDepth, type SlugHit } from './kinetic';
 import { conjugate, rotate } from './quaternion';
 import type { Random } from './random';
 import { firstHit, shipShape, type ShapePart } from './shape';
@@ -65,7 +66,10 @@ const slotOf = (ship: ShipState, section: SectionKind, mounted: boolean, index: 
     (s) => s.section === section && s.mounted === mounted && s.index === index,
   );
 
-/** Takes `loss` (a fraction of full integrity) off a component, reporting it if it is lost. */
+/**
+ * Takes `loss` (a fraction of full integrity) off a component, reporting it if it is lost. A
+ * magazine that is lost loses the ammunition in it.
+ */
 const damageComponent = (ship: ShipState, slot: number, loss: number, ctx: DamageContext) => {
   const before = ship.integrity[slot] ?? 0;
   if (before <= 0 || !(loss > 0)) return;
@@ -73,6 +77,9 @@ const damageComponent = (ship: ShipState, slot: number, loss: number, ctx: Damag
   ship.integrity = ship.integrity.map((value, i) => (i === slot ? after : value));
   const place = componentSlots(ship.design)[slot];
   if (after === 0 && place) {
+    if (place.component.type === 'magazine') {
+      ship.ammunition = ship.ammunition.map((m) => (m.slot === slot ? { ...m, slugs: 0 } : m));
+    }
     ctx.events.push({
       type: 'component-lost',
       time: ctx.time,
@@ -114,16 +121,17 @@ const pickStruck = (ship: ShipState, kind: SectionKind, random: Random): number 
 };
 
 /**
- * A beam landing on a section. It burns through the armour at the rate its intensity allows,
- * I / (ρ·e) metres per second; armour is one thickness per section, worn as if every hit landed
- * on the same spot (aim is perfect in Phase 1). Energy past the armour goes partly into the
- * section's structure and partly into one component inside, until that is wrecked.
+ * A hit on a section carrying `energy` J that would reach `depthIn` metres into the section's
+ * armour if the armour took all of it. Armour is one thickness per section, worn as if every hit
+ * landed on the same spot (aim is perfect in Phase 1); the energy left once the hit is through
+ * goes partly into the section's structure and partly into one component inside, until that is
+ * wrecked.
  */
 const damageSection = (
   ship: ShipState,
   kind: SectionKind,
   energy: number,
-  intensity: number,
+  depthIn: (armour: ArmourType) => number,
   ctx: DamageContext,
 ) => {
   const design = ship.design.sections.find((s) => s.kind === kind);
@@ -131,7 +139,7 @@ const damageSection = (
   if (!design) return;
   let inside = energy;
   if (state.armour > 0) {
-    const depth = (intensity * TIME_STEP) / laserResistance(design.armour.type);
+    const depth = depthIn(design.armour.type);
     if (depth < state.armour) {
       ship.sections[kind] = { ...state, armour: state.armour - depth };
       return;
@@ -168,11 +176,19 @@ export const intactShape = (ship: ShipState): readonly ShapePart[] =>
         (ship.integrity[slotOf(ship, part.section, true, part.mount)] ?? 0) > 0),
   );
 
+/** A hit carrying `energy` J on a mount, which sits outside the armour and takes all of it. */
+const damageMount = (ship: ShipState, part: ShapePart, energy: number, ctx: DamageContext) => {
+  const slot = slotOf(ship, part.section, true, part.mount ?? -1);
+  const mass = componentSlots(ship.design)[slot]?.component.mass ?? 1;
+  damageComponent(ship, slot, energy / (mass * COMPONENT_WRECK_ENERGY), ctx);
+};
+
 /**
  * A beam reaching a ship. It is aimed at the centre of mass and lands on whatever its line of
  * fire reaches first on the ship's actual shape. The part takes the beam's intensity over the
- * part's silhouette, or the whole beam if its spot is smaller. Mounts sit outside the armour, so
- * a mounted component takes the energy directly.
+ * part's silhouette, or the whole beam if its spot is smaller. On a section it burns through the
+ * armour at the rate its intensity allows, I / (ρ·e) metres per second. Mounts sit outside the
+ * armour, so a mounted component takes the energy directly.
  */
 export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike | null => {
   const direction = normalize(sub(ship.position, beam.origin));
@@ -184,16 +200,35 @@ export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike 
   const power = Math.min(beam.power, intensity * hit.projectedArea);
   const energy = power * TIME_STEP;
   ship.ledger = { ...ship.ledger, hitEnergy: ship.ledger.hitEnergy + energy };
-  const { section, mount } = hit.part;
-  if (mount === null) {
-    damageSection(ship, section, energy, intensity, ctx);
+  if (hit.part.mount === null) {
+    const depthIn = (armour: ArmourType) => (intensity * TIME_STEP) / laserResistance(armour);
+    damageSection(ship, hit.part.section, energy, depthIn, ctx);
   } else {
-    const slot = slotOf(ship, section, true, mount);
-    const mass = componentSlots(ship.design)[slot]?.component.mass ?? 1;
-    damageComponent(ship, slot, energy / (mass * COMPONENT_WRECK_ENERGY), ctx);
+    damageMount(ship, hit.part, energy, ctx);
   }
   const point = scale(body, hit.distance - RAY_START);
   return { part: hit.part, power, intensity, spotRadius: radius, point };
+};
+
+/**
+ * A slug striking a ship with its kinetic energy, `energy` J, on the part its path meets first.
+ * On a section it punches as deep into the armour as its energy allows; a mounted component
+ * takes all of it.
+ */
+export const impactSlug = (
+  ship: ShipState,
+  hit: SlugHit,
+  energy: number,
+  slugMass: number,
+  ctx: DamageContext,
+): void => {
+  ship.ledger = { ...ship.ledger, hitEnergy: ship.ledger.hitEnergy + energy };
+  if (hit.part.mount === null) {
+    const depthIn = (armour: ArmourType) => penetrationDepth(energy, slugMass, armour);
+    damageSection(ship, hit.part.section, energy, depthIn, ctx);
+  } else {
+    damageMount(ship, hit.part, energy, ctx);
+  }
 };
 
 /** Above the damage temperature every component loses integrity, faster the hotter it is. */

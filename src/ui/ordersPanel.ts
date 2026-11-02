@@ -52,19 +52,33 @@ const describePlan = (m: ManoeuvreObservation): string => {
   return `Coasting · next burn in ${formatDuration(next.start)} for ${formatDuration(next.duration)}`;
 };
 
-/** What the lasers are doing, e.g. "Firing · 500 MW" or "Out of range · reach 165,000 km". */
+/**
+ * What the weapons are doing, e.g. "Firing 1 of 1 · 500 MW", "Firing 2 of 2 · 412 slugs left" or
+ * "Out of range · reach 165,000 km".
+ */
 const describeWeapons = (weapons: WeaponsObservation): string => {
-  const { lasers, target, mode } = weapons;
-  if (lasers.length === 0) return 'No weapons';
-  if (lasers.every((l) => l.integrity === 0)) return 'All lasers lost';
+  const { lasers, kineticGuns, ammunition, target, mode } = weapons;
+  const all = [...lasers, ...kineticGuns];
+  if (all.length === 0) return 'No weapons';
+  if (all.every((w) => w.integrity === 0)) return 'All weapons lost';
   if (mode === 'hold-fire') return target ? 'Holding fire · enemy targeted' : 'Holding fire';
   if (!target) return 'No target';
-  const firing = lasers.filter((l) => l.firing);
+  const working = [
+    ...lasers.filter((l) => l.integrity > 0),
+    ...(ammunition.slugs > 0 ? kineticGuns.filter((g) => g.integrity > 0) : []),
+  ];
+  if (working.length === 0) return 'Out of slugs';
+  const firing = all.filter((w) => w.firing);
   if (firing.length > 0) {
-    const power = firing.reduce((total, l) => total + l.beamPower, 0);
-    return `Firing ${firing.length} of ${lasers.length} · ${formatMW(power)}`;
+    const power = lasers.reduce((total, l) => total + l.beamPower, 0);
+    const parts = [`Firing ${firing.length} of ${all.length}`];
+    if (power > 0) parts.push(formatMW(power));
+    if (kineticGuns.some((g) => g.firing)) {
+      parts.push(`${ammunition.slugs.toLocaleString('en-GB')} slugs left`);
+    }
+    return parts.join(' · ');
   }
-  const reach = Math.max(...lasers.filter((l) => l.integrity > 0).map((l) => l.effectiveRange));
+  const reach = Math.max(...working.map((w) => w.effectiveRange));
   return `Out of range · reach ${formatKm(reach)}`;
 };
 

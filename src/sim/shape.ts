@@ -7,6 +7,10 @@ import { vec3, type Vec3 } from './vector';
 const RADIATOR_THICKNESS = 0.2;
 /** A laser turret is a box this much wider than its mirror, m. */
 const TURRET_MARGIN = 1;
+/** A kinetic gun is a box this wide and high round its barrel, m... */
+const GUN_GIRTH = 3;
+/** ...and at most this long, its barrel along the ship, m. */
+const GUN_LENGTH = 16;
 
 /**
  * One box of a ship's outline, in its body frame with the centre of mass at the origin and the
@@ -60,6 +64,14 @@ const mountBox = (
     hi = centre + side / 2;
     outward = side;
     width = side;
+  } else if (component.type === 'kinetic-gun') {
+    // A long gun lying along the ship, centred in its slot.
+    const half = Math.min(GUN_LENGTH, length) / 2;
+    const centre = (slot[0] + slot[1]) / 2;
+    lo = centre - half;
+    hi = centre + half;
+    outward = GUN_GIRTH;
+    width = GUN_GIRTH;
   } else if (deployed) {
     // A fin standing straight out from the face, edge-on to the nose; both faces radiate.
     lo = slot[0];

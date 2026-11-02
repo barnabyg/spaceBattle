@@ -53,6 +53,20 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   ['Heat generated', (o) => formatMW(o.ownShip.heat.generated)],
   ['Heat radiated', (o) => formatMW(o.ownShip.heat.radiated)],
   [
+    'Ammunition',
+    ({ ownShip: { weapons } }) =>
+      weapons.ammunition.capacity > 0
+        ? `${weapons.ammunition.slugs.toLocaleString('en-GB')} of ${weapons.ammunition.capacity.toLocaleString('en-GB')} slugs`
+        : '—',
+  ],
+  [
+    'Slugs in flight',
+    ({ munitions, ownShip }) => {
+      const ours = munitions.filter((m) => m.attacker === ownShip.sideId).length;
+      return `${ours} ours · ${munitions.length - ours} incoming`;
+    },
+  ],
+  [
     'Radiators',
     ({ ownShip: { heat } }) =>
       `${heat.radiatorsDeployed ? 'Deployed' : 'Retracted'} · ${Math.round(heat.radiatorArea).toLocaleString('en-GB')} m²`,

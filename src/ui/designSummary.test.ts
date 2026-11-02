@@ -15,6 +15,13 @@ describe('design summary', () => {
     expect(lance.get('Forward armour')).toBe('50 mm ablative');
   });
 
+  it("shows a design's kinetic guns and the slugs it carries", () => {
+    expect(summaryOf('lance').get('Kinetic guns')).toBe('None');
+    expect(summaryOf('sling').get('Kinetic guns')).toBe(
+      '2 · 30.00 km/s · 600 slugs · reach 30,000 km',
+    );
+  });
+
   it('tells the nimble frigate from the heavier cruiser', () => {
     const lance = summaryOf('lance');
     const bastion = summaryOf('bastion');

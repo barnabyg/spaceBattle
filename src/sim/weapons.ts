@@ -1,11 +1,25 @@
 import type { SideId } from './battle';
 import { componentSlots } from './components';
-import { designComponentsOfType, type Design, type LaserDesign } from './design';
+import {
+  designComponentsOfType,
+  type Design,
+  type KineticGunDesign,
+  type LaserDesign,
+} from './design';
 import type { HitEvent } from './events';
 import { thermalLimit, thermalProperties } from './heat';
+import {
+  firingSolution,
+  kineticGunPower,
+  kineticGunRange,
+  shotEnergy,
+  type Motion,
+  type Slug,
+} from './kinetic';
 import type { FireMode } from './orders';
-import type { ShipState } from './ship';
-import type { Vec3 } from './vector';
+import { massProperties, type ShipState } from './ship';
+import { TIME_STEP } from './time';
+import { add, scale, sub, type Vec3 } from './vector';
 
 /** m/s */
 export const SPEED_OF_LIGHT = 299_792_458;
@@ -36,9 +50,13 @@ export const effectiveRange = (laser: LaserDesign): number => {
   return (radius * laser.aperture) / (1.22 * laser.wavelength);
 };
 
-/** The furthest any of a design's lasers reaches at full power, m; zero if it has none. */
+/** The furthest any of a design's weapons fires, m; zero if it has none. */
 export const designReach = (design: Design): number =>
-  Math.max(0, ...designComponentsOfType(design, 'laser').map(effectiveRange));
+  Math.max(
+    0,
+    ...designComponentsOfType(design, 'laser').map(effectiveRange),
+    ...designComponentsOfType(design, 'kinetic-gun').map(kineticGunRange),
+  );
 
 /** Electrical power a laser draws at full integrity while firing, W. */
 export const laserPower = (laser: LaserDesign): number => laser.beamPower / laser.efficiency;
@@ -60,18 +78,51 @@ export interface LaserState {
   readonly striking: string | null;
 }
 
-/** A ship's weapons: the captain's order and each laser's state. */
+/** One kinetic gun's state. */
+export interface KineticGunState {
+  /** Its place in the ship's component slots. */
+  readonly slot: number;
+  readonly gun: KineticGunDesign;
+  /** Whether it is firing at the target this step: drawing power for a shot, or loosing one. */
+  readonly firing: boolean;
+  /** Electrical power it asks for this step, W. */
+  readonly demand: number;
+  /** Electrical energy drawn towards its next shot, J. */
+  readonly charge: number;
+}
+
+/** A ship's weapons: the captain's order and each weapon's state. */
 export interface WeaponsState {
   readonly target: SideId | null;
   readonly mode: FireMode;
   readonly lasers: readonly LaserState[];
-  /** Electrical power the lasers ask for this step, W. */
+  readonly kineticGuns: readonly KineticGunState[];
+  /** Electrical power the weapons ask for this step, W. */
   readonly demand: number;
-  /** The fraction of the power the lasers draw that leaves in their beams. */
+  /** The fraction of the power the weapons draw that leaves in laser beams. */
   readonly beamFraction: number;
+  /** The fraction of the power the weapons draw that kinetic guns put into their slugs. */
+  readonly slugFraction: number;
   /** The latest hit this ship's lasers scored. */
   readonly lastHit: HitEvent | null;
 }
+
+/** The slugs held in one magazine. */
+export interface MagazineState {
+  /** Its place in the ship's component slots. */
+  readonly slot: number;
+  readonly slugs: number;
+}
+
+/** Every magazine of a design, full. */
+export const initialAmmunition = (design: Design): MagazineState[] =>
+  componentSlots(design).flatMap((slot, i) =>
+    slot.component.type === 'magazine' ? [{ slot: i, slugs: slot.component.slugs }] : [],
+  );
+
+/** Slugs left in the ship's magazines. */
+export const slugsLeft = (ship: ShipState): number =>
+  ship.ammunition.reduce((total, magazine) => total + magazine.slugs, 0);
 
 /** A step's worth of beam on its way to the target at light speed. */
 export interface Beam {
@@ -112,36 +163,63 @@ export const initialWeapons = (design: Design): WeaponsState => ({
         ]
       : [],
   ),
+  kineticGuns: componentSlots(design).flatMap((slot, i) =>
+    slot.component.type === 'kinetic-gun'
+      ? [{ slot: i, gun: slot.component, firing: false, demand: 0, charge: 0 }]
+      : [],
+  ),
   demand: 0,
   beamFraction: 0,
+  slugFraction: 0,
   lastHit: null,
 });
 
 /**
- * Decides which lasers fire this step and the power they ask for: when firing freely at a target
+ * Decides which weapons fire this step and the power they ask for: when firing freely at a target
  * within their effective range, as much as their integrity and the ship's temperature allow.
+ * A kinetic gun also needs slugs left, and asks only for what its next shot still needs.
  * `range` is the distance to the ordered target, or null without one. Phase 1 turrets bear in
  * every direction; firing arcs come later.
  */
 export const aimWeapons = (ship: ShipState, range: number | null): void => {
   const { weapons } = ship;
   const limit = thermalLimit(ship.heat / thermalProperties(ship.design).heatCapacity);
+  const inReach = (reach: number) =>
+    weapons.mode === 'fire-freely' && range !== null && range <= reach;
   let demand = 0;
   let beam = 0;
+  let slug = 0;
   const lasers = weapons.lasers.map((state) => {
     const integrity = ship.integrity[state.slot] ?? 0;
-    const firing =
-      weapons.mode === 'fire-freely' &&
-      range !== null &&
-      integrity > 0 &&
-      range <= effectiveRange(state.laser);
+    const firing = integrity > 0 && inReach(effectiveRange(state.laser));
     const wanted = firing ? laserPower(state.laser) * integrity * limit : 0;
     demand += wanted;
     beam += wanted * state.laser.efficiency;
     return { ...state, firing, demand: wanted };
   });
-  ship.weapons = { ...weapons, lasers, demand, beamFraction: demand > 0 ? beam / demand : 0 };
+  const loaded = slugsLeft(ship) > 0;
+  const kineticGuns = weapons.kineticGuns.map((state) => {
+    const integrity = ship.integrity[state.slot] ?? 0;
+    const firing = loaded && integrity > 0 && inReach(kineticGunRange(state.gun));
+    const needed = Math.max(0, shotEnergy(state.gun) - state.charge) / TIME_STEP;
+    const wanted = firing ? Math.min(kineticGunPower(state.gun) * integrity * limit, needed) : 0;
+    demand += wanted;
+    slug += wanted * state.gun.efficiency;
+    return { ...state, firing, demand: wanted };
+  });
+  ship.weapons = {
+    ...weapons,
+    lasers,
+    kineticGuns,
+    demand,
+    beamFraction: demand > 0 ? beam / demand : 0,
+    slugFraction: demand > 0 ? slug / demand : 0,
+  };
 };
+
+/** The share of what the weapons asked for that they were given this step. */
+const weaponsShare = (ship: ShipState): number =>
+  ship.weapons.demand > 0 ? ship.powerFlow.systems.weapons.supplied / ship.weapons.demand : 0;
 
 /**
  * Sends out this step's beams once power is settled: each firing laser gets its share of the
@@ -155,8 +233,7 @@ export const emitBeams = (
   time: number,
 ): Beam[] => {
   const { weapons } = ship;
-  const supplied = ship.powerFlow.systems.weapons.supplied;
-  const share = weapons.demand > 0 ? supplied / weapons.demand : 0;
+  const share = weaponsShare(ship);
   const beams: Beam[] = [];
   const lasers = weapons.lasers.map((state, i) => {
     const power = state.firing ? state.demand * share * state.laser.efficiency : 0;
@@ -181,4 +258,55 @@ export const emitBeams = (
   });
   ship.weapons = { ...weapons, lasers };
   return beams;
+};
+
+/** Takes one slug from the first magazine that has any. */
+const takeSlug = (ship: ShipState): void => {
+  const from = ship.ammunition.findIndex((magazine) => magazine.slugs > 0);
+  ship.ammunition = ship.ammunition.map((magazine, i) =>
+    i === from ? { ...magazine, slugs: magazine.slugs - 1 } : magazine,
+  );
+};
+
+/**
+ * Charges the kinetic guns with their share of the power the weapons were given, and fires each
+ * one whose next shot is fully charged, given a target, a slug and a firing solution. Fire
+ * control leads the target on its observed motion. The slug leaves at the muzzle velocity
+ * relative to the ship, and its recoil pushes the ship back by the slug's momentum.
+ */
+export const fireKineticGuns = (
+  ship: ShipState,
+  attacker: SideId,
+  target: { readonly id: SideId; readonly motion: Motion } | null,
+  dt: number,
+  nextId: () => number,
+): Slug[] => {
+  const share = weaponsShare(ship);
+  const { mass } = massProperties(ship.design, ship.propellantMass);
+  const slugs: Slug[] = [];
+  const kineticGuns = ship.weapons.kineticGuns.map((state) => {
+    const needed = shotEnergy(state.gun);
+    const charge = Math.min(needed, state.charge + state.demand * share * dt);
+    // The allowance stops rounding error in the charge from holding a shot back a step.
+    if (!state.firing || !target || charge < needed * (1 - 1e-9) || slugsLeft(ship) === 0) {
+      return { ...state, charge };
+    }
+    const { muzzleVelocity, slugMass } = state.gun;
+    const solution = firingSolution(ship, target.motion, muzzleVelocity, dt);
+    if (!solution) return { ...state, charge };
+    takeSlug(ship);
+    const launch = scale(solution.direction, muzzleVelocity);
+    slugs.push({
+      id: nextId(),
+      attacker,
+      target: target.id,
+      mass: slugMass,
+      position: ship.position,
+      velocity: add(ship.velocity, launch),
+    });
+    ship.velocity = sub(ship.velocity, scale(launch, slugMass / mass));
+    return { ...state, charge: Math.max(0, charge - needed) };
+  });
+  ship.weapons = { ...ship.weapons, kineticGuns };
+  return slugs;
 };

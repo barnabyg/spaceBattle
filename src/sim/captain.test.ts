@@ -12,7 +12,7 @@ import { createComputerCaptain } from './captain';
 import { DECISION_INTERVAL, runBattle, withComputerCaptains } from './command';
 import { designComponentsOfType, type Design } from './design';
 import type { Order } from './orders';
-import { duelSetup } from './testing';
+import { duelSetup, testDesign } from './testing';
 import { distance } from './vector';
 import { effectiveRange } from './weapons';
 
@@ -149,6 +149,17 @@ describe('computer captain', () => {
     expect(battle.outcome?.winner).toBe('red');
     expect(range(battle.observe('red'))).toBeLessThan(BASTION_REACH);
   }, 20_000); // Simulates hours of battle; takes a few seconds.
+
+  it('fires its kinetic guns at the enemy when its design has them', () => {
+    const battle = againstIdlePlayer(testDesign(), handMadeDesign('sling'), 20_000 * KM);
+    const events = battle.advance(1_800);
+    const red = battle.observe('red').ownShip;
+    // It counts its guns' reach: unanswered, it stands off just inside it.
+    expect(red.manoeuvre?.goal).toBe('hold');
+    expect(red.manoeuvre?.range).toBeLessThan(red.weapons.kineticGuns[0]?.effectiveRange ?? 0);
+    expect(red.weapons.ammunition.slugs).toBeLessThan(red.weapons.ammunition.capacity);
+    expect(events.some((e) => e.type === 'impact' && e.attacker === 'red')).toBe(true);
+  });
 
   it('deploys its radiators when it runs hot, and retracts them once cool', () => {
     const setup = duelSetup(handMadeDesign('lance'), handMadeDesign('bastion'), 300_000 * KM);

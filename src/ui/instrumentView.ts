@@ -1,9 +1,14 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { ShipAppearance, SideObservation, SideSetup } from '../sim/battle';
+import type {
+  MunitionObservation,
+  ShipAppearance,
+  SideObservation,
+  SideSetup,
+} from '../sim/battle';
 import { HULLS, hullLength } from '../sim/hull';
 import type { Quat } from '../sim/quaternion';
-import { distance, normalize, sub, type Vec3 } from '../sim/vector';
+import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vector';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { formatKm } from './format';
@@ -20,9 +25,13 @@ const SUN_DIRECTION = new THREE.Vector3(0.55, -0.35, 0.75).normalize();
 /** The sky (stars and sun) sits on a sphere this far from the camera, m. */
 const SKY_RADIUS = 400_000;
 const STAR_COUNT = 3_500;
-/** Beam landings shown on each ship at once. */
+/** Beam landings and slug impacts shown on each ship at once. */
 const MAX_SPOTS = 4;
 const HIT_COLOUR = '#fff1c8';
+/** Slugs in flight the telescope shows at once. */
+const MAX_GLINTS = 512;
+const OUTGOING_COLOUR = new THREE.Color('#a8d8ff');
+const INCOMING_COLOUR = new THREE.Color('#ff9a7a');
 /** The contact's telescope view frames it at this many ship lengths, unless zoomed. */
 const TELESCOPE_DISTANCE = 1.8;
 const FOV = 35;
@@ -141,6 +150,33 @@ const toQuaternion = (q: Quat, target: THREE.Quaternion) => target.set(q.x, q.y,
 
 const outward = new THREE.Vector3();
 
+/** Something glowing where it lands on a ship: a beam's spot or a slug's impact flash. */
+interface Flash {
+  readonly point: Vec3;
+  /** Across, m. */
+  readonly size: number;
+  /** 0–1 */
+  readonly strength: number;
+}
+
+/** What glows on a ship: each beam's spot, brighter the more intense, and each slug's impact. */
+const flashesOf = (look: ShipAppearance): Flash[] => [
+  ...look.impacts.map((impact) => ({
+    point: impact.point,
+    // A flash that grows with the energy released: about 14 m across for a gigajoule.
+    size: Math.max(6, 14 * Math.cbrt(impact.energy / 1e9)),
+    strength: 1,
+  })),
+  ...look.beamsLanding.map((landing) => {
+    const intensity = landing.power / (Math.PI * landing.spotRadius ** 2);
+    return {
+      point: landing.point,
+      size: Math.max(4, 5 * landing.spotRadius),
+      strength: Math.min(1, Math.max(0.35, (Math.log10(intensity) - 5.5) / 2.5)),
+    };
+  }),
+];
+
 /** Brings a ship's model, orientation and hit spots up to date with what is observed. */
 const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance) => {
   toQuaternion(orientation, view.anchor.quaternion);
@@ -154,22 +190,19 @@ const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance)
     updateShipModel(view.model, look);
   }
 
-  // Lasers are invisible; only the spot where a beam lands glows, brighter the more intense.
+  // Lasers are invisible and slugs too fast to see; only where they land glows.
+  const flashes = flashesOf(look);
   let brightest = 0;
   view.spots.forEach((sprite, i) => {
-    const landing = look.beamsLanding[i];
-    sprite.visible = landing !== undefined;
-    if (!landing) return;
-    const intensity = landing.power / (Math.PI * landing.spotRadius ** 2);
-    const strength = Math.min(1, Math.max(0.35, (Math.log10(intensity) - 5.5) / 2.5));
-    // The landing point lies on the line of fire through the centre of mass, on the side the
-    // beam came from, so outward from the centre of mass is back towards the attacker.
-    outward.set(landing.point.x, landing.point.y, landing.point.z).normalize();
+    const flash = flashes[i];
+    sprite.visible = flash !== undefined;
+    if (!flash) return;
+    const { point, size, strength } = flash;
+    // Beams land on the line of fire through the centre of mass, on the side they came from, so
+    // outward from the centre of mass is back towards the attacker; slugs strike near it.
+    outward.set(point.x, point.y, point.z).normalize();
     // Half a glow out from the surface, so the hull hides it only when the spot faces away.
-    const size = Math.max(4, 5 * landing.spotRadius);
-    sprite.position
-      .set(landing.point.x, landing.point.y, landing.point.z)
-      .addScaledVector(outward, size / 2);
+    sprite.position.set(point.x, point.y, point.z).addScaledVector(outward, size / 2);
     sprite.scale.setScalar(size * (0.85 + 0.3 * Math.random()));
     sprite.material.opacity = strength;
     if (strength > brightest) {
@@ -183,11 +216,25 @@ const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance)
 const lineOfSight = new THREE.Vector3();
 
 /**
+ * Where the telescope, looking from `own` at the contact at `contact`, sees a munition against
+ * the contact: where the line of sight through the munition meets the plane through the contact
+ * square to the telescope, relative to the contact, m. Slugs on their way to the contact gather
+ * on it, or where fire control expected it to be. Null when the munition is behind the telescope.
+ */
+const telescopePosition = (munition: MunitionObservation, own: Vec3, contact: Vec3) => {
+  const sight = sub(contact, own);
+  const towards = sub(munition.position, own);
+  const along = dot(towards, sight);
+  return along > 0 ? sub(add(own, scale(towards, dot(sight, sight) / along)), contact) : null;
+};
+
+/**
  * The instrument view: the battle as the ship's telescopes see it, beside the tactical map. Ships
  * tens of metres long, tens of thousands of kilometres apart, cannot share one frame, so it is
  * split: the own ship above, orbited freely, and the contact below as the telescope sees it,
- * along the line of sight from the own ship. Both ships are drawn in full until sensors limit
- * what can be made out of the contact (a later phase). One renderer draws both halves.
+ * along the line of sight from the own ship, with any slugs in flight seen against it. Both ships
+ * are drawn in full until sensors limit what can be made out of the contact (a later phase). One
+ * renderer draws both halves.
  */
 export const createInstrumentView = (sides: readonly SideSetup[]) => {
   const ownSide = sides[0];
@@ -241,6 +288,28 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
 
   const own = createShipView(scene, ownSide, 1);
   const contact = createShipView(scene, contactSide, 2);
+
+  // Slugs in flight as the telescope sees them against the contact, drawn over it.
+  const glintPositions = new THREE.BufferAttribute(new Float32Array(MAX_GLINTS * 3), 3);
+  const glintColours = new THREE.BufferAttribute(new Float32Array(MAX_GLINTS * 3), 3);
+  const glintGeometry = new THREE.BufferGeometry();
+  glintGeometry.setAttribute('position', glintPositions);
+  glintGeometry.setAttribute('color', glintColours);
+  glintGeometry.setDrawRange(0, 0);
+  const glints = new THREE.Points(
+    glintGeometry,
+    new THREE.PointsMaterial({
+      size: 3,
+      sizeAttenuation: false,
+      vertexColors: true,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  glints.frustumCulled = false;
+  glints.renderOrder = 1;
+  glints.layers.set(contact.layer);
+  scene.add(glints);
 
   const camera = (view: ShipView) => {
     const c = new THREE.PerspectiveCamera(FOV, 1, 0.5, SKY_RADIUS * 2);
@@ -300,10 +369,22 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       const seen = observation.contacts.find((c) => c.sideId === contactSide.id);
       contact.anchor.visible = seen !== undefined;
       contactPosition = seen?.position ?? null;
+      let shown = 0;
       if (seen) {
         updateShipView(contact, seen.orientation, seen.appearance);
         contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${formatKm(distance(seen.position, ship.position))}`;
+        for (const munition of observation.munitions) {
+          const at = telescopePosition(munition, ship.position, seen.position);
+          if (!at || shown === MAX_GLINTS) continue;
+          glintPositions.setXYZ(shown, at.x, at.y, at.z);
+          const colour = munition.attacker === ship.sideId ? OUTGOING_COLOUR : INCOMING_COLOUR;
+          glintColours.setXYZ(shown, colour.r, colour.g, colour.b);
+          shown += 1;
+        }
       }
+      glintPositions.needsUpdate = true;
+      glintColours.needsUpdate = true;
+      glintGeometry.setDrawRange(0, shown);
     },
     render() {
       if (width === 0 || height === 0) return;

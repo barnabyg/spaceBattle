@@ -58,8 +58,13 @@ export interface EnergyLedger {
   /** The part of the weapons' energy that left the ship in laser beams; the rest became heat. */
   readonly beamEmitted: number;
   /**
-   * Energy of enemy beams that struck the ship. It went into burning away armour and wrecking
-   * structure and components, not into the ship's heat.
+   * The part of the weapons' energy that kinetic guns put into their slugs' kinetic energy,
+   * counting the charge drawn towards shots not yet fired; the rest became heat.
+   */
+  readonly slugEnergy: number;
+  /**
+   * Energy of enemy beams and slugs that struck the ship. It went into wearing away armour and
+   * wrecking structure and components, not into the ship's heat.
    */
   readonly hitEnergy: number;
   /** Heat from the reactor and from every system's waste. */
@@ -76,6 +81,7 @@ export const EMPTY_LEDGER: EnergyLedger = {
   capacitorLost: 0,
   driveExhaust: 0,
   beamEmitted: 0,
+  slugEnergy: 0,
   hitEnergy: 0,
   heatGenerated: 0,
   heatRadiated: 0,
@@ -189,8 +195,9 @@ export const powerFlowOf = (
 /**
  * Settles the step's power and heat once the drive has fired: shares out power, moves energy in
  * and out of the capacitors, adds the waste heat and radiates heat away at the ship's
- * temperature, keeping the ledger. The weapons draw what they asked for this step, and send
- * the fraction `ship.weapons.beamFraction` of it out in their beams.
+ * temperature, keeping the ledger. The weapons draw what they asked for this step, send the
+ * fraction `ship.weapons.beamFraction` of it out in their beams and put the fraction
+ * `ship.weapons.slugFraction` into slugs.
  */
 export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
   const drive = designComponent(ship.design, 'drive');
@@ -213,13 +220,14 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
   const lost = unclamped - ship.storedEnergy;
 
   // A reactor of efficiency η gives off (1 − η)/η of its electrical output as heat. Lasers send
-  // their efficiency's share out in the beam and the rest is heat; shields turn all their power
-  // into heat until they have somewhere else to send it.
+  // their efficiency's share out in the beam and kinetic guns into the slug, and the rest is
+  // heat; shields turn all their power into heat until they have somewhere else to send it.
   const reactorHeat =
     (flow.reactorOutput * (1 - plant.reactorEfficiency)) / plant.reactorEfficiency;
   const driveHeat = driveShare.supplied * drive.wasteHeatFraction;
   const beam = weapons.supplied * ship.weapons.beamFraction;
-  const generated = reactorHeat + driveHeat + shields.supplied + weapons.supplied - beam;
+  const slug = weapons.supplied * ship.weapons.slugFraction;
+  const generated = reactorHeat + driveHeat + shields.supplied + weapons.supplied - beam - slug;
   const { emittance } = workingRadiators(ship.design, ship.integrity, ship.radiatorsDeployed);
   // The coolant loop bypasses the radiators rather than chill the ship below its base temperature.
   const surplus = ship.heat - thermal.heatCapacity * BASE_TEMPERATURE;
@@ -244,6 +252,7 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
     capacitorLost: ledger.capacitorLost + lost,
     driveExhaust: ledger.driveExhaust + (driveShare.supplied - driveHeat) * dt,
     beamEmitted: ledger.beamEmitted + beam * dt,
+    slugEnergy: ledger.slugEnergy + slug * dt,
     hitEnergy: ledger.hitEnergy,
     heatGenerated: ledger.heatGenerated + generated * dt,
     heatRadiated: ledger.heatRadiated + radiated * dt,

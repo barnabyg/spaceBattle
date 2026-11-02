@@ -1,7 +1,7 @@
 import type { BattleEvent, SectionObservation, SideId, SideObservation } from '../sim/battle';
 import type { ComponentType, SectionKind } from '../sim/design';
 import { el } from './el';
-import { formatBattleTime, formatMm, formatMW } from './format';
+import { formatBattleTime, formatGJ, formatMm, formatMW } from './format';
 
 const SECTION_TEXT: Readonly<Record<SectionKind, string>> = {
   forward: 'Forward',
@@ -14,8 +14,10 @@ const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
   thrusters: 'Thrusters',
   reactor: 'Reactor',
   capacitor: 'Capacitor',
+  magazine: 'Magazine',
   radiator: 'Radiator',
   laser: 'Laser',
+  'kinetic-gun': 'Kinetic gun',
 };
 
 /** How many of the latest events the log shows. */
@@ -47,6 +49,12 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
       return event.attacker === viewer
         ? `${time} Hit enemy ${part} · ${formatMW(event.power)}`
         : `${time} Hit on our ${part} · ${formatMW(event.power)}`;
+    }
+    case 'impact': {
+      const part = `${SECTION_TEXT[event.section].toLowerCase()} ${event.mount === null ? 'section' : 'mount'}`;
+      return event.attacker === viewer
+        ? `${time} Slug hit enemy ${part} · ${formatGJ(event.energy)}`
+        : `${time} Slug hit on our ${part} · ${formatGJ(event.energy)}`;
     }
     case 'armour-breached':
       return `${time} ${SECTION_TEXT[event.section]} armour breached`;

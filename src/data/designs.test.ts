@@ -8,11 +8,24 @@ describe('hand-made designs', () => {
     expect(new Set(HAND_MADE_DESIGNS.map((d) => d.id)).size).toBe(HAND_MADE_DESIGNS.length);
   });
 
-  it('carry armour on every section and at least one laser', () => {
+  it('carry armour on every section and at least one weapon', () => {
     for (const design of HAND_MADE_DESIGNS) {
       for (const section of design.sections) expect(section.armour.thickness).toBeGreaterThan(0);
-      expect(design.sections.flatMap((s) => s.mounts).some((m) => m.type === 'laser')).toBe(true);
+      expect(
+        design.sections
+          .flatMap((s) => s.mounts)
+          .some((m) => m.type === 'laser' || m.type === 'kinetic-gun'),
+      ).toBe(true);
     }
+  });
+
+  it('include one carrying kinetic guns and a magazine for them', () => {
+    const gunned = HAND_MADE_DESIGNS.find((d) =>
+      d.sections.some((s) => s.mounts.some((m) => m.type === 'kinetic-gun')),
+    );
+    expect(gunned?.sections.flatMap((s) => s.components).some((c) => c.type === 'magazine')).toBe(
+      true,
+    );
   });
 });
 
@@ -134,6 +147,35 @@ describe('parseDesign', () => {
         sections: [{ ...forward, armour: { type: 'heavy', thickness: -1 } }, middle, engine],
       }),
     ).toThrow(/thickness/);
+  });
+
+  it('reads kinetic guns on mounts and magazines inside, and needs a magazine for the guns', () => {
+    const gun = {
+      type: 'kinetic-gun',
+      mass: 1,
+      slugMass: 1,
+      muzzleVelocity: 1,
+      efficiency: 0.5,
+      rateOfFire: 1,
+    };
+    const magazine = { type: 'magazine', mass: 1, slugs: 10 };
+    const design = parseDesign(withMiddle([thrusters, reactor, magazine], [gun]));
+    expect(design.sections[1]?.components[2]).toEqual(magazine);
+    expect(design.sections[1]?.mounts).toEqual([gun]);
+    expect(() => parseDesign(withMiddle([thrusters, reactor], [gun]))).toThrow(/magazine/);
+    expect(() => parseDesign(withMiddle([thrusters, reactor, magazine, gun]))).toThrow(/mount/);
+    expect(() => parseDesign(withMiddle([thrusters, reactor], [magazine]))).toThrow(
+      /inside a section/,
+    );
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, magazine], [{ ...gun, efficiency: 0 }])),
+    ).toThrow(/efficiency/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, magazine], [{ ...gun, muzzleVelocity: -1 }])),
+    ).toThrow(/muzzleVelocity/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, { ...magazine, slugs: 2.5 }], [gun])),
+    ).toThrow(/slugs/);
   });
 
   it('rejects power and heat numbers outside their range', () => {
