@@ -1,10 +1,19 @@
 import type { Design } from './design';
+import {
+  manoeuvreCommand,
+  manoeuvreThrottle,
+  observeManoeuvre,
+  type ManoeuvreCommand,
+  type ManoeuvreObservation,
+  type ManoeuvreTarget,
+} from './manoeuvre';
 import type { AttitudeOrder, Order } from './orders';
 import { IDENTITY, rotate, type Quat } from './quaternion';
 import {
   burn,
   createShip,
   deltaVOf,
+  fireDrive,
   massProperties,
   noseOf,
   steer,
@@ -68,6 +77,8 @@ export interface OwnShipObservation {
   readonly torque: Vec3;
   readonly attitude: AttitudeOrder | null;
   readonly burn: BurnState | null;
+  /** The standing manoeuvre order and its plan; null under manual control. */
+  readonly manoeuvre: ManoeuvreObservation | null;
 }
 
 /** An enemy ship as a side perceives it; its position, motion and orientation are known. */
@@ -117,6 +128,12 @@ const checkOrder = (order: Order): Order => {
         throw new Error('An attitude direction needs a length');
       }
       return { ...order, direction: normalize(order.direction) };
+    case 'manoeuvre':
+      if (order.goal === 'none' || order.goal === 'match-velocity') return order;
+      if (!(order.range > 0 && Number.isFinite(order.range))) {
+        throw new Error('A manoeuvre range must be a positive number of metres');
+      }
+      return order;
   }
 };
 
@@ -153,12 +170,31 @@ export const createBattle = (setup: BattleSetup): Battle => {
     return order.mode === 'enemy' ? towards : scale(towards, -1);
   };
 
+  /** What the ship knows of the enemy for its autopilot: the contact's position and velocity. */
+  const contactOf = (combatant: Combatant): ManoeuvreTarget | null => {
+    const enemy = enemyOf(combatant);
+    return enemy ? { position: enemy.ship.position, velocity: enemy.ship.velocity } : null;
+  };
+
   const step = (): void => {
-    // Every ship steers from the same snapshot of positions, so the order of sides never matters.
-    const targets = combatants.map(attitudeTarget);
+    // Every ship plans from the same snapshot of positions, so the order of sides never matters.
+    const plans = combatants.map(
+      (c): { heading: Vec3 | null; command: ManoeuvreCommand | null } => {
+        const state = c.ship.manoeuvre;
+        if (!state) return { heading: attitudeTarget(c), command: null };
+        const command = manoeuvreCommand(c.ship, state, contactOf(c));
+        return { heading: command.heading, command };
+      },
+    );
     combatants.forEach(({ ship }, i) => {
-      steer(ship, targets[i] ?? null, TIME_STEP);
-      burn(ship, TIME_STEP);
+      const { heading, command } = plans[i] ?? { heading: null, command: null };
+      steer(ship, heading, TIME_STEP);
+      if (command && ship.manoeuvre) {
+        ship.manoeuvre = { ...ship.manoeuvre, correcting: command.correcting };
+        fireDrive(ship, manoeuvreThrottle(ship, command, TIME_STEP), TIME_STEP);
+      } else {
+        burn(ship, TIME_STEP);
+      }
       ship.position = add(ship.position, scale(ship.velocity, TIME_STEP));
     });
     steps += 1;
@@ -172,9 +208,16 @@ export const createBattle = (setup: BattleSetup): Battle => {
     giveOrder(sideId, order) {
       const { ship } = combatantOf(sideId);
       const checked = checkOrder(order);
-      if (checked.type === 'attitude') {
+      // Manual orders and manoeuvres replace each other: one or the other steers the ship.
+      if (checked.type === 'manoeuvre') {
+        ship.attitude = null;
+        ship.burn = null;
+        ship.manoeuvre = checked.goal === 'none' ? null : { order: checked, correcting: false };
+      } else if (checked.type === 'attitude') {
+        ship.manoeuvre = null;
         ship.attitude = checked;
       } else {
+        ship.manoeuvre = null;
         ship.burn =
           checked.throttle > 0 && checked.duration > 0
             ? { throttle: checked.throttle, remaining: checked.duration }
@@ -206,6 +249,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
           torque: ship.torque,
           attitude: ship.attitude,
           burn: ship.burn,
+          manoeuvre: ship.manoeuvre ? observeManoeuvre(ship, ship.manoeuvre, contactOf(own)) : null,
         },
         contacts: combatants
           .filter((c) => c !== own)

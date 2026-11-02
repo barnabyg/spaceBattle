@@ -30,3 +30,18 @@ test('pause stops the battle clock', async ({ page }) => {
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect(clock).not.toHaveText(paused);
 });
+
+test('a manoeuvre order shows its goal and planned burns on the map', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press(' ');
+  await page.getByLabel('Range km').fill('150000');
+  await page.getByRole('button', { name: 'Hold' }).click();
+  await expect(page.getByLabel('Manoeuvre state')).toContainText('Holding 150,000 km · error');
+  const burns = page.getByRole('region', { name: 'Tactical map' }).locator('.planned-burn');
+  await expect(burns.first()).toBeVisible();
+  await expect(burns.first()).toContainText('Burn');
+
+  await page.getByRole('button', { name: 'Manual' }).click();
+  await expect(page.getByLabel('Manoeuvre state')).toHaveText('Manual control');
+  await expect(burns.filter({ visible: true })).toHaveCount(0);
+});

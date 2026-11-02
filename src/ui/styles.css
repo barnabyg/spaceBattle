@@ -262,3 +262,13 @@ h3 {
   border-radius: 4px;
   padding: 0.2rem 0.4rem;
 }
+
+.planned-burn {
+  color: #ffb347;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  text-shadow: 0 0 4px #000;
+  pointer-events: none;
+  /* Sit above the arrow's base rather than on top of it. */
+  margin-top: -2rem;
+}

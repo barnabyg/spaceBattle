@@ -1,5 +1,6 @@
 import { designComponent, designComponents, type Design, type SectionKind } from './design';
 import { HULLS } from './hull';
+import type { ManoeuvreState } from './manoeuvre';
 import type { AttitudeOrder } from './orders';
 import { conjugate, integrate, rotate, type Quat } from './quaternion';
 import { add, cross, dot, length, scale, sub, vec3, ZERO, type Vec3 } from './vector';
@@ -30,6 +31,8 @@ export interface ShipState {
   propellantMass: number;
   attitude: AttitudeOrder | null;
   burn: BurnState | null;
+  /** A standing manoeuvre order; while it is set the autopilot owns attitude and drive. */
+  manoeuvre: ManoeuvreState | null;
   /** What the ship applied during the last step. */
   thrust: number;
   torque: Vec3;
@@ -42,7 +45,21 @@ export interface MassProperties {
   readonly inertia: Vec3;
 }
 
+/** The last result for each design: a ship asks many times per step at the same propellant. */
+const lastMassProperties = new WeakMap<
+  Design,
+  { readonly propellantMass: number; readonly result: MassProperties }
+>();
+
 export const massProperties = (design: Design, propellantMass: number): MassProperties => {
+  const last = lastMassProperties.get(design);
+  if (last?.propellantMass === propellantMass) return last.result;
+  const result = computeMassProperties(design, propellantMass);
+  lastMassProperties.set(design, { propellantMass, result });
+  return result;
+};
+
+const computeMassProperties = (design: Design, propellantMass: number): MassProperties => {
   const hull = HULLS[design.hullSize];
   const volumes = hull.sections.map((s) => s.length * s.width * s.height);
   const totalVolume = volumes.reduce((a, b) => a + b, 0);
@@ -89,6 +106,7 @@ export const createShip = (
   propellantMass: design.propellantMass,
   attitude: null,
   burn: null,
+  manoeuvre: null,
   thrust: 0,
   torque: ZERO,
 });
@@ -100,6 +118,23 @@ export const deltaVOf = (ship: ShipState): number => {
   const { mass, dryMass } = massProperties(ship.design, ship.propellantMass);
   return designComponent(ship.design, 'drive').exhaustVelocity * Math.log(mass / dryMass);
 };
+
+/** The drive's thrust at full throttle, N. */
+export const availableThrust = (ship: ShipState): number =>
+  designComponent(ship.design, 'drive').thrust;
+
+/** Angular acceleration about the slowest pitch/yaw axis at full thruster torque, rad/s². */
+export const turnAcceleration = (ship: ShipState): number => {
+  const { inertia } = massProperties(ship.design, ship.propellantMass);
+  return designComponent(ship.design, 'thrusters').torque / Math.max(inertia.y, inertia.z);
+};
+
+/**
+ * Roughly how long the autopilot takes to turn the nose through `angle` radians from rest and
+ * stop: accelerate then brake (θ = αt²/4) at the planning margin, plus the proportional tail.
+ */
+export const turnTime = (ship: ShipState, angle: number): number =>
+  (2 * Math.sqrt(angle / turnAcceleration(ship))) / TURN_MARGIN + 1 / TURN_GAIN;
 
 const mul = (a: Vec3, b: Vec3): Vec3 => vec3(a.x * b.x, a.y * b.y, a.z * b.z);
 
@@ -114,12 +149,12 @@ const desiredAngularVelocity = (ship: ShipState, target: Vec3, turnRate: number)
   return scale(axis, speed);
 };
 
-/** Turns the ship towards its attitude order (or holds it still) within the thrusters' torque. */
+/** Turns the ship's nose towards `target` (or holds it still) within the thrusters' torque. */
 export const steer = (ship: ShipState, target: Vec3 | null, dt: number): void => {
   const { inertia } = massProperties(ship.design, ship.propellantMass);
   const maxTorque = designComponent(ship.design, 'thrusters').torque;
   // Plan with the slowest pitch/yaw axis so the turn can always be stopped in time.
-  const turnRate = maxTorque / Math.max(inertia.y, inertia.z);
+  const turnRate = turnAcceleration(ship);
   const desired = target ? desiredAngularVelocity(ship, target, turnRate) : ZERO;
   const w = ship.angularVelocity;
   const gyroscopic = cross(w, mul(inertia, w));
@@ -144,14 +179,19 @@ export const burn = (ship: ShipState, dt: number): void => {
   ship.thrust = 0;
   const order = ship.burn;
   if (!order) return;
-  const drive = designComponent(ship.design, 'drive');
   const burnTime = Math.min(dt, order.remaining);
   const remaining = order.remaining - burnTime;
   // Treat rounding crumbs as done so a burn ends on the step it was due to.
   ship.burn = remaining > 1e-9 ? { ...order, remaining } : null;
-  if (order.throttle <= 0 || ship.propellantMass <= 0) return;
+  fireDrive(ship, order.throttle, burnTime);
+};
 
-  const force = order.throttle * drive.thrust;
+/** Pushes along the nose at `throttle` (0–1) for `burnTime` seconds, as propellant allows. */
+export const fireDrive = (ship: ShipState, throttle: number, burnTime: number): void => {
+  ship.thrust = 0;
+  if (throttle <= 0 || burnTime <= 0 || ship.propellantMass <= 0) return;
+  const drive = designComponent(ship.design, 'drive');
+  const force = Math.min(throttle, 1) * availableThrust(ship);
   const wanted = (force / drive.exhaustVelocity) * burnTime;
   const used = Math.min(wanted, ship.propellantMass);
   const { mass } = massProperties(ship.design, ship.propellantMass);

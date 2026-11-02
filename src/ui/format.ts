@@ -18,3 +18,15 @@ export const formatBattleTime = (seconds: number): string => {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `T+${pad(Math.floor(whole / 3600))}:${pad(Math.floor(whole / 60) % 60)}:${pad(whole % 60)}`;
 };
+
+/** A speed given in m/s, shown in m/s; for small differences such as a velocity error. */
+export const formatMetresPerS = (metresPerSecond: number): string =>
+  `${grouped(metresPerSecond, 1)} m/s`;
+
+/** A length of time given in seconds, shown in its two largest units. */
+export const formatDuration = (seconds: number): string => {
+  const whole = Math.max(0, Math.round(seconds));
+  if (whole < 60) return `${whole} s`;
+  if (whole < 3600) return `${Math.floor(whole / 60)} min ${whole % 60} s`;
+  return `${Math.floor(whole / 3600)} h ${Math.floor(whole / 60) % 60} min`;
+};

@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { projectPath } from '../game/projection';
+import { projectBurns, projectPath } from '../game/projection';
 import type { SideId, SideObservation, SideSetup } from '../sim/battle';
 import { designComponent } from '../sim/design';
 import { rotate, type Quat } from '../sim/quaternion';
 import { length, vec3, type Vec3 } from '../sim/vector';
 import { el } from './el';
-import { formatKm, formatKmPerS } from './format';
+import { formatDuration, formatKm, formatKmPerS } from './format';
 
 /** Scene units are kilometres; the simulation works in metres. */
 const KM = 1000;
@@ -18,9 +18,14 @@ const VECTOR_SECONDS = 20_000;
 /** Simulated seconds between points on a ship's trail. */
 const TRAIL_INTERVAL = 30;
 const TRAIL_POINTS = 2_000;
-/** How far ahead the own ship's projected path reaches, s. */
+/** How far ahead the own ship's projected path reaches at least, s. */
 const PROJECTION_HORIZON = 7_200;
-const PROJECTION_INTERVAL = 60;
+/** It reaches further to take in a manoeuvre's planned burns, up to this, s. */
+const MAX_PROJECTION_HORIZON = 24 * 3_600;
+const PROJECTION_POINTS = 121;
+/** Planned burns shown on the map, in order. */
+const MAX_PLANNED_BURNS = 4;
+const PLANNED_BURN_COLOUR = '#ffb347';
 /** Heading lines are this fraction of the camera's distance from the own ship. */
 const HEADING_SCALE = 0.06;
 
@@ -147,8 +152,8 @@ export const createTacticalMap = (sides: readonly SideSetup[]) => {
     });
   });
 
-  // The own ship's projected path, if it holds its heading and finishes its burn.
-  const projectionPositions = new Float32Array((PROJECTION_HORIZON / PROJECTION_INTERVAL + 1) * 3);
+  // The own ship's projected path, through its planned burns.
+  const projectionPositions = new Float32Array(PROJECTION_POINTS * 3);
   const projectionGeometry = new THREE.BufferGeometry();
   projectionGeometry.setAttribute('position', new THREE.BufferAttribute(projectionPositions, 3));
   const projection = new THREE.Line(
@@ -156,6 +161,22 @@ export const createTacticalMap = (sides: readonly SideSetup[]) => {
     new THREE.LineDashedMaterial({ color: '#9fd0ff', dashSize: 2_000, gapSize: 2_000 }),
   );
   scene.add(projection);
+
+  // Where and which way the autopilot plans to burn, along the projected path.
+  const plannedBurnMarkers = Array.from({ length: MAX_PLANNED_BURNS }, () => {
+    const arrow = new THREE.ArrowHelper(
+      new THREE.Vector3(1, 0, 0),
+      new THREE.Vector3(),
+      1,
+      PLANNED_BURN_COLOUR,
+    );
+    const text = el('span', { className: 'planned-burn' });
+    const label = new CSS2DObject(text);
+    arrow.visible = false;
+    label.visible = false;
+    scene.add(arrow, label);
+    return { arrow, label, text };
+  });
   const ownDrive = sides[0] ? designComponent(sides[0].design, 'drive') : undefined;
 
   const resize = () => {
@@ -262,7 +283,18 @@ export const createTacticalMap = (sides: readonly SideSetup[]) => {
         );
       }
       if (ownDrive) {
-        const path = projectPath(own, ownDrive, PROJECTION_HORIZON, PROJECTION_INTERVAL);
+        const lastBurnEnd = Math.max(
+          0,
+          ...(own.manoeuvre?.plannedBurns ?? []).map((b) => b.start + b.duration),
+        );
+        const horizon = Math.min(
+          MAX_PROJECTION_HORIZON,
+          Math.max(PROJECTION_HORIZON, lastBurnEnd * 1.2),
+        );
+        const path = projectPath(own, ownDrive, horizon, horizon / (PROJECTION_POINTS - 1)).slice(
+          0,
+          PROJECTION_POINTS,
+        );
         path.forEach((point, i) => {
           projectionPositions.set([point.x / KM, point.y / KM, point.z / KM], i * 3);
         });
@@ -270,6 +302,24 @@ export const createTacticalMap = (sides: readonly SideSetup[]) => {
         projectionGeometry.getAttribute('position').needsUpdate = true;
         projectionGeometry.computeBoundingSphere();
         projection.computeLineDistances();
+
+        const burns = projectBurns(own, ownDrive, horizon);
+        const arrowLength = camera.position.distanceTo(controls.target) * HEADING_SCALE * 1.5;
+        plannedBurnMarkers.forEach((marker, i) => {
+          const planned = burns[i];
+          marker.arrow.visible = planned !== undefined;
+          marker.label.visible = planned !== undefined;
+          if (!planned) return;
+          const at = toScene(planned.position);
+          marker.arrow.position.copy(at);
+          marker.arrow.setDirection(toScene(planned.burn.direction).normalize());
+          marker.arrow.setLength(arrowLength, arrowLength * 0.3, arrowLength * 0.15);
+          marker.label.position.copy(at);
+          marker.text.textContent =
+            planned.burn.start < 1
+              ? `Burn ${formatDuration(planned.burn.duration)}`
+              : `Burn ${formatDuration(planned.burn.duration)} in ${formatDuration(planned.burn.start)}`;
+        });
       }
     },
     render() {

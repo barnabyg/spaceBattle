@@ -7,8 +7,11 @@ describe('battle simulation', () => {
   it('gives identical observations from the same seed and inputs after many steps', () => {
     const a = createBattle(testSetup({ seed: 42 }));
     const b = createBattle(testSetup({ seed: 42 }));
-    a.advance(3_600);
-    b.advance(3_600);
+    for (const battle of [a, b]) {
+      battle.giveOrder('blue', { type: 'manoeuvre', goal: 'hold', range: 150_000e3 });
+      battle.giveOrder('red', { type: 'manoeuvre', goal: 'close', range: 100_000e3 });
+      battle.advance(3_600);
+    }
     for (const side of ['blue', 'red']) {
       expect(a.observe(side)).toStrictEqual(b.observe(side));
     }

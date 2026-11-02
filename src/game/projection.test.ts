@@ -3,7 +3,7 @@ import { createBattle } from '../sim/battle';
 import { designComponent } from '../sim/design';
 import { testDesign, testSetup } from '../sim/testing';
 import { distance } from '../sim/vector';
-import { projectPath } from './projection';
+import { projectBurns, projectPath } from './projection';
 
 const drive = designComponent(testDesign(), 'drive');
 
@@ -28,5 +28,28 @@ describe('projected path', () => {
     expect(distance(path.at(-1) ?? actual, actual)).toBeLessThan(
       distance(path[0] ?? actual, actual) * 1e-3,
     );
+  });
+
+  it('follows the burns a manoeuvre plans', () => {
+    const battle = createBattle(testSetup());
+    battle.giveOrder('blue', { type: 'manoeuvre', goal: 'match-velocity' });
+    const ship = battle.observe('blue').ownShip;
+    const path = projectPath(ship, drive, 3_600, 3_600);
+    const drift = projectPath({ ...ship, manoeuvre: null }, drive, 3_600, 3_600);
+    battle.advance(3_600);
+    const actual = battle.observe('blue').ownShip.position;
+    const start = path[0] ?? actual;
+    // The plan is an estimate of the autopilot's turns and throttle, so allow 1%.
+    expect(distance(path.at(-1) ?? actual, actual)).toBeLessThan(distance(start, actual) * 1e-2);
+    expect(distance(drift.at(-1) ?? actual, actual)).toBeGreaterThan(distance(start, actual) * 0.1);
+  });
+
+  it('marks where each planned burn starts', () => {
+    const battle = createBattle(testSetup());
+    battle.giveOrder('blue', { type: 'manoeuvre', goal: 'close', range: 50_000e3 });
+    const ship = battle.observe('blue').ownShip;
+    const burns = projectBurns(ship, drive, 48 * 3_600);
+    expect(burns.map((b) => b.burn)).toStrictEqual(ship.manoeuvre?.plannedBurns);
+    expect(distance(burns[1]?.position ?? ship.position, ship.position)).toBeGreaterThan(50_000e3);
   });
 });

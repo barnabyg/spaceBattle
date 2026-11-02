@@ -13,5 +13,19 @@ export interface BurnOrder {
   readonly duration: number;
 }
 
+/** What a manoeuvre order has the autopilot work towards. */
+export type ManoeuvreGoal = 'close' | 'hold' | 'open' | 'match-velocity';
+
+/**
+ * A standing order: the autopilot plans turns and burns towards a goal relative to the enemy
+ * until another manoeuvre, an attitude or burn order, or the goal 'none' replaces it. Close,
+ * hold and open work towards a separation (`range`, m); match velocity towards zero relative
+ * velocity.
+ */
+export type ManoeuvreOrder =
+  | { readonly type: 'manoeuvre'; readonly goal: 'close' | 'hold' | 'open'; readonly range: number }
+  | { readonly type: 'manoeuvre'; readonly goal: 'match-velocity' }
+  | { readonly type: 'manoeuvre'; readonly goal: 'none' };
+
 /** An instruction from a side's captain to its ship. */
-export type Order = AttitudeOrder | BurnOrder;
+export type Order = AttitudeOrder | BurnOrder | ManoeuvreOrder;
