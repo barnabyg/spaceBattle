@@ -1,5 +1,6 @@
-import { laserResistance } from './armour';
+import { beamResistance } from './armour';
 import type { SideId } from './battle';
+import { spotRadius } from './beams';
 import { componentSlots } from './components';
 import type { ArmourType, SectionKind } from './design';
 import type { BattleEvent } from './events';
@@ -12,7 +13,7 @@ import { firstHit, shipShape, type ShapePart } from './shape';
 import type { ShipState } from './ship';
 import { TIME_STEP } from './time';
 import { add, length, normalize, scale, sub, vec3, type Vec3 } from './vector';
-import { spotRadius, type Beam, type MagazineState } from './weapons';
+import type { Beam, MagazineState } from './weapons';
 
 /**
  * Energy that wrecks a component, per kilogram of it, J/kg. A beam need only cut and melt the
@@ -251,21 +252,23 @@ const damageMount = (ship: ShipState, part: ShapePart, energy: number, ctx: Dama
  * A beam reaching a ship. It is aimed at the centre of mass and lands on whatever its line of
  * fire reaches first on the ship's actual shape. The part takes the beam's intensity over the
  * part's silhouette, or the whole beam if its spot is smaller. On a section it burns through the
- * armour at the rate its intensity allows, I / (ρ·e) metres per second. Mounts sit outside the
- * armour, so a mounted component takes the energy directly.
+ * armour at the rate its intensity allows, I / (ρ·e) metres per second, e being the energy per
+ * kilogram that the beam's kind needs (see `beamResistance`). Mounts sit outside the armour, so a
+ * mounted component takes the energy directly.
  */
 export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike | null => {
   const direction = normalize(sub(ship.position, beam.origin));
   const body = rotate(conjugate(ship.orientation), direction);
   const hit = firstHit(intactShape(ship), scale(body, -RAY_START), body);
   if (!hit) return null;
-  const radius = spotRadius(beam, beam.range);
+  const radius = spotRadius(beam.weapon, beam.range);
   const intensity = beam.power / (Math.PI * radius ** 2);
   const power = Math.min(beam.power, intensity * hit.projectedArea);
   const energy = power * TIME_STEP;
   ship.ledger = { ...ship.ledger, hitEnergy: ship.ledger.hitEnergy + energy };
   if (hit.part.mount === null) {
-    const depthIn = (armour: ArmourType) => (intensity * TIME_STEP) / laserResistance(armour);
+    const depthIn = (armour: ArmourType) =>
+      (intensity * TIME_STEP) / beamResistance(armour, beam.attack);
     damageSection(ship, hit.part.section, energy, depthIn, ctx);
   } else {
     damageMount(ship, hit.part, energy, ctx);
@@ -360,7 +363,7 @@ export const irradiate = (
   for (const { part, fluence, energy } of exposures) {
     ship.ledger = { ...ship.ledger, hitEnergy: ship.ledger.hitEnergy + energy };
     if (part.mount === null) {
-      const depthIn = (armour: ArmourType) => fluence / laserResistance(armour);
+      const depthIn = (armour: ArmourType) => fluence / beamResistance(armour, 'laser');
       damageSection(ship, part.section, energy, depthIn, ctx);
     } else {
       const slot = slotOf(ship, part.section, true, part.mount);

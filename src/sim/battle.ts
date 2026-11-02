@@ -1,3 +1,4 @@
+import { effectiveRange } from './beams';
 import { componentSlots } from './components';
 import {
   impactKinetic,
@@ -19,9 +20,11 @@ import {
 import {
   involves,
   type BattleEvent,
+  type BeamKind,
   type HitEvent,
   type MunitionKind,
   type NuclearExposure,
+  type ParticleBeamKind,
 } from './events';
 import {
   manoeuvreCommand,
@@ -81,13 +84,13 @@ import { TIME_STEP } from './time';
 import { add, distance, dot, length, normalize, scale, sub, type Vec3 } from './vector';
 import {
   aimWeapons,
-  effectiveRange,
   emitBeams,
   fireKineticGuns,
   launchMissiles,
   missilesLeft,
   slugsLeft,
   type Beam,
+  type BeamWeaponState,
   type Salvo,
 } from './weapons';
 
@@ -191,8 +194,8 @@ export interface SectionObservation {
   readonly mounts: readonly ComponentObservation[];
 }
 
-/** One laser and what it is doing. */
-export interface LaserObservation {
+/** One beam weapon, a laser or a particle beam, and what it is doing. */
+export interface BeamWeaponObservation {
   readonly section: SectionKind;
   /** Its place in the section's mounts. */
   readonly mount: number;
@@ -205,6 +208,14 @@ export interface LaserObservation {
   readonly fullBeamPower: number;
   /** How far it fires: out to where its beam keeps a useful intensity, m. */
   readonly effectiveRange: number;
+}
+
+/** One laser and what it is doing. */
+export type LaserObservation = BeamWeaponObservation;
+
+/** One particle beam, charged or neutral, and what it is doing. */
+export interface ParticleBeamObservation extends BeamWeaponObservation {
+  readonly kind: ParticleBeamKind;
 }
 
 /** One kinetic gun and what it is doing. */
@@ -270,13 +281,15 @@ export interface AmmunitionObservation {
 }
 
 /**
- * The ship's weapons: the captain's weapons and launch orders, each weapon and the latest laser
+ * The ship's weapons: the captain's weapons and launch orders, each weapon and the latest beam
  * hit scored.
  */
 export interface WeaponsObservation {
   readonly target: SideId | null;
   readonly mode: FireMode;
   readonly lasers: readonly LaserObservation[];
+  /** Charged and neutral particle beams. */
+  readonly particleBeams: readonly ParticleBeamObservation[];
   readonly kineticGuns: readonly KineticGunObservation[];
   readonly launchers: readonly LauncherObservation[];
   /** Missiles still to launch under the latest launch order, or null when none are. */
@@ -287,6 +300,8 @@ export interface WeaponsObservation {
 
 /** A beam landing on a ship. */
 export interface BeamLanding {
+  /** What kind of beam it is. */
+  readonly attack: BeamKind;
   /** Where it lands, in the ship's body frame (centre of mass at the origin, nose along +x), m. */
   readonly point: Vec3;
   /** Beam power landing, W. */
@@ -554,18 +569,22 @@ const observeSections = (ship: ShipState): SectionObservation[] => {
 const observeWeapons = (ship: ShipState): WeaponsObservation => {
   const slots = componentSlots(ship.design);
   const { weapons } = ship;
+  const observeBeamWeapon = (state: BeamWeaponState): BeamWeaponObservation => ({
+    section: slots[state.slot]?.section ?? 'forward',
+    mount: slots[state.slot]?.index ?? 0,
+    integrity: ship.integrity[state.slot] ?? 0,
+    firing: state.beamPower > 0,
+    beamPower: state.beamPower,
+    fullBeamPower: state.weapon.beamPower,
+    effectiveRange: effectiveRange(state.weapon),
+  });
   return {
     target: weapons.target,
     mode: weapons.mode,
-    lasers: weapons.lasers.map((laser) => ({
-      section: slots[laser.slot]?.section ?? 'forward',
-      mount: slots[laser.slot]?.index ?? 0,
-      integrity: ship.integrity[laser.slot] ?? 0,
-      firing: laser.beamPower > 0,
-      beamPower: laser.beamPower,
-      fullBeamPower: laser.laser.beamPower,
-      effectiveRange: effectiveRange(laser.laser),
-    })),
+    lasers: weapons.beamWeapons.filter((w) => w.attack === 'laser').map(observeBeamWeapon),
+    particleBeams: weapons.beamWeapons.flatMap((state) =>
+      state.attack === 'laser' ? [] : [{ ...observeBeamWeapon(state), kind: state.attack }],
+    ),
     launchers: weapons.launchers.map((state) => ({
       section: slots[state.slot]?.section ?? 'forward',
       mount: slots[state.slot]?.index ?? 0,
@@ -719,21 +738,22 @@ export const createBattle = (setup: BattleSetup): Battle => {
     const landed = strike(target.ship, beam, { ...ctx, side: beam.target });
     if (landed) {
       const { point, power, spotRadius } = landed;
-      target.beamsLanding.push({ point, power, spotRadius });
+      target.beamsLanding.push({ attack: beam.attack, point, power, spotRadius });
     }
     const part = landed
       ? landed.part.mount === null
         ? landed.part.section
         : `${landed.part.section}/${String(landed.part.mount)}`
       : null;
-    const laser = attacker.weapons.lasers[beam.laser];
-    if (!laser) return;
-    if (landed && part && (!beam.continuing || laser.striking !== part)) {
+    const emitter = attacker.weapons.beamWeapons[beam.emitter];
+    if (!emitter) return;
+    if (landed && part && (!beam.continuing || emitter.striking !== part)) {
       const hit: HitEvent = {
         type: 'hit',
         time: ctx.time,
         attacker: beam.attacker,
         target: beam.target,
+        attack: beam.attack,
         section: landed.part.section,
         mount: landed.part.mount,
         power: landed.power,
@@ -746,8 +766,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
     }
     attacker.weapons = {
       ...attacker.weapons,
-      lasers: attacker.weapons.lasers.map((l, i) =>
-        i === beam.laser ? { ...l, striking: part } : l,
+      beamWeapons: attacker.weapons.beamWeapons.map((w, i) =>
+        i === beam.emitter ? { ...w, striking: part } : w,
       ),
     };
   };

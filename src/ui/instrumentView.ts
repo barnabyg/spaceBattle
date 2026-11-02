@@ -6,6 +6,7 @@ import type {
   SideObservation,
   SideSetup,
 } from '../sim/battle';
+import type { BeamKind } from '../sim/events';
 import { HULLS, hullLength } from '../sim/hull';
 import type { Quat } from '../sim/quaternion';
 import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vector';
@@ -28,11 +29,21 @@ const SKY_RADIUS = 400_000;
 const STAR_COUNT = 3_500;
 /** Beam landings and slug impacts shown on each ship at once. */
 const MAX_SPOTS = 4;
+/** A slug's or missile's impact flash. */
 const HIT_COLOUR = '#fff1c8';
 /** A nuclear burst near a ship lights it from that side, and glows beside it. */
 const BURST_COLOUR = '#fffbe8';
 /** Brightest a burst lights its ship, against the sun's 3. */
 const BURST_LIGHT = 40;
+/**
+ * What glows where each kind of beam lands: a laser's burning spot, or the violet or blue glow of
+ * the vapour a particle beam ionises as it bores in.
+ */
+const BEAM_SPOT_COLOURS: Readonly<Record<BeamKind, string>> = {
+  laser: HIT_COLOUR,
+  'charged-particle': '#c9a2ff',
+  'neutral-particle': '#9fdcff',
+};
 /** Slugs or missiles in flight the telescope shows at once, of each. */
 const MAX_GLINTS = 512;
 const OUTGOING_COLOUR = new THREE.Color('#a8d8ff');
@@ -186,6 +197,7 @@ interface Flash {
   readonly size: number;
   /** 0–1 */
   readonly strength: number;
+  readonly colour: string;
 }
 
 /** What glows on a ship: each beam's spot, brighter the more intense, and each slug's impact. */
@@ -195,6 +207,7 @@ const flashesOf = (look: ShipAppearance): Flash[] => [
     // A flash that grows with the energy released: about 14 m across for a gigajoule.
     size: Math.max(6, 14 * Math.cbrt(impact.energy / 1e9)),
     strength: 1,
+    colour: HIT_COLOUR,
   })),
   ...look.beamsLanding.map((landing) => {
     const intensity = landing.power / (Math.PI * landing.spotRadius ** 2);
@@ -202,6 +215,7 @@ const flashesOf = (look: ShipAppearance): Flash[] => [
       point: landing.point,
       size: Math.max(4, 5 * landing.spotRadius),
       strength: Math.min(1, Math.max(0.35, (Math.log10(intensity) - 5.5) / 2.5)),
+      colour: BEAM_SPOT_COLOURS[landing.attack],
     };
   }),
 ];
@@ -219,14 +233,14 @@ const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance)
     updateShipModel(view.model, look);
   }
 
-  // Lasers are invisible and slugs too fast to see; only where they land glows.
+  // Beams are invisible in vacuum and slugs too fast to see; only where they land glows.
   const flashes = flashesOf(look);
   let brightest = 0;
   view.spots.forEach((sprite, i) => {
     const flash = flashes[i];
     sprite.visible = flash !== undefined;
     if (!flash) return;
-    const { point, size, strength } = flash;
+    const { point, size, strength, colour } = flash;
     // Beams land on the line of fire through the centre of mass, on the side they came from, so
     // outward from the centre of mass is back towards the attacker; slugs strike near it.
     outward.set(point.x, point.y, point.z).normalize();
@@ -234,6 +248,7 @@ const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance)
     sprite.position.set(point.x, point.y, point.z).addScaledVector(outward, size / 2);
     sprite.scale.setScalar(size * (0.85 + 0.3 * Math.random()));
     sprite.material.opacity = strength;
+    sprite.material.color.set(colour);
     if (strength > brightest) {
       brightest = strength;
       view.hitLight.position.copy(sprite.position).addScaledVector(outward, 3);

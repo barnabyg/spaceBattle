@@ -52,14 +52,19 @@ const missileReach = ({ weapons }: OwnShipObservation): number =>
     : 0;
 
 /**
- * The furthest the ship's working weapons fire, m: its lasers, its kinetic guns while it has
- * slugs left, and its missiles while it has missiles and a launcher. Zero once none is left.
+ * The furthest the ship's working weapons fire, m: its lasers and particle beams, its kinetic
+ * guns while it has slugs left, and its missiles while it has missiles and a launcher. Zero once
+ * none is left.
  */
 const ownReach = (ship: OwnShipObservation): number => {
   const { weapons } = ship;
   return Math.max(
     missileReach(ship),
-    ...[...weapons.lasers, ...(weapons.ammunition.slugs > 0 ? weapons.kineticGuns : [])]
+    ...[
+      ...weapons.lasers,
+      ...weapons.particleBeams,
+      ...(weapons.ammunition.slugs > 0 ? weapons.kineticGuns : []),
+    ]
       .filter((weapon) => weapon.integrity > 0)
       .map((weapon) => weapon.effectiveRange),
   );
@@ -116,7 +121,9 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
     const { ownShip, time } = observation;
     const { weapons, appearance } = ownShip;
     const engaged =
-      [...weapons.lasers, ...weapons.kineticGuns].some((weapon) => weapon.firing) ||
+      [...weapons.lasers, ...weapons.particleBeams, ...weapons.kineticGuns].some(
+        (weapon) => weapon.firing,
+      ) ||
       weapons.salvo !== null ||
       observation.munitions.length > 0 ||
       appearance.beamsLanding.length > 0 ||

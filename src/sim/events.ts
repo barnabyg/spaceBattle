@@ -3,13 +3,30 @@ import type { ComponentType, SectionKind } from './design';
 import type { BattleOutcome } from './outcome';
 import type { Vec3 } from './vector';
 
-/** A laser's beam started landing on a part of the target: a section, or one of its mounts. */
+/** What kind of particle beam: charged particles, or neutral atoms. */
+export type ParticleBeamKind = 'charged-particle' | 'neutral-particle';
+/** What kind of beam: a laser's light, or a particle beam. */
+export type BeamKind = 'laser' | ParticleBeamKind;
+/** What kind of munition is in flight: a slug from a kinetic gun, or a missile. */
+export type MunitionKind = 'slug' | 'missile';
+/**
+ * Every kind of attack a ship can suffer. Each kind of shield and armour counters some kinds
+ * better than others.
+ */
+export type AttackKind = BeamKind | MunitionKind;
+
+/**
+ * A beam weapon's beam started landing on a part of the target: a section, or one of its
+ * mounts.
+ */
 export interface HitEvent {
   readonly type: 'hit';
   /** s */
   readonly time: number;
   readonly attacker: SideId;
   readonly target: SideId;
+  /** What kind of beam it was. */
+  readonly attack: BeamKind;
   readonly section: SectionKind;
   /** The mount struck on that section, or null for the section itself. */
   readonly mount: number | null;
@@ -22,9 +39,6 @@ export interface HitEvent {
   /** Distance the beam travelled, m. */
   readonly range: number;
 }
-
-/** What kind of munition is in flight: a slug from a kinetic gun, or a missile. */
-export type MunitionKind = 'slug' | 'missile';
 
 /**
  * A munition struck a part of a ship directly: a slug, or a missile with a kinetic warhead. It

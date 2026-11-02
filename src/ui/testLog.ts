@@ -1,5 +1,5 @@
 import type { BattleEvent, SideSetup } from '../sim/battle';
-import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
+import { BEAM_TEXT, COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
 import {
   formatBattleTime,
@@ -34,7 +34,7 @@ export const describeTestEvent = (event: BattleEvent, sides: readonly SideSetup[
         maximumFractionDigits: 2,
       });
       const spot = event.spotRadius.toLocaleString('en-GB', { maximumFractionDigits: 1 });
-      return `${time} ${nameOf(event.attacker)} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatMW(event.power)} · ${intensity} MW/m² · spot ${spot} m · range ${formatKm(event.range)}`;
+      return `${time} ${nameOf(event.attacker)} ${BEAM_TEXT[event.attack].toLowerCase()} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatMW(event.power)} · ${intensity} MW/m² · spot ${spot} m · range ${formatKm(event.range)}`;
     }
     case 'impact':
       return `${time} ${nameOf(event.attacker)} ${event.munition} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatGJ(event.energy)} · ${formatKmPerS(event.speed)}`;

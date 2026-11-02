@@ -57,21 +57,22 @@ const describePlan = (m: ManoeuvreObservation): string => {
  * "Out of range · reach 165,000 km".
  */
 const describeWeapons = (weapons: WeaponsObservation): string => {
-  const { lasers, kineticGuns, launchers, ammunition, target, mode } = weapons;
-  const all = [...lasers, ...kineticGuns];
+  const { lasers, particleBeams, kineticGuns, launchers, ammunition, target, mode } = weapons;
+  const beams = [...lasers, ...particleBeams];
+  const all = [...beams, ...kineticGuns];
   if (all.length + launchers.length === 0) return 'No weapons';
   if ([...all, ...launchers].every((w) => w.integrity === 0)) return 'All weapons lost';
   if (all.length === 0) return 'Missiles only · launch by order';
   if (mode === 'hold-fire') return target ? 'Holding fire · enemy targeted' : 'Holding fire';
   if (!target) return 'No target';
   const working = [
-    ...lasers.filter((l) => l.integrity > 0),
+    ...beams.filter((b) => b.integrity > 0),
     ...(ammunition.slugs > 0 ? kineticGuns.filter((g) => g.integrity > 0) : []),
   ];
   if (working.length === 0) return 'Out of slugs';
   const firing = all.filter((w) => w.firing);
   if (firing.length > 0) {
-    const power = lasers.reduce((total, l) => total + l.beamPower, 0);
+    const power = beams.reduce((total, b) => total + b.beamPower, 0);
     const parts = [`Firing ${firing.length} of ${all.length}`];
     if (power > 0) parts.push(formatMW(power));
     if (kineticGuns.some((g) => g.firing)) {

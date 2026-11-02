@@ -84,6 +84,43 @@ export interface LaserDesign {
   readonly wavelength: number;
 }
 
+/** What every particle beam weapon has: an accelerator and the emitter that aims its beam. */
+interface ParticleBeamBase {
+  /** kg */
+  readonly mass: number;
+  /** Power carried off in the beam while firing, W. */
+  readonly beamPower: number;
+  /**
+   * Fraction of the electrical power drawn that the accelerator puts into its particles; the
+   * rest is heat (0–1).
+   */
+  readonly efficiency: number;
+  /** Diameter of the beam as it leaves the emitter, m. */
+  readonly aperture: number;
+  /** Half-angle the beam spreads at as it leaves, from its particles' spread of motion, rad. */
+  readonly divergence: number;
+}
+
+/**
+ * A weapon firing a beam of charged particles (protons) at near light speed. Its own charge
+ * pushes the beam apart, so it spreads faster the further it goes.
+ */
+export interface ChargedParticleBeamDesign extends ParticleBeamBase {
+  readonly type: 'charged-particle-beam';
+  /** Kinetic energy of each proton, J; the faster they are, the less they push apart. */
+  readonly particleEnergy: number;
+}
+
+/**
+ * A weapon firing a beam of neutral hydrogen atoms: negative ions accelerated, then stripped of
+ * their extra electron. It stays tight, but much of the beam is lost in the stripping.
+ */
+export interface NeutralParticleBeamDesign extends ParticleBeamBase {
+  readonly type: 'neutral-particle-beam';
+}
+
+export type ParticleBeamDesign = ChargedParticleBeamDesign | NeutralParticleBeamDesign;
+
 /**
  * A weapon firing solid slugs accelerated electromagnetically. Each shot takes ½mv²/efficiency
  * of electrical energy, which it draws from the ship between shots, and one slug of ammunition.
@@ -187,12 +224,24 @@ export type InternalComponentDesign =
   DriveDesign | ThrustersDesign | ReactorDesign | CapacitorDesign | MagazineDesign;
 /** Components that must be exposed, on a section's mounts. */
 export type MountedComponentDesign =
-  RadiatorDesign | LaserDesign | KineticGunDesign | LauncherDesign;
+  | RadiatorDesign
+  | LaserDesign
+  | ChargedParticleBeamDesign
+  | NeutralParticleBeamDesign
+  | KineticGunDesign
+  | LauncherDesign;
 export type ComponentDesign = InternalComponentDesign | MountedComponentDesign;
 export type ComponentType = ComponentDesign['type'];
 
 const INTERNAL_TYPES = ['drive', 'thrusters', 'reactor', 'capacitor', 'magazine'] as const;
-const MOUNTED_TYPES = ['radiator', 'laser', 'kinetic-gun', 'launcher'] as const;
+const MOUNTED_TYPES = [
+  'radiator',
+  'laser',
+  'charged-particle-beam',
+  'neutral-particle-beam',
+  'kinetic-gun',
+  'launcher',
+] as const;
 
 export const ARMOUR_TYPES = ['heavy', 'ablative'] as const;
 export type ArmourType = (typeof ARMOUR_TYPES)[number];
@@ -373,6 +422,14 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
         aperture: requireNumber(data, 'aperture', where),
         wavelength: requireNumber(data, 'wavelength', where),
       };
+    case 'charged-particle-beam':
+      return {
+        ...parseParticleBeam(data, mass, where),
+        type,
+        particleEnergy: requireNumber(data, 'particleEnergy', where),
+      };
+    case 'neutral-particle-beam':
+      return { ...parseParticleBeam(data, mass, where), type };
     case 'kinetic-gun':
       return {
         type,
@@ -388,6 +445,14 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
       return parseMagazine(data, mass, where);
   }
 };
+
+const parseParticleBeam = (data: Record<string, unknown>, mass: number, where: string) => ({
+  mass,
+  beamPower: requireNumber(data, 'beamPower', where),
+  efficiency: requireFraction(data, 'efficiency', where),
+  aperture: requireNumber(data, 'aperture', where),
+  divergence: requireNumber(data, 'divergence', where),
+});
 
 const requireCount = (data: Record<string, unknown>, key: string, where: string): number => {
   if (data[key] === undefined) return 0;

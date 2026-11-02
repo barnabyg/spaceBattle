@@ -55,7 +55,10 @@ export interface EnergyLedger {
   readonly capacitorLost: number;
   /** The part of the drive's energy carried off in its exhaust; the rest became heat. */
   readonly driveExhaust: number;
-  /** The part of the weapons' energy that left the ship in laser beams; the rest became heat. */
+  /**
+   * The part of the weapons' energy that left the ship in beams, laser and particle; the rest
+   * became heat.
+   */
   readonly beamEmitted: number;
   /**
    * The part of the weapons' energy that kinetic guns put into their slugs' kinetic energy,
@@ -219,8 +222,8 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
   ship.storedEnergy = Math.min(plant.storageCapacity, unclamped);
   const lost = unclamped - ship.storedEnergy;
 
-  // A reactor of efficiency η gives off (1 − η)/η of its electrical output as heat. Lasers send
-  // their efficiency's share out in the beam and kinetic guns into the slug, and the rest is
+  // A reactor of efficiency η gives off (1 − η)/η of its electrical output as heat. Beam weapons
+  // send their efficiency's share out in the beam and kinetic guns into the slug, and the rest is
   // heat; shields turn all their power into heat until they have somewhere else to send it.
   const reactorHeat =
     (flow.reactorOutput * (1 - plant.reactorEfficiency)) / plant.reactorEfficiency;

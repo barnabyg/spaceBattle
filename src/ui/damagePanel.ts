@@ -1,5 +1,6 @@
 import type { BattleEvent, SectionObservation, SideId, SideObservation } from '../sim/battle';
 import type { ComponentType, SectionKind } from '../sim/design';
+import type { BeamKind } from '../sim/events';
 import { el } from './el';
 import { formatBattleTime, formatGJ, formatKilotons, formatKm, formatMm, formatMW } from './format';
 
@@ -17,8 +18,17 @@ export const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
   magazine: 'Magazine',
   radiator: 'Radiator',
   laser: 'Laser',
+  'charged-particle-beam': 'Charged particle beam',
+  'neutral-particle-beam': 'Neutral particle beam',
   'kinetic-gun': 'Kinetic gun',
   launcher: 'Launcher',
+};
+
+/** Each kind of beam, as a weapon's name. */
+export const BEAM_TEXT: Readonly<Record<BeamKind, string>> = {
+  laser: 'Laser',
+  'charged-particle': 'Charged particle beam',
+  'neutral-particle': 'Neutral particle beam',
 };
 
 const MUNITION_TEXT = { slug: 'Slug', missile: 'Missile' } as const;
@@ -50,8 +60,8 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
     case 'hit': {
       const part = `${SECTION_TEXT[event.section].toLowerCase()} ${event.mount === null ? 'section' : 'mount'}`;
       return event.attacker === viewer
-        ? `${time} Hit enemy ${part} · ${formatMW(event.power)}`
-        : `${time} Hit on our ${part} · ${formatMW(event.power)}`;
+        ? `${time} ${BEAM_TEXT[event.attack]} hit enemy ${part} · ${formatMW(event.power)}`
+        : `${time} ${BEAM_TEXT[event.attack]} hit on our ${part} · ${formatMW(event.power)}`;
     }
     case 'impact': {
       const part = `${SECTION_TEXT[event.section].toLowerCase()} ${event.mount === null ? 'section' : 'mount'}`;

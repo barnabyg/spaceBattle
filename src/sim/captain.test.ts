@@ -14,7 +14,7 @@ import { designComponentsOfType, type Design } from './design';
 import type { Order } from './orders';
 import { duelSetup, testDesign } from './testing';
 import { distance } from './vector';
-import { effectiveRange } from './weapons';
+import { effectiveRange } from './beams';
 
 const KM = 1000;
 const HOUR = 3_600;
@@ -161,6 +161,28 @@ describe('computer captain', () => {
     expect(events.some((e) => e.type === 'impact' && e.attacker === 'red')).toBe(true);
   });
 
+  it('closes within the short reach of its charged particle beam and fires it', () => {
+    const battle = againstIdlePlayer(testDesign(), handMadeDesign('torch'), 60_000 * KM);
+    battle.advance(10);
+    let red = battle.observe('red').ownShip;
+    const reach = red.weapons.particleBeams[0]?.effectiveRange ?? 0;
+    expect(reach).toBeLessThan(60_000 * KM);
+    expect(red.manoeuvre?.goal).toBe('hold');
+    expect(red.manoeuvre?.range).toBeLessThan(reach);
+    const events: BattleEvent[] = [];
+    while (!red.weapons.particleBeams.some((beam) => beam.firing)) {
+      if (battle.time > 6 * HOUR) throw new Error('Red never fired');
+      events.push(...battle.advance(60));
+      red = battle.observe('red').ownShip;
+    }
+    events.push(...battle.advance(60));
+    expect(
+      events.some(
+        (e) => e.type === 'hit' && e.attacker === 'red' && e.attack === 'charged-particle',
+      ),
+    ).toBe(true);
+  }, 20_000);
+
   it('launches a salvo of missiles once the enemy is within their reach, and another once it lands', () => {
     const quiver = handMadeDesign('quiver');
     const far = againstIdlePlayer(testDesign(), quiver, 200_000 * KM);
@@ -239,7 +261,7 @@ describe('two computer captains', () => {
     expectDecided(battle);
   }, 30_000); // Simulates most of a day of battle; takes a few seconds.
 
-  it.each(['lance', 'bastion', 'quiver'])(
+  it.each(['lance', 'bastion', 'quiver', 'torch', 'needle'])(
     'fight %s against its own design to a result',
     (design) => {
       const battle = runBattle(computerDuel(design, design, 200_000 * KM), { maxTime: 24 * HOUR });

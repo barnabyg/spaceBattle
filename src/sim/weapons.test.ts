@@ -14,7 +14,7 @@ import {
   withSection,
 } from './testing';
 import { vec3 } from './vector';
-import { SPEED_OF_LIGHT } from './weapons';
+import { SPEED_OF_LIGHT } from './beams';
 
 const KM = 1000;
 const DEGREE = Math.PI / 180;

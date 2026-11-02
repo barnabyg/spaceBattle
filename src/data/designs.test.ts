@@ -11,11 +11,9 @@ describe('hand-made designs', () => {
   it('carry armour on every section and at least one weapon', () => {
     for (const design of HAND_MADE_DESIGNS) {
       for (const section of design.sections) expect(section.armour.thickness).toBeGreaterThan(0);
-      expect(
-        design.sections
-          .flatMap((s) => s.mounts)
-          .some((m) => m.type === 'laser' || m.type === 'kinetic-gun' || m.type === 'launcher'),
-      ).toBe(true);
+      expect(design.sections.flatMap((s) => s.mounts).some((m) => m.type !== 'radiator')).toBe(
+        true,
+      );
     }
   });
 
@@ -27,6 +25,17 @@ describe('hand-made designs', () => {
       true,
     );
   });
+
+  it.each(['charged-particle-beam', 'neutral-particle-beam'] as const)(
+    'include one carrying a %s',
+    (type) => {
+      expect(
+        HAND_MADE_DESIGNS.some((d) =>
+          d.sections.some((s) => s.mounts.some((m) => m.type === type)),
+        ),
+      ).toBe(true);
+    },
+  );
 
   it('include one carrying launchers and a magazine of missiles with kinetic warheads', () => {
     const launching = HAND_MADE_DESIGNS.find((d) =>
@@ -169,6 +178,30 @@ describe('parseDesign', () => {
         sections: [{ ...forward, armour: { type: 'heavy', thickness: -1 } }, middle, engine],
       }),
     ).toThrow(/thickness/);
+  });
+
+  it('reads charged and neutral particle beams on mounts', () => {
+    const neutral = {
+      type: 'neutral-particle-beam',
+      mass: 1,
+      beamPower: 1,
+      efficiency: 0.5,
+      aperture: 1,
+      divergence: 1e-7,
+    };
+    const charged = { ...neutral, type: 'charged-particle-beam', particleEnergy: 3e-9 };
+    const design = parseDesign(withMiddle([thrusters, reactor], [charged, neutral]));
+    expect(design.sections[1]?.mounts).toEqual([charged, neutral]);
+    expect(() => parseDesign(withMiddle([thrusters, reactor, neutral]))).toThrow(/mount/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor], [{ ...charged, particleEnergy: undefined }])),
+    ).toThrow(/particleEnergy/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor], [{ ...neutral, divergence: 0 }])),
+    ).toThrow(/divergence/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor], [{ ...neutral, efficiency: 1.5 }])),
+    ).toThrow(/efficiency/);
   });
 
   it('reads kinetic guns on mounts and magazines inside, and needs a magazine for the guns', () => {

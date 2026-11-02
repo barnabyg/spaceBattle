@@ -4,6 +4,7 @@ import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRe
 import { projectBurns, projectPath } from '../game/projection';
 import type { MunitionObservation, SideId, SideObservation, SideSetup } from '../sim/battle';
 import { designComponent } from '../sim/design';
+import type { BeamKind } from '../sim/events';
 import { rotate, type Quat } from '../sim/quaternion';
 import { length, vec3, type Vec3 } from '../sim/vector';
 import { createBurstFlash } from './burstFlash';
@@ -29,7 +30,14 @@ const PROJECTION_POINTS = 121;
 /** Planned burns shown on the map, in order. */
 const MAX_PLANNED_BURNS = 4;
 const PLANNED_BURN_COLOUR = '#ffb347';
-const BEAM_COLOUR = '#7dffb0';
+/** How the own ship's beams are drawn while firing: lasers solid green, particle beams apart. */
+const BEAM_STYLES: Readonly<
+  Record<BeamKind, { readonly colour: string; readonly dashed: boolean }>
+> = {
+  laser: { colour: '#7dffb0', dashed: false },
+  'charged-particle': { colour: '#c890ff', dashed: false },
+  'neutral-particle': { colour: '#7fe0ff', dashed: true },
+};
 /** Heading lines are this fraction of the camera's distance from the own ship. */
 const HEADING_SCALE = 0.06;
 /** Munitions in flight are drawn as dots this many pixels across. */
@@ -197,13 +205,26 @@ export const createTacticalMap = (
   });
   const ownDrive = sides[0] ? designComponent(sides[0].design, 'drive') : undefined;
 
-  // The own ship's laser beam, while it is firing.
-  const beam = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-    new THREE.LineBasicMaterial({ color: BEAM_COLOUR, transparent: true, opacity: 0.8 }),
-  );
-  beam.visible = false;
-  scene.add(beam);
+  // The own ship's beams, one line for each kind while any of that kind is firing.
+  const beamLines = (Object.keys(BEAM_STYLES) as BeamKind[]).map((kind) => {
+    const { colour, dashed } = BEAM_STYLES[kind];
+    const material = dashed
+      ? new THREE.LineDashedMaterial({
+          color: colour,
+          transparent: true,
+          opacity: 0.8,
+          dashSize: 1_000,
+          gapSize: 600,
+        })
+      : new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 0.8 });
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+      material,
+    );
+    line.visible = false;
+    scene.add(line);
+    return { kind, line };
+  });
 
   // Munitions in flight: a dot each, in the colour of the side that fired it; missiles larger.
   const munitionColours = new Map(
@@ -383,9 +404,15 @@ export const createTacticalMap = (
         );
       }
       const target = observation.contacts.find((c) => c.sideId === own.weapons.target);
-      beam.visible = target !== undefined && own.weapons.lasers.some((l) => l.firing);
-      if (target && beam.visible) {
-        beam.geometry.setFromPoints([centre, toScene(target.position)]);
+      const firing = new Set<BeamKind>([
+        ...(own.weapons.lasers.some((l) => l.firing) ? (['laser'] as const) : []),
+        ...own.weapons.particleBeams.filter((b) => b.firing).map((b) => b.kind),
+      ]);
+      for (const { kind, line } of beamLines) {
+        line.visible = target !== undefined && firing.has(kind);
+        if (!target || !line.visible) continue;
+        line.geometry.setFromPoints([centre, toScene(target.position)]);
+        line.computeLineDistances();
       }
       showMunitions(observation);
       showBurst(observation);

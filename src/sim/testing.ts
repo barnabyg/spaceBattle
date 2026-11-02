@@ -2,6 +2,7 @@ import type { BattleSetup, Scenario, SideSetup } from './battle';
 import {
   KILOTON,
   parseDesign,
+  type ChargedParticleBeamDesign,
   type ComponentDesign,
   type ComponentType,
   type Design,
@@ -10,6 +11,8 @@ import {
   type LauncherDesign,
   type MagazineDesign,
   type MissileDesign,
+  type MountedComponentDesign,
+  type NeutralParticleBeamDesign,
   type SectionDesign,
   type SectionKind,
 } from './design';
@@ -109,6 +112,37 @@ export const TEST_LASER: LaserDesign = {
 /** The test design with the test laser on a forward mount. */
 export const armedTestDesign = (): Design =>
   withSection(testDesign(), 'forward', { mounts: [TEST_LASER] });
+
+/** Joules in an electronvolt. */
+const ELECTRONVOLT = 1.602176634e-19;
+
+/**
+ * A charged particle beam for test designs: 400 MW of 20 GeV protons from a 1 m emitter, spreading
+ * at 0.1 µrad before its own charge pushes it apart.
+ */
+export const TEST_CHARGED_BEAM: ChargedParticleBeamDesign = {
+  type: 'charged-particle-beam',
+  mass: 30e3,
+  beamPower: 400e6,
+  efficiency: 0.5,
+  aperture: 1,
+  divergence: 1e-7,
+  particleEnergy: 20e9 * ELECTRONVOLT,
+};
+
+/** A neutral particle beam for test designs, from the same accelerator as the charged one. */
+export const TEST_NEUTRAL_BEAM: NeutralParticleBeamDesign = {
+  type: 'neutral-particle-beam',
+  mass: 30e3,
+  beamPower: 400e6,
+  efficiency: 0.5,
+  aperture: 1,
+  divergence: 1e-7,
+};
+
+/** The test design with a weapon, such as a particle beam, on a forward mount. */
+export const withForwardWeapon = (weapon: MountedComponentDesign): Design =>
+  withSection(testDesign(), 'forward', { mounts: [weapon] });
 
 /**
  * A kinetic gun for test designs: 1 kg slugs at 20 km/s, one a second. Each shot takes

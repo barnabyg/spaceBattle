@@ -7,7 +7,8 @@ import {
 import { deltaVWith, massProperties } from '../sim/ship';
 import { kineticGunRange } from '../sim/kinetic';
 import { missileDeltaV, missileReach } from '../sim/missile';
-import { designMissiles, effectiveRange } from '../sim/weapons';
+import { effectiveRange, type BeamWeaponDesign } from '../sim/beams';
+import { designMissiles } from '../sim/weapons';
 import { formatKilotons, formatKm, formatKmPerS, formatMm, formatMW, formatTonnes } from './format';
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -18,12 +19,16 @@ const missileName = (missile: MissileDesign): string =>
     ? `${missile.name} (${formatKilotons(missile.warhead.yield)} nuclear)`
     : missile.name;
 
+/** Beam weapons of one kind: how many, their beam power together and the longest reach. */
+const describeBeams = (weapons: readonly BeamWeaponDesign[]): string =>
+  weapons.length === 0
+    ? 'None'
+    : `${weapons.length} · ${formatMW(weapons.reduce((total, w) => total + w.beamPower, 0))} beam · reach ${formatKm(Math.max(...weapons.map(effectiveRange)))}`;
+
 /** A design's key numbers at the start of a battle, as label and value, for choosing between designs. */
 export const designSummary = (design: Design): readonly (readonly [string, string])[] => {
   const { mass } = massProperties(design, design.propellantMass);
   const drive = designComponent(design, 'drive');
-  const lasers = designComponentsOfType(design, 'laser');
-  const beamPower = lasers.reduce((total, l) => total + l.beamPower, 0);
   const guns = designComponentsOfType(design, 'kinetic-gun');
   const magazines = designComponentsOfType(design, 'magazine');
   const slugs = magazines.reduce((n, m) => n + m.slugs, 0);
@@ -39,11 +44,14 @@ export const designSummary = (design: Design): readonly (readonly [string, strin
       `${(drive.thrust / mass).toLocaleString('en-GB', { maximumFractionDigits: 2 })} m/s²`,
     ],
     ['Reactor', formatMW(designComponent(design, 'reactor').output)],
+    ['Lasers', describeBeams(designComponentsOfType(design, 'laser'))],
     [
-      'Lasers',
-      lasers.length === 0
-        ? 'None'
-        : `${lasers.length} · ${formatMW(beamPower)} beam · reach ${formatKm(Math.max(...lasers.map(effectiveRange)))}`,
+      'Charged particle beams',
+      describeBeams(designComponentsOfType(design, 'charged-particle-beam')),
+    ],
+    [
+      'Neutral particle beams',
+      describeBeams(designComponentsOfType(design, 'neutral-particle-beam')),
     ],
     [
       'Kinetic guns',

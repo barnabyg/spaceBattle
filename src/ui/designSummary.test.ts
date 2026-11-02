@@ -15,6 +15,17 @@ describe('design summary', () => {
     expect(lance.get('Forward armour')).toBe('50 mm ablative');
   });
 
+  it("shows a design's particle beams, the charged one far shorter-ranged than the neutral", () => {
+    expect(summaryOf('lance').get('Charged particle beams')).toBe('None');
+    expect(summaryOf('lance').get('Neutral particle beams')).toBe('None');
+    const charged = summaryOf('torch').get('Charged particle beams');
+    const neutral = summaryOf('needle').get('Neutral particle beams');
+    expect(charged).toMatch(/^1 · 800 MW beam · reach [\d,]+ km$/);
+    expect(neutral).toMatch(/^1 · 300 MW beam · reach [\d,]+ km$/);
+    const reach = (text: string | undefined) => numberOf(text?.split('reach')[1]);
+    expect(reach(neutral)).toBeGreaterThan(5 * reach(charged));
+  });
+
   it("shows a design's kinetic guns and the slugs it carries", () => {
     expect(summaryOf('lance').get('Kinetic guns')).toBe('None');
     expect(summaryOf('sling').get('Kinetic guns')).toBe(

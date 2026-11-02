@@ -11,6 +11,13 @@ const TURRET_MARGIN = 1;
 const GUN_GIRTH = 3;
 /** ...and at most this long, its barrel along the ship, m. */
 const GUN_LENGTH = 16;
+/**
+ * A particle beam is a box round its accelerator, lying along the ship: this much wider and higher
+ * than its emitter...
+ */
+const ACCELERATOR_MARGIN = 2;
+/** ...and at most this long, m. */
+const ACCELERATOR_LENGTH = 24;
 /** A launcher is a box this wide and high round its rail... */
 const LAUNCHER_GIRTH = 2.5;
 /** ...and at most this long, along the ship, m. */
@@ -68,6 +75,17 @@ const mountBox = (
     hi = centre + side / 2;
     outward = side;
     width = side;
+  } else if (
+    component.type === 'charged-particle-beam' ||
+    component.type === 'neutral-particle-beam'
+  ) {
+    // An accelerator lying along the ship, centred in its slot, its emitter at the front.
+    const half = Math.min(ACCELERATOR_LENGTH, length) / 2;
+    const centre = (slot[0] + slot[1]) / 2;
+    lo = centre - half;
+    hi = centre + half;
+    outward = component.aperture + ACCELERATOR_MARGIN;
+    width = outward;
   } else if (component.type === 'kinetic-gun' || component.type === 'launcher') {
     // A gun or launch rail lying along the ship, centred in its slot.
     const gun = component.type === 'kinetic-gun';

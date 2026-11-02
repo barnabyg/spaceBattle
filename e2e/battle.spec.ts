@@ -129,6 +129,22 @@ test('a ship with kinetic guns shows its guns, magazine and ammunition', async (
   await expect(page.getByLabel('Weapons state')).toHaveText('Out of range · reach 30,000 km');
 });
 
+test('ships with particle beams show their beams, the charged one short-ranged', async ({
+  page,
+}) => {
+  await startFreeBattle(page, { blue: { design: 'Torch' }, red: { design: 'Needle' } });
+  await page.keyboard.press(' ');
+  const damage = page.getByRole('region', { name: 'Damage' });
+  await expect(damage.getByText('Charged particle beam (mount)')).toBeVisible();
+  await expect(page.getByLabel('Beam power')).toHaveText('Charged particle beam 0 MW');
+
+  await page.getByRole('button', { name: 'Fire freely' }).click();
+  // The opening pass starts far beyond the charged beam's reach.
+  const weapons = page.getByLabel('Weapons state');
+  await expect(weapons).toContainText('Out of range · reach');
+  expect(kmOf((await weapons.textContent())?.split('reach')[1] ?? null)).toBeLessThan(50_000);
+});
+
 test('a ship with launchers launches missiles by order, dropping to real time', async ({
   page,
 }) => {

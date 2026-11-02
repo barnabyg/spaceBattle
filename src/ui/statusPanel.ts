@@ -1,8 +1,9 @@
 import type { SideObservation } from '../sim/battle';
-import type { MunitionKind } from '../sim/events';
+import type { BeamKind, MunitionKind } from '../sim/events';
 import { OVERHEAT_TEMPERATURE } from '../sim/heat';
 import { POWER_SYSTEMS } from '../sim/power';
 import { distance, length } from '../sim/vector';
+import { BEAM_TEXT } from './damagePanel';
 import { el } from './el';
 import {
   formatGJ,
@@ -23,6 +24,25 @@ const inFlight = ({ munitions, ownShip }: SideObservation, kind: MunitionKind): 
   const flying = munitions.filter((m) => m.kind === kind);
   const ours = flying.filter((m) => m.attacker === ownShip.sideId).length;
   return `${ours} ours · ${flying.length - ours} incoming`;
+};
+
+/**
+ * The power going out in the ship's beams now, by kind, for each kind of beam weapon it carries,
+ * e.g. "Laser 500 MW · Neutral particle beam 0 MW".
+ */
+const beamPower = ({ ownShip: { weapons } }: SideObservation): string => {
+  const beams: { readonly kind: BeamKind; readonly power: number }[] = [
+    ...weapons.lasers.map((laser) => ({ kind: 'laser' as const, power: laser.beamPower })),
+    ...weapons.particleBeams.map((beam) => ({ kind: beam.kind, power: beam.beamPower })),
+  ];
+  const kinds = [...new Set(beams.map((beam) => beam.kind))];
+  if (kinds.length === 0) return '—';
+  return kinds
+    .map((kind) => {
+      const power = beams.reduce((total, b) => (b.kind === kind ? total + b.power : total), 0);
+      return `${BEAM_TEXT[kind]} ${formatMW(power)}`;
+    })
+    .join(' · ');
 };
 
 /** Each readout: its label and how to show it from the captain's observation. */
@@ -62,6 +82,7 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   ['Heat', (o) => formatGJ(o.ownShip.heat.heat)],
   ['Heat generated', (o) => formatMW(o.ownShip.heat.generated)],
   ['Heat radiated', (o) => formatMW(o.ownShip.heat.radiated)],
+  ['Beam power', beamPower],
   [
     'Ammunition',
     ({ ownShip: { weapons } }) => {
