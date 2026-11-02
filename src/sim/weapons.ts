@@ -11,6 +11,7 @@ import { componentSlots } from './components';
 import {
   designComponentsOfType,
   missileMass,
+  missileRole,
   type Design,
   type KineticGunDesign,
   type LauncherDesign,
@@ -27,7 +28,7 @@ import {
   type Motion,
   type Slug,
 } from './kinetic';
-import { launchMissile, missileReach, type Missile } from './missile';
+import { launchMissile, missileReach, type Missile, type MissileTarget } from './missile';
 import type { FireMode, PointDefencePriority } from './orders';
 import {
   assignPointDefence,
@@ -54,14 +55,19 @@ export const designBeamWeapons = (design: Design): readonly BeamWeaponDesign[] =
   ...designComponentsOfType(design, 'neutral-particle-beam'),
 ];
 
-/** The furthest any of a design's weapons fires, m; zero if it has none. */
+/**
+ * The furthest any of a design's weapons fires at a ship, m; zero if it has none. Anti-missile
+ * missiles are left out: they fire only at missiles.
+ */
 export const designReach = (design: Design): number =>
   Math.max(
     0,
     ...designBeamWeapons(design).map(effectiveRange),
     ...designComponentsOfType(design, 'kinetic-gun').map(kineticGunRange),
     ...(designComponentsOfType(design, 'launcher').length > 0
-      ? designMissiles(design).map(missileReach)
+      ? designMissiles(design)
+          .filter((missile) => missileRole(missile) === 'anti-ship')
+          .map(missileReach)
       : []),
   );
 
@@ -122,8 +128,11 @@ export interface LauncherState {
 
 /** Missiles still to launch at a target under the captain's launch order. */
 export interface Salvo {
-  readonly target: SideId;
+  /** An enemy ship, or an enemy missile in flight for anti-missile missiles. */
+  readonly target: MissileTarget;
   readonly remaining: number;
+  /** The name of the missile design it launches. */
+  readonly missile: string;
 }
 
 /** A ship's weapons: the captain's orders and each weapon's state. */
@@ -141,6 +150,8 @@ export interface WeaponsState {
   readonly launchers: readonly LauncherState[];
   /** The launch order still being carried out, if any. */
   readonly salvo: Salvo | null;
+  /** Whether the ship launches anti-missile missiles at incoming missiles by itself. */
+  readonly automaticDefence: boolean;
   /** Electrical power the weapons ask for this step, W. */
   readonly demand: number;
   /** The fraction of the power the weapons draw that leaves in beams. */
@@ -189,9 +200,13 @@ export const slugsLeft = (ship: ShipState): number =>
 export const roundsLeft = (ship: ShipState): number =>
   ship.ammunition.reduce((total, magazine) => total + magazine.rounds, 0);
 
-/** Missiles left in the ship's magazines. */
-export const missilesLeft = (ship: ShipState): number =>
-  ship.ammunition.reduce((total, magazine) => total + magazine.missiles, 0);
+/** Missiles left in the ship's magazines: of one design, by name, or of every design. */
+export const missilesLeft = (ship: ShipState, name?: string): number =>
+  ship.ammunition.reduce(
+    (total, magazine) =>
+      name === undefined || magazine.missile?.name === name ? total + magazine.missiles : total,
+    0,
+  );
 
 /** How much ammunition of each kind to take. */
 interface Taken {
@@ -253,7 +268,7 @@ export interface Beam {
 
 /**
  * Every ship starts a battle with no target and holding fire, its point defence on missiles
- * only.
+ * only and its automatic missile defence on.
  */
 export const initialWeapons = (design: Design): WeaponsState => ({
   target: null,
@@ -292,6 +307,7 @@ export const initialWeapons = (design: Design): WeaponsState => ({
     slot.component.type === 'launcher' ? [{ slot: i, launcher: slot.component, reload: 0 }] : [],
   ),
   salvo: null,
+  automaticDefence: true,
   demand: 0,
   beamFraction: 0,
   slugFraction: 0,
@@ -578,40 +594,57 @@ export interface Launch {
   readonly launcher: number;
 }
 
+/** The first magazine in the ship's list holding missiles that pass `wanted`, or -1. */
+const magazineOf = (ship: ShipState, wanted: (missile: MissileDesign) => boolean): number =>
+  ship.ammunition.findIndex((m) => m.missiles > 0 && m.missile !== null && wanted(m.missile));
+
 /**
- * Carries out the salvo, if any: each working, loaded launcher fires one missile from the first
- * magazine holding any, until the salvo is done or the magazines are empty, and then reloads,
- * taking longer the more it is damaged; reloading counts down over each step, launching ends it. Missiles leave from the ship's centre of mass, moving with it,
- * and steer themselves from there; the ship gets lighter by each. `target` is the salvo's target
- * while it is still in the battle, or null.
+ * Launches missiles from the working, loaded launchers, in turn. First comes automatic missile
+ * defence: an anti-missile missile at each of `threats` (missile ids, most urgent first), from the
+ * first magazine holding any. Then the salvo, if any: its missile design, until the salvo is done
+ * or the magazines hold no more of it. `salvoTarget` is the salvo's target while it is still in
+ * the battle, or null. Each launcher then reloads, taking longer the more it is damaged;
+ * reloading counts down over each step, launching ends it. Missiles leave from the ship's centre
+ * of mass, moving with it, and steer themselves from there; the ship gets lighter by each.
  */
 export const launchMissiles = (
   ship: ShipState,
   attacker: SideId,
-  target: SideId | null,
+  salvoTarget: MissileTarget | null,
+  threats: readonly number[],
   dt: number,
   nextId: () => number,
 ): Launch[] => {
   const { salvo } = ship.weapons;
-  let remaining = salvo?.target === target ? salvo.remaining : 0;
+  let remaining = salvo && salvoTarget !== null ? salvo.remaining : 0;
+  const defending = [...threats];
   const launched: Launch[] = [];
+  const launch = (from: number, target: MissileTarget, launcher: number) => {
+    const design = ship.ammunition[from]?.missile;
+    if (!design) return;
+    takeAmmunition(ship, from, { missiles: 1, mass: missileMass(design) });
+    launched.push({ missile: launchMissile(nextId(), attacker, target, design, ship), launcher });
+  };
   const launchers = ship.weapons.launchers.map((state, i) => {
     const integrity = ship.integrity[state.slot] ?? 0;
     if (integrity <= 0) return state;
-    const from = ship.ammunition.findIndex((magazine) => magazine.missiles > 0);
-    const design = ship.ammunition[from]?.missile;
     // The allowance stops rounding error in the countdown from holding a launch back a step.
     const reload = state.reload - dt > 1e-9 ? state.reload - dt : 0;
-    if (reload > 0 || remaining === 0 || !target || !design) return { ...state, reload };
-    takeAmmunition(ship, from, { missiles: 1, mass: missileMass(design) });
-    remaining -= 1;
-    launched.push({
-      missile: launchMissile(nextId(), attacker, target, design, ship),
-      launcher: i,
-    });
+    if (reload > 0) return { ...state, reload };
+    const antiMissile = magazineOf(ship, (m) => missileRole(m) === 'anti-missile');
+    const threat = defending[0];
+    if (threat !== undefined && antiMissile >= 0) {
+      defending.shift();
+      launch(antiMissile, { munition: threat }, i);
+    } else {
+      const from = salvo ? magazineOf(ship, (m) => m.name === salvo.missile) : -1;
+      if (remaining === 0 || salvoTarget === null || from < 0) return { ...state, reload };
+      remaining -= 1;
+      launch(from, salvoTarget, i);
+    }
     return { ...state, reload: state.launcher.reloadTime / integrity };
   });
-  const done = remaining === 0 || missilesLeft(ship) === 0;
+  const done = remaining === 0 || !salvo || missilesLeft(ship, salvo.missile) === 0;
   ship.weapons = {
     ...ship.weapons,
     launchers,

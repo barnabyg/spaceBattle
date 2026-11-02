@@ -100,7 +100,9 @@ test('a nuclear warhead going off near the enemy strips its radiators and mounts
   await page.getByLabel('Missiles', { exact: true }).fill('1');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await page.getByRole('button', { name: 'Resume' }).click();
-  await expect(page.getByLabel('Missiles in flight')).toHaveText('1 ours · 0 incoming');
+  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
+    '1 ours · 0 incoming',
+  );
   await fastest(page);
 
   // A near miss: the warhead goes off by its proximity fuse 1 km from the Lance, and its X-rays
@@ -118,6 +120,35 @@ test('a nuclear warhead going off near the enemy strips its radiators and mounts
   // With its only weapon gone, the Lance is disabled.
   const result = page.getByRole('dialog', { name: 'Battle result' });
   await expect(result.getByRole('heading')).toHaveText('Blue wins');
+});
+
+test('anti-missile missiles intercept a salvo', async ({ page }) => {
+  await setUpInTestMode(page);
+  await page.getByLabel('Seed').fill('1');
+  await chooseSide(page, 'Blue', { design: 'Quiver' });
+  await chooseSide(page, 'Red', { design: 'Bulwark' });
+  await page.getByRole('button', { name: 'Start battle' }).click();
+  await page.keyboard.press(' ');
+  await page.getByLabel('Missiles', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
+    '2 ours · 0 incoming',
+  );
+
+  // The Bulwark's automatic defence meets each missile with an anti-missile missile.
+  const testLog = page.getByRole('region', { name: 'Test log' });
+  await expect(testLog).toContainText(/Red launched anti-missile missile \d+ at missile 1 /);
+  await expect(testLog).toContainText(/Red launched anti-missile missile \d+ at missile 2 /);
+  await expect(page.getByLabel('Anti-missile missiles in flight')).toHaveText(
+    '0 ours · 2 incoming',
+  );
+  await fastest(page);
+  await expect(testLog).toContainText(/Red anti-missile missile \d+ (shot down|missed) Blue/, {
+    timeout: 30_000,
+  });
+  const battleLog = page.getByRole('list', { name: 'Battle log' });
+  await expect(battleLog).toContainText(/Our missile shot down by anti-missile missile|missed/);
 });
 
 test('a batch run reports an outcome for every battle and sums them up', async ({ page }) => {

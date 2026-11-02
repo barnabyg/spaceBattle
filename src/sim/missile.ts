@@ -20,12 +20,22 @@ export const MISSILE_FINENESS = 8;
 /** A missile's average density as launched, propellant and all, kg/m³. */
 export const MISSILE_DENSITY = 1_000;
 
+/**
+ * What a missile is launched at: an enemy ship, by its side; or, for an anti-missile missile, an
+ * enemy missile in flight, by its id among the munitions.
+ */
+export type MissileTarget = SideId | { readonly munition: number };
+
+/** Whether a missile's target is another missile rather than a ship. */
+export const targetsMissile = (target: MissileTarget): target is { readonly munition: number } =>
+  typeof target !== 'string';
+
 /** A missile in flight. */
 export interface Missile {
   /** Unique among the battle's munitions. */
   readonly id: number;
   readonly attacker: SideId;
-  readonly target: SideId;
+  readonly target: MissileTarget;
   readonly design: MissileDesign;
   /** kg */
   readonly propellantMass: number;
@@ -84,7 +94,7 @@ export const missileReach = (design: MissileDesign): number =>
 export const launchMissile = (
   id: number,
   attacker: SideId,
-  target: SideId,
+  target: MissileTarget,
   design: MissileDesign,
   from: Pick<Motion, 'position' | 'velocity'>,
 ): Missile => ({

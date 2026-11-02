@@ -207,6 +207,42 @@ describe('computer captain', () => {
     expect(battle.advance(10).filter((e) => e.type === 'launch')).toHaveLength(launchers.length);
   });
 
+  it('keeps automatic missile defence on, and launches its anti-ship missiles at the enemy', () => {
+    const bulwark = handMadeDesign('bulwark');
+    const battle = againstIdlePlayer(testDesign(), bulwark, 30_000 * KM);
+    battle.giveOrder('red', { type: 'anti-missile', automatic: false });
+    const launches = battle.advance(10).filter((e) => e.type === 'launch');
+    expect(battle.observe('red').ownShip.weapons.antiMissile.automatic).toBe(true);
+    const launchers = bulwark.sections
+      .flatMap((s) => s.mounts)
+      .filter((m) => m.type === 'launcher');
+    expect(launches).toHaveLength(launchers.length);
+    expect(launches.every((e) => e.attacker === 'red' && e.target === 'blue')).toBe(true);
+    for (const missile of battle.observe('red').munitions) {
+      expect(missile).toMatchObject({ kind: 'missile', name: 'Spike', role: 'anti-ship' });
+    }
+  });
+
+  it('faces anti-missile missiles that shoot down its missiles without any order', () => {
+    // An idle player in the Bulwark gives no orders; its automatic missile defence is on.
+    const battle = againstIdlePlayer(
+      handMadeDesign('bulwark'),
+      handMadeDesign('quiver'),
+      40_000 * KM,
+    );
+    const events: BattleEvent[] = [];
+    while (!events.some((e) => e.type === 'intercept')) {
+      if (battle.time > 2 * HOUR || battle.outcome) throw new Error('No missile was shot down');
+      events.push(...battle.advance(60));
+    }
+    const intercept = events.find((e) => e.type === 'intercept');
+    expect(intercept).toMatchObject({
+      side: 'blue',
+      attacker: 'red',
+      weapon: 'anti-missile-missile',
+    });
+  }, 20_000);
+
   it('keeps its point defence on missiles, and on the ship once it has nothing else', () => {
     const armed = withSection(defendedTestDesign(), 'forward', {
       ...defendedTestDesign().sections[0],
@@ -333,7 +369,7 @@ describe('two computer captains', () => {
     expectDecided(battle);
   }, 30_000); // Simulates most of a day of battle; takes a few seconds.
 
-  it.each(['lance', 'bastion', 'quiver', 'torch', 'needle', 'rampart'])(
+  it.each(['lance', 'bastion', 'quiver', 'torch', 'needle', 'rampart', 'bulwark'])(
     'fight %s against its own design to a result',
     (design) => {
       const battle = runBattle(computerDuel(design, design, 200_000 * KM), { maxTime: 24 * HOUR });

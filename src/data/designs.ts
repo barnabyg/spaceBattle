@@ -1,5 +1,6 @@
 import { parseDesign, type Design } from '../sim/design';
 import bastion from './designs/bastion.json';
+import bulwark from './designs/bulwark.json';
 import lance from './designs/lance.json';
 import needle from './designs/needle.json';
 import pyre from './designs/pyre.json';
@@ -22,6 +23,7 @@ export const HAND_MADE_DESIGNS: readonly Design[] = [
   rampart,
   ward,
   rime,
+  bulwark,
 ].map(parseDesign);
 
 export const handMadeDesign = (id: string): Design => {

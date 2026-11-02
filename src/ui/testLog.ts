@@ -44,11 +44,23 @@ export const describeTestEvent = (event: BattleEvent, sides: readonly SideSetup[
     }
     case 'impact':
       return `${time} ${nameOf(event.attacker)} ${IMPACT_TEXT[event.munition].toLowerCase()} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatGJ(event.energy)} · ${formatKmPerS(event.speed)}`;
-    case 'launch':
-      return `${time} ${nameOf(event.attacker)} launched missile ${event.munition} at ${nameOf(event.target)} from ${partText(event.section, event.mount)}`;
+    case 'launch': {
+      const { target } = event;
+      return typeof target === 'string'
+        ? `${time} ${nameOf(event.attacker)} launched missile ${event.munition} at ${nameOf(target)} from ${partText(event.section, event.mount)}`
+        : `${time} ${nameOf(event.attacker)} launched anti-missile missile ${event.munition} at missile ${target.munition} from ${partText(event.section, event.mount)}`;
+    }
     case 'intercept': {
       const chance = Math.round(event.chance * 100);
-      return `${time} ${nameOf(event.side)} point defence (${partText(event.section, event.mount)}) shot down ${nameOf(event.attacker)} ${event.warhead} missile ${event.munition} · ${formatKm(event.distance, 2)} out · ${chance}% chance`;
+      const weapon =
+        event.antiMissile === null
+          ? `point defence (${partText(event.section, event.mount)})`
+          : `anti-missile missile ${event.antiMissile}`;
+      return `${time} ${nameOf(event.side)} ${weapon} shot down ${nameOf(event.attacker)} ${event.warhead} missile ${event.munition} · ${formatKm(event.distance, 2)} out · ${chance}% chance`;
+    }
+    case 'miss': {
+      const distance = event.distance.toLocaleString('en-GB', { maximumFractionDigits: 0 });
+      return `${time} ${nameOf(event.side)} anti-missile missile ${event.antiMissile} missed ${nameOf(event.attacker)} missile ${event.munition} · burst ${distance} m off · ${Math.round(event.chance * 100)}% chance`;
     }
     case 'detonation': {
       const burst = event.contact

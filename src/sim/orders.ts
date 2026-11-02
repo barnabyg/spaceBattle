@@ -1,4 +1,5 @@
 import type { SideId } from './battle';
+import type { MissileTarget } from './missile';
 import type { PowerSystem } from './power';
 import type { Vec3 } from './vector';
 
@@ -73,14 +74,31 @@ export interface WeaponsOrder {
 
 /**
  * Launch a salvo of `missiles` missiles at a target, each launcher firing as soon as it is
- * loaded, until the salvo is done or the magazines are empty. It stands apart from the weapons
- * order and its fire mode: missiles are launched only by this order. A new launch order replaces
- * the salvo still to go; zero missiles calls it off.
+ * loaded, until the salvo is done or the magazines are empty of the missile it launches. The
+ * target is an enemy ship, by its side, for anti-ship missiles; or an enemy missile in flight
+ * aimed at a ship, `{ munition: id }`, for anti-missile missiles. `missile` names the missile
+ * design to launch; left out, it is the first design of the right kind the magazines hold, anti-
+ * ship or anti-missile, preferring one with missiles left. It stands apart from the weapons
+ * order and its fire mode. A new launch order replaces the salvo still to go; zero missiles calls
+ * it off.
  */
 export interface LaunchOrder {
   readonly type: 'launch';
-  readonly target: SideId;
+  readonly target: MissileTarget;
   readonly missiles: number;
+  readonly missile?: string;
+}
+
+/**
+ * Turn automatic missile defence on or off. While it is on, the ship launches an anti-missile
+ * missile at each enemy missile predicted to reach it that none of its anti-missile missiles is
+ * already after, as launchers come free, ahead of any salvo. Off, anti-missile missiles are
+ * launched only by launch order. Every ship starts with it on; it does nothing for a ship without
+ * anti-missile missiles.
+ */
+export interface AntiMissileOrder {
+  readonly type: 'anti-missile';
+  readonly automatic: boolean;
 }
 
 /**
@@ -95,8 +113,9 @@ export const POINT_DEFENCE_PRIORITIES: readonly PointDefencePriority[] = [
 
 /**
  * Set what the point defence fires on. It stands apart from the weapons order: on missiles it
- * fires whatever the fire mode, at any enemy missile within its reach. Every ship starts with
- * point defence on missiles only.
+ * fires whatever the fire mode, at any enemy missile within its reach that is aimed at the ship.
+ * It leaves enemy anti-missile missiles alone, as they threaten only missiles. Every ship starts
+ * with point defence on missiles only.
  */
 export interface PointDefenceOrder {
   readonly type: 'point-defence';
@@ -113,4 +132,5 @@ export type Order =
   | ShieldsOrder
   | WeaponsOrder
   | LaunchOrder
+  | AntiMissileOrder
   | PointDefenceOrder;

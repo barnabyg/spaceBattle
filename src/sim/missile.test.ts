@@ -68,7 +68,11 @@ describe('missiles', () => {
     expect(launched).toHaveLength(2);
     expect(launched[0]).toMatchObject({ attacker: 'blue', target: 'red', section: 'forward' });
     expect(missilesInFlight(battle)).toHaveLength(2);
-    expect(own(battle, 'blue').weapons.salvo).toEqual({ target: 'red', remaining: 1 });
+    expect(own(battle, 'blue').weapons.salvo).toEqual({
+      target: 'red',
+      remaining: 1,
+      missile: TEST_MISSILE.name,
+    });
     expect(own(battle, 'blue').weapons.launchers[0]?.loaded).toBe(false);
     expect(battle.advance(TEST_LAUNCHER.reloadTime - 1).some((e) => e.type === 'launch')).toBe(
       false,

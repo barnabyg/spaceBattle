@@ -3,11 +3,13 @@ import { handMadeDesign } from '../data/designs';
 import { createBattle, type Battle, type BattleEvent } from '../sim/battle';
 import { IDENTITY } from '../sim/quaternion';
 import {
+  antiMissileTestDesign,
   armedTestDesign,
   defendedTestDesign,
   duelSetup,
   gunnedTestDesign,
   launchingTestDesign,
+  TEST_ANTI_MISSILE_MISSILE,
   TEST_NUCLEAR_MISSILE,
   testDesign,
   testSetup,
@@ -152,6 +154,29 @@ describe('battle runner', () => {
     expect(intercept).toBeDefined();
     expect(r.timeCompression).toBe(1);
     expect(r.battle.time).toBeCloseTo(intercept?.time ?? NaN, 9);
+  });
+
+  it('drops to real time when an anti-missile missile misses', () => {
+    const { warhead } = TEST_ANTI_MISSILE_MISSILE;
+    const antiMissile = {
+      ...TEST_ANTI_MISSILE_MISSILE,
+      warhead: warhead.type === 'fragmentation' ? { ...warhead, fragments: 1 } : warhead,
+    };
+    const battle = createBattle(
+      duelSetup(launchingTestDesign(1), antiMissileTestDesign({ antiMissile }), 500e3),
+    );
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    battle.advance(1);
+    const r = createBattleRunner(battle);
+    r.setTimeCompression(1000);
+    const events: BattleEvent[] = [];
+    for (let i = 0; i < 100 && !events.some((e) => e.type === 'miss'); i++) {
+      events.push(...r.update(0.25));
+    }
+    const miss = events.find((e) => e.type === 'miss');
+    expect(miss).toBeDefined();
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeCloseTo(miss?.time ?? NaN, 9);
   });
 
   it('drops to real time when a component is lost', () => {

@@ -151,7 +151,9 @@ test('a ship with launchers launches missiles by order, dropping to real time', 
   await startFreeBattle(page, { blue: { design: 'Quiver' } });
   await page.keyboard.press(' ');
   await expect(page.getByLabel('Ammunition')).toHaveText('12 of 12 missiles');
-  await expect(page.getByLabel('Missiles in flight')).toHaveText('0 ours · 0 incoming');
+  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
+    '0 ours · 0 incoming',
+  );
   await expect(
     page.getByRole('region', { name: 'Damage' }).getByText('Launcher (mount)'),
   ).toHaveCount(2);
@@ -163,10 +165,38 @@ test('a ship with launchers launches missiles by order, dropping to real time', 
   await expect(launch).toHaveText('Launching · 2 to go · 12 missiles left');
   for (let i = 0; i < 9; i++) await page.keyboard.press('+');
   await page.getByRole('button', { name: 'Resume' }).click();
-  await expect(page.getByLabel('Missiles in flight')).toHaveText('2 ours · 0 incoming');
+  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
+    '2 ours · 0 incoming',
+  );
   await expect(page.getByLabel('Time compression')).toHaveText('1×');
   await expect(page.getByLabel('Ammunition')).toHaveText('10 of 12 missiles');
   await expect(page.getByRole('list', { name: 'Battle log' })).toContainText('Missile launched');
+});
+
+test('a ship with anti-missile missiles shows them apart, and takes missile defence orders', async ({
+  page,
+}) => {
+  await startFreeBattle(page, { blue: { design: 'Bulwark' }, red: { design: 'Quiver' } });
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Ammunition')).toHaveText(
+    '6 of 6 missiles · 16 of 16 anti-missile missiles',
+  );
+  await expect(page.getByLabel('Anti-missile missiles in flight')).toHaveText(
+    '0 ours · 0 incoming',
+  );
+  await expect(page.getByLabel('Launch state')).toContainText('6 missiles ready · reach');
+  const state = page.getByLabel('Anti-missile state');
+  await expect(state).toHaveText('Automatic · 16 left');
+  // No enemy missile is on its way yet.
+  await expect(page.getByRole('button', { name: 'Launch at nearest missile' })).toBeDisabled();
+
+  const automatic = page.getByRole('button', { name: 'Automatic', exact: true });
+  const byOrder = page.getByRole('button', { name: 'By order only' });
+  await expect(automatic).toHaveClass(/active/);
+  await byOrder.click();
+  await expect(byOrder).toHaveClass(/active/);
+  await expect(automatic).not.toHaveClass(/active/);
+  await expect(state).toHaveText('By order only · 16 left');
 });
 
 test('a ship with point defence shows its guns and rounds, and takes priority orders', async ({

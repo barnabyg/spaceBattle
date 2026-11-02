@@ -44,6 +44,13 @@ const HEADING_SCALE = 0.06;
 const MUNITION_SIZE = 5;
 /** Missiles are drawn larger than slugs, px. */
 const MISSILE_SIZE = 9;
+/**
+ * Anti-missile missiles are drawn between the two, px, and paler: their side's colour this far
+ * towards white.
+ */
+const ANTI_MISSILE_SIZE = 7;
+const ANTI_MISSILE_PALENESS = 0.55;
+const WHITE = new THREE.Color('#ffffff');
 
 /** A nuclear burst's flash, at its brightest this share of the map's height across. */
 const BURST_FLASH_SIZE = 0.12;
@@ -229,11 +236,13 @@ export const createTacticalMap = (
     return { kind, line };
   });
 
-  // Munitions in flight: a dot each, in the colour of the side that fired it; missiles larger.
+  // Munitions in flight: a dot each, in the colour of the side that fired it; missiles larger,
+  // anti-missile missiles paler.
   const munitionColours = new Map(
     sides.map((side, index) => [side.id, new THREE.Color(colours[index] ?? '#ffffff')]),
   );
-  const munitionDots = (size: number) => {
+  const munitionDots = (size: number, paleness = 0) => {
+    const tint = new THREE.Color();
     const geometry = new THREE.BufferGeometry();
     let capacity = 0;
     const points = new THREE.Points(
@@ -264,8 +273,8 @@ export const createTacticalMap = (
           munition.position.y / KM,
           munition.position.z / KM,
         );
-        const tint = munitionColours.get(munition.attacker);
-        tints.setXYZ(i, tint?.r ?? 1, tint?.g ?? 1, tint?.b ?? 1);
+        tint.copy(munitionColours.get(munition.attacker) ?? WHITE).lerp(WHITE, paleness);
+        tints.setXYZ(i, tint.r, tint.g, tint.b);
       });
       positions.needsUpdate = true;
       tints.needsUpdate = true;
@@ -314,9 +323,12 @@ export const createTacticalMap = (
 
   const showSlugs = munitionDots(MUNITION_SIZE);
   const showMissiles = munitionDots(MISSILE_SIZE);
+  const showAntiMissiles = munitionDots(ANTI_MISSILE_SIZE, ANTI_MISSILE_PALENESS);
   const showMunitions = (observation: SideObservation) => {
-    showSlugs(observation.munitions.filter((m) => m.kind === 'slug'));
-    showMissiles(observation.munitions.filter((m) => m.kind === 'missile'));
+    const { munitions } = observation;
+    showSlugs(munitions.filter((m) => m.kind === 'slug'));
+    showMissiles(munitions.filter((m) => m.kind === 'missile' && m.role === 'anti-ship'));
+    showAntiMissiles(munitions.filter((m) => m.kind === 'missile' && m.role === 'anti-missile'));
   };
 
   const resize = () => {

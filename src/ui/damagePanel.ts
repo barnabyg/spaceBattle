@@ -1,6 +1,6 @@
 import type { BattleEvent, SectionObservation, SideId, SideObservation } from '../sim/battle';
 import type { ComponentType, SectionKind } from '../sim/design';
-import type { BeamKind, HitEvent, ImpactKind } from '../sim/events';
+import type { BeamKind, HitEvent, ImpactKind, InterceptWeapon } from '../sim/events';
 import { el } from './el';
 import { formatBattleTime, formatGJ, formatKilotons, formatKm, formatMm, formatMW } from './format';
 
@@ -39,6 +39,12 @@ export const IMPACT_TEXT: Readonly<Record<ImpactKind, string>> = {
   slug: 'Slug',
   missile: 'Missile',
   'point-defence': 'Point defence',
+};
+
+/** What shot a missile down, as a name. */
+export const INTERCEPT_TEXT: Readonly<Record<InterceptWeapon, string>> = {
+  'point-defence': 'Point defence',
+  'anti-missile-missile': 'Anti-missile missile',
 };
 
 /** How many of the latest events the log shows. */
@@ -92,13 +98,24 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
         : `${time} ${munition} hit on our ${part} · ${formatGJ(event.energy)}`;
     }
     case 'launch':
+      if (typeof event.target !== 'string') {
+        return event.attacker === viewer
+          ? `${time} Anti-missile missile launched`
+          : `${time} Enemy anti-missile missile launched`;
+      }
       return event.attacker === viewer
         ? `${time} Missile launched`
         : `${time} Enemy missile launched at us`;
-    case 'intercept':
+    case 'intercept': {
+      const weapon = INTERCEPT_TEXT[event.weapon];
       return event.side === viewer
-        ? `${time} Point defence shot down enemy missile · ${formatKm(event.distance, 1)}`
-        : `${time} Our missile shot down by point defence`;
+        ? `${time} ${weapon} shot down enemy missile · ${formatKm(event.distance, 1)}`
+        : `${time} Our missile shot down by ${weapon.toLowerCase()}`;
+    }
+    case 'miss':
+      return event.side === viewer
+        ? `${time} Anti-missile missile missed`
+        : `${time} Enemy anti-missile missile missed our missile`;
     case 'detonation': {
       const burst = `${formatKilotons(event.yield)} ${event.contact ? 'on contact' : `at ${formatKm(event.distance, 1)}`}`;
       return event.attacker === viewer

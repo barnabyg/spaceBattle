@@ -179,7 +179,7 @@ A short-range, rapid-fire gun that shoots down incoming missiles.
 _Avoid_: PDC, CIWS, flak
 
 **Anti-missile missile**:
-A missile launched to intercept enemy missiles rather than ships.
+A missile launched to intercept enemy missiles rather than ships, by order or automatically at each incoming missile. It cannot harm a ship.
 _Avoid_: Interceptor, counter-missile
 
 ## Play

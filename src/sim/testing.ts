@@ -249,6 +249,51 @@ export const launchingTestDesign = (
   });
 
 /**
+ * An anti-missile missile for test designs: 400 kg at launch, half of it propellant, with a 40 kN
+ * drive at 20 km/s exhaust velocity, so 100–200 m/s² and a delta-v of 13.9 km/s. Its
+ * fragmentation warhead bursts 100 m from its target into 10,000 fragments of 5 g, spreading
+ * through a cone of 0.25 rad half-angle: about 25 m across at the target.
+ */
+export const TEST_ANTI_MISSILE_MISSILE: MissileDesign = {
+  name: 'Test anti-missile missile',
+  dryMass: 200,
+  propellantMass: 200,
+  thrust: 40e3,
+  exhaustVelocity: 20e3,
+  warhead: {
+    type: 'fragmentation',
+    fragments: 10_000,
+    fragmentMass: 0.005,
+    burstDistance: 100,
+    spread: 0.25,
+  },
+};
+
+/**
+ * The test design with `launchers` test launchers on forward mounts, a magazine of
+ * `antiMissiles` anti-missile missiles of a design and, given any, a magazine of `missiles` test
+ * missiles after it.
+ */
+export const antiMissileTestDesign = ({
+  antiMissiles = 4,
+  missiles = 0,
+  launchers = 1,
+  antiMissile = TEST_ANTI_MISSILE_MISSILE,
+}: {
+  antiMissiles?: number;
+  missiles?: number;
+  launchers?: number;
+  antiMissile?: MissileDesign;
+} = {}): Design =>
+  withSection(testDesign(), 'forward', {
+    components: [
+      missileMagazine(antiMissiles, antiMissile),
+      ...(missiles > 0 ? [missileMagazine(missiles)] : []),
+    ],
+    mounts: Array.from({ length: launchers }, () => TEST_LAUNCHER),
+  });
+
+/**
  * A point defence gun for test designs: bursts of 20 rounds of 50 g at 5 km/s, five bursts a
  * second, spreading 2 mrad. Each burst takes 20 × ½mv² / 0.5 = 25 MJ, so it draws 125 MW while it
  * fires, and it reaches 5 km/s × 5 s = 25 km.

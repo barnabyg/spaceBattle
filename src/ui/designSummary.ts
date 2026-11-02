@@ -1,8 +1,10 @@
 import {
   designComponent,
   designComponentsOfType,
+  missileRole,
   type Design,
   type MissileDesign,
+  type MissileRole,
 } from '../sim/design';
 import { deltaVWith, massProperties } from '../sim/ship';
 import { kineticGunRange } from '../sim/kinetic';
@@ -28,6 +30,52 @@ const missileName = (missile: MissileDesign): string =>
   missile.warhead.type === 'nuclear'
     ? `${missile.name} (${formatKilotons(missile.warhead.yield)} nuclear)`
     : missile.name;
+
+/** How many missiles of a design the magazines hold, by name. */
+const missilesOf = (design: Design, missile: MissileDesign): number =>
+  designComponentsOfType(design, 'magazine').reduce(
+    (n, m) => (m.missile?.name === missile.name ? n + m.missiles : n),
+    0,
+  );
+
+/** A design's missiles in a role, one per design. */
+const missilesIn = (design: Design, role: MissileRole): readonly MissileDesign[] =>
+  designMissiles(design).filter(
+    (missile, i, all) =>
+      missileRole(missile) === role && all.findIndex((m) => m.name === missile.name) === i,
+  );
+
+/** A design's anti-ship missiles: its launchers, how many of each, their delta-v and reach. */
+const describeMissiles = (design: Design): string => {
+  const launchers = designComponentsOfType(design, 'launcher').length;
+  if (launchers === 0) return 'None';
+  const missiles = missilesIn(design, 'anti-ship');
+  if (missiles.length === 0) return `${launchers} launchers · anti-missile only`;
+  const held = missiles.map(
+    (m) => `${missilesOf(design, m).toLocaleString('en-GB')} ${missileName(m)}`,
+  );
+  return `${launchers} launchers · ${held.join(', ')} · ${formatKmPerS(Math.max(...missiles.map((m) => missileDeltaV(m))))} · reach ${formatKm(Math.max(...missiles.map(missileReach)))}`;
+};
+
+/**
+ * A design's anti-missile missiles: how many of each, their delta-v, and their warheads'
+ * fragments and burst distance.
+ */
+const describeAntiMissiles = (design: Design): string => {
+  const missiles =
+    designComponentsOfType(design, 'launcher').length > 0 ? missilesIn(design, 'anti-missile') : [];
+  if (missiles.length === 0) return 'None';
+  return missiles
+    .map((m) => {
+      const { warhead } = m;
+      const burst =
+        warhead.type === 'fragmentation'
+          ? ` · ${warhead.fragments.toLocaleString('en-GB')} fragments at ${warhead.burstDistance.toLocaleString('en-GB')} m`
+          : '';
+      return `${missilesOf(design, m).toLocaleString('en-GB')} ${m.name} · ${formatKmPerS(missileDeltaV(m))}${burst}`;
+    })
+    .join(' · ');
+};
 
 /** Beam weapons of one kind: how many, their beam power together and the longest reach. */
 const describeBeams = (weapons: readonly BeamWeaponDesign[]): string =>
@@ -69,9 +117,6 @@ export const designSummary = (design: Design): readonly (readonly [string, strin
   const guns = designComponentsOfType(design, 'kinetic-gun');
   const magazines = designComponentsOfType(design, 'magazine');
   const slugs = magazines.reduce((n, m) => n + m.slugs, 0);
-  const launchers = designComponentsOfType(design, 'launcher');
-  const missiles = magazines.reduce((n, m) => n + m.missiles, 0);
-  const missileDesigns = designMissiles(design);
   const pointDefence = designComponentsOfType(design, 'point-defence');
   const rounds = magazines.reduce((n, m) => n + m.rounds, 0);
   return [
@@ -98,12 +143,8 @@ export const designSummary = (design: Design): readonly (readonly [string, strin
         ? 'None'
         : `${guns.length} · ${formatKmPerS(Math.max(...guns.map((g) => g.muzzleVelocity)))} · ${slugs.toLocaleString('en-GB')} slugs · reach ${formatKm(Math.max(...guns.map(kineticGunRange)))}`,
     ],
-    [
-      'Missiles',
-      launchers.length === 0
-        ? 'None'
-        : `${launchers.length} launchers · ${missiles.toLocaleString('en-GB')} ${missileDesigns.map(missileName).join(', ')} · ${formatKmPerS(Math.max(...missileDesigns.map((m) => missileDeltaV(m))))} · reach ${formatKm(Math.max(...missileDesigns.map(missileReach)))}`,
-    ],
+    ['Missiles', describeMissiles(design)],
+    ['Anti-missile missiles', describeAntiMissiles(design)],
     [
       'Point defence',
       pointDefence.length === 0

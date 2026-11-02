@@ -1,6 +1,6 @@
-import type { SideObservation } from '../sim/battle';
-import { SECTION_KINDS } from '../sim/design';
-import type { BeamKind, MunitionKind } from '../sim/events';
+import type { MunitionObservation, SideObservation } from '../sim/battle';
+import { SECTION_KINDS, type MissileRole } from '../sim/design';
+import type { BeamKind } from '../sim/events';
 import { OVERHEAT_TEMPERATURE } from '../sim/heat';
 import { POWER_SYSTEMS } from '../sim/power';
 import { distance, length } from '../sim/vector';
@@ -22,10 +22,31 @@ const formatMN = (newtons: number) =>
 const count = (n: number) => n.toLocaleString('en-GB');
 
 /** How many munitions of a kind are in flight, ours and the enemy's. */
-const inFlight = ({ munitions, ownShip }: SideObservation, kind: MunitionKind): string => {
-  const flying = munitions.filter((m) => m.kind === kind);
+const inFlight = (
+  { munitions, ownShip }: SideObservation,
+  kind: (munition: MunitionObservation) => boolean,
+): string => {
+  const flying = munitions.filter(kind);
   const ours = flying.filter((m) => m.attacker === ownShip.sideId).length;
   return `${ours} ours · ${flying.length - ours} incoming`;
+};
+
+/** Whether a munition is a missile in a role. */
+const missileIn =
+  (role: MissileRole) =>
+  (munition: MunitionObservation): boolean =>
+    munition.kind === 'missile' && munition.role === role;
+
+/** Missiles of a role left and held when full, e.g. "10 of 12 missiles". */
+const missilesHeld = (
+  { ownShip: { weapons } }: SideObservation,
+  role: MissileRole,
+  name: string,
+): readonly string[] => {
+  const designs = weapons.ammunition.missileDesigns.filter((d) => d.role === role);
+  const capacity = designs.reduce((n, d) => n + d.capacity, 0);
+  const left = designs.reduce((n, d) => n + d.missiles, 0);
+  return capacity > 0 ? [`${count(left)} of ${count(capacity)} ${name}`] : [];
 };
 
 /**
@@ -111,21 +132,20 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   ['Beam power', beamPower],
   [
     'Ammunition',
-    ({ ownShip: { weapons } }) => {
-      const { slugs, slugCapacity, rounds, roundCapacity, missiles, missileCapacity } =
-        weapons.ammunition;
+    (o) => {
+      const { slugs, slugCapacity, rounds, roundCapacity } = o.ownShip.weapons.ammunition;
       const held = [
         ...(slugCapacity > 0 ? [`${count(slugs)} of ${count(slugCapacity)} slugs`] : []),
         ...(roundCapacity > 0 ? [`${count(rounds)} of ${count(roundCapacity)} rounds`] : []),
-        ...(missileCapacity > 0
-          ? [`${count(missiles)} of ${count(missileCapacity)} missiles`]
-          : []),
+        ...missilesHeld(o, 'anti-ship', 'missiles'),
+        ...missilesHeld(o, 'anti-missile', 'anti-missile missiles'),
       ];
       return held.length > 0 ? held.join(' · ') : '—';
     },
   ],
-  ['Slugs in flight', (o) => inFlight(o, 'slug')],
-  ['Missiles in flight', (o) => inFlight(o, 'missile')],
+  ['Slugs in flight', (o) => inFlight(o, (m) => m.kind === 'slug')],
+  ['Missiles in flight', (o) => inFlight(o, missileIn('anti-ship'))],
+  ['Anti-missile missiles in flight', (o) => inFlight(o, missileIn('anti-missile'))],
   [
     'Point defence',
     ({ ownShip: { weapons } }) => {

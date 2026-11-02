@@ -3,6 +3,7 @@ import { effectiveRange } from './beams';
 import { designComponents, designComponentsOfType, type Design, type ShieldType } from './design';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE } from './heat';
 import type {
+  AntiMissileOrder,
   LaunchOrder,
   ManoeuvreOrder,
   Order,
@@ -80,16 +81,25 @@ const counteredReach = (own: Design, enemies: readonly SideSetup[]): number => {
   );
 };
 
-/** How far the ship's missiles reach while it has a working launcher and missiles left, m. */
+/**
+ * How far the ship's anti-ship missiles reach while it has a working launcher and some of them
+ * left, m. Anti-missile missiles are left out: they are kept for missiles.
+ */
 const missileReach = ({ weapons }: OwnShipObservation): number =>
-  weapons.ammunition.missiles > 0 && weapons.launchers.some((l) => l.integrity > 0)
-    ? Math.max(0, ...weapons.ammunition.missileDesigns.map((missile) => missile.reach))
+  weapons.launchers.some((l) => l.integrity > 0)
+    ? Math.max(
+        0,
+        ...weapons.ammunition.missileDesigns
+          .filter((missile) => missile.role === 'anti-ship' && missile.missiles > 0)
+          .map((missile) => missile.reach),
+      )
     : 0;
 
 /**
  * The furthest the ship's working weapons fire, m: its lasers and particle beams, its kinetic
- * guns while it has slugs left, and its missiles while it has missiles and a launcher. Zero once
- * none is left. Point defence is left out: it is kept for missiles.
+ * guns while it has slugs left, and its anti-ship missiles while it has some and a launcher. Zero
+ * once none is left. Point defence and anti-missile missiles are left out: they are kept for
+ * missiles.
  */
 const ownReach = (ship: OwnShipObservation): number => {
   const { weapons } = ship;
@@ -123,11 +133,21 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
       return ship.heat.radiatorsDeployed === order.deployed;
     case 'shields':
       return ship.shields.raised === order.raised;
-    case 'launch':
+    case 'launch': {
+      const { salvo } = ship.weapons;
+      if (!salvo) return order.missiles === 0;
+      const sameTarget =
+        typeof order.target === 'string' || typeof salvo.target === 'string'
+          ? salvo.target === order.target
+          : salvo.target.munition === order.target.munition;
       return (
-        ship.weapons.salvo?.target === order.target &&
-        ship.weapons.salvo.remaining === order.missiles
+        sameTarget &&
+        salvo.remaining === order.missiles &&
+        (order.missile === undefined || salvo.missile === order.missile)
       );
+    }
+    case 'anti-missile':
+      return ship.weapons.antiMissile.automatic === order.automatic;
     case 'power':
       return order.priorities.every((system, i) => ship.power.priorities[i] === system);
     case 'point-defence':
@@ -149,9 +169,10 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
  * the enemy's weapons reach (contacts show every detail until sensors arrive), and otherwise
  * decides only from its side's observations.
  *
- * It targets the enemy and fires freely throughout, and launches a salvo of missiles, one from
- * each working launcher, whenever the enemy is within their reach and none of its missiles is
- * still in flight. It keeps its point defence on missiles, ignoring the enemy ship, unless point
+ * It targets the enemy and fires freely throughout, and launches a salvo of anti-ship missiles, one
+ * from each working launcher, whenever the enemy is within their reach and none of them is still
+ * in flight. It keeps automatic missile defence on, so its anti-missile missiles meet incoming
+ * missiles. It keeps its point defence on missiles, ignoring the enemy ship, unless point
  * defence is the only weapon it has left, when it turns it on the ship too and fights at its
  * short reach. If it outranges the enemy it holds just
  * inside its own reach, out of the enemy's; otherwise it closes to where its beams bite hard.
@@ -230,10 +251,12 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
         type: 'point-defence',
         priority: lastResort ? 'missiles-then-ship' : 'missiles',
       };
+      const antiMissile: AntiMissileOrder = { type: 'anti-missile', automatic: true };
       const course = manoeuvre(reach);
       const orders: Order[] = [
         weapons,
         pointDefence,
+        antiMissile,
         ...(course ? [course] : []),
         radiators,
         power,
@@ -246,7 +269,7 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
         orders.push(shields);
       }
       const inFlight = observation.munitions.some(
-        (m) => m.kind === 'missile' && m.attacker === side,
+        (m) => m.kind === 'missile' && m.attacker === side && m.role === 'anti-ship',
       );
       if (range <= missileReach(ship) && !inFlight && ship.weapons.salvo === null) {
         const launchers = ship.weapons.launchers.filter((l) => l.integrity > 0).length;

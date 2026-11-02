@@ -43,6 +43,16 @@ describe('design summary', () => {
     );
   });
 
+  it("shows a design's anti-missile missiles apart from its anti-ship missiles", () => {
+    expect(summaryOf('quiver').get('Anti-missile missiles')).toBe('None');
+    expect(summaryOf('bulwark').get('Missiles')).toMatch(
+      /^3 launchers · 6 Spike · [\d.]+ km\/s · reach [\d,]+ km$/,
+    );
+    expect(summaryOf('bulwark').get('Anti-missile missiles')).toBe(
+      '16 Wasp · 13.86 km/s · 8,000 fragments at 100 m',
+    );
+  });
+
   it("shows a design's point defence and the rounds it carries", () => {
     expect(summaryOf('lance').get('Point defence')).toBe('None');
     expect(summaryOf('rampart').get('Point defence')).toBe(

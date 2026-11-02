@@ -52,9 +52,14 @@ const OUTGOING_COLOUR = new THREE.Color('#a8d8ff');
 const INCOMING_COLOUR = new THREE.Color('#ff9a7a');
 /** A missile's drive flame, which its glint takes on while it burns. */
 const DRIVE_FLAME_COLOUR = new THREE.Color('#ffffff');
-/** Pixels across: a slug's glint, and a missile's, which is larger and burns bright. */
+/**
+ * Pixels across: a slug's glint, and a missile's, which is larger and burns bright; an
+ * anti-missile missile's is between the two, and takes on a green tinge.
+ */
 const SLUG_GLINT_SIZE = 3;
 const MISSILE_GLINT_SIZE = 7;
+const ANTI_MISSILE_GLINT_SIZE = 5;
+const ANTI_MISSILE_TINGE = new THREE.Color('#9dffb0');
 /** The contact's telescope view frames it at this many ship lengths, unless zoomed. */
 const TELESCOPE_DISTANCE = 1.8;
 const FOV = 35;
@@ -424,6 +429,7 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
   };
   const slugGlints = glintsOf(SLUG_GLINT_SIZE);
   const missileGlints = glintsOf(MISSILE_GLINT_SIZE);
+  const antiMissileGlints = glintsOf(ANTI_MISSILE_GLINT_SIZE);
   const glintColour = new THREE.Color();
   const burstFlash = createBurstFlash();
   const interceptFlash = createInterceptFlash();
@@ -488,6 +494,7 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       contactPosition = seen?.position ?? null;
       slugGlints.clear();
       missileGlints.clear();
+      antiMissileGlints.clear();
       if (seen) {
         updateShipView(contact, seen.orientation, seen.appearance);
         contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${formatKm(distance(seen.position, ship.position))}`;
@@ -497,6 +504,10 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
           glintColour.copy(munition.attacker === ship.sideId ? OUTGOING_COLOUR : INCOMING_COLOUR);
           if (munition.kind === 'slug') {
             slugGlints.add(at, glintColour);
+          } else if (munition.role === 'anti-missile') {
+            glintColour.lerp(ANTI_MISSILE_TINGE, 0.6);
+            if (munition.thrust > 0) glintColour.lerp(DRIVE_FLAME_COLOUR, 0.4);
+            antiMissileGlints.add(at, glintColour);
           } else {
             if (munition.thrust > 0) glintColour.lerp(DRIVE_FLAME_COLOUR, 0.6);
             missileGlints.add(at, glintColour);
@@ -505,6 +516,7 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       }
       slugGlints.show();
       missileGlints.show();
+      antiMissileGlints.show();
       const flash = burstFlash(observation);
       const shot = interceptFlash(observation);
       for (const view of [own, contact]) {

@@ -189,9 +189,37 @@ export interface NuclearWarheadDesign {
   readonly detonationDistance: number;
 }
 
-export type WarheadDesign = KineticWarheadDesign | NuclearWarheadDesign;
-export const WARHEAD_TYPES = ['kinetic', 'nuclear'] as const;
+/**
+ * The warhead of an anti-missile missile. Its proximity fuse sets it off near the enemy missile it
+ * is after, and it bursts into a cloud of fragments flung ahead through a cone; at the speeds
+ * missiles meet, a single fragment wrecks a missile. It does nothing to ships.
+ */
+export interface FragmentationWarheadDesign {
+  readonly type: 'fragmentation';
+  /** How many fragments it bursts into. */
+  readonly fragments: number;
+  /** Mass of each fragment, kg; together they are part of the missile's dry mass. */
+  readonly fragmentMass: number;
+  /** How close to its target missile the proximity fuse sets it off, m. */
+  readonly burstDistance: number;
+  /** Half-angle of the cone its fragments spread through, rad; less than a right angle. */
+  readonly spread: number;
+}
+
+export type WarheadDesign =
+  KineticWarheadDesign | NuclearWarheadDesign | FragmentationWarheadDesign;
+export const WARHEAD_TYPES = ['kinetic', 'nuclear', 'fragmentation'] as const;
 export type WarheadType = WarheadDesign['type'];
+
+/**
+ * What a missile is for: striking enemy ships, or, with a fragmentation warhead, intercepting
+ * enemy missiles as an anti-missile missile.
+ */
+export type MissileRole = 'anti-ship' | 'anti-missile';
+
+/** What a missile design is for, by its warhead. */
+export const missileRole = (missile: MissileDesign): MissileRole =>
+  missile.warhead.type === 'fragmentation' ? 'anti-missile' : 'anti-ship';
 
 /**
  * A guided missile: a point mass with its own drive, which can point its thrust any way, and its
@@ -594,12 +622,27 @@ const parseWarhead = (data: unknown, where: string): WarheadDesign => {
         detonationDistance: requireNumber(data, 'detonationDistance', where, { positive: false }),
       };
     }
+    case 'fragmentation': {
+      const fragments = requireNumber(data, 'fragments', where);
+      if (!Number.isInteger(fragments)) {
+        throw new Error(`${where}: "fragments" must be a whole number`);
+      }
+      const spread = requireNumber(data, 'spread', where);
+      if (spread >= Math.PI / 2) throw new Error(`${where}: "spread" must be under a right angle`);
+      return {
+        type,
+        fragments,
+        fragmentMass: requireNumber(data, 'fragmentMass', where),
+        burstDistance: requireNumber(data, 'burstDistance', where),
+        spread,
+      };
+    }
   }
 };
 
 const parseMissile = (data: unknown, where: string): MissileDesign => {
   if (!isRecord(data)) throw new Error(`${where}: "missile" must be an object`);
-  return {
+  const missile: MissileDesign = {
     name: requireString(data, 'name', where),
     dryMass: requireNumber(data, 'dryMass', where),
     propellantMass: requireNumber(data, 'propellantMass', where, { positive: false }),
@@ -607,6 +650,14 @@ const parseMissile = (data: unknown, where: string): MissileDesign => {
     exhaustVelocity: requireNumber(data, 'exhaustVelocity', where),
     warhead: parseWarhead(data.warhead, `${where} warhead`),
   };
+  const { warhead } = missile;
+  if (
+    warhead.type === 'fragmentation' &&
+    warhead.fragments * warhead.fragmentMass >= missile.dryMass
+  ) {
+    throw new Error(`${where}: "dryMass" must be more than the warhead's fragments`);
+  }
+  return missile;
 };
 
 const parseMagazine = (data: Record<string, unknown>, mass: number, where: string) => {
@@ -708,6 +759,16 @@ export const parseDesign = (data: unknown): Design => {
     !magazines.some((m) => m.missiles > 0)
   ) {
     throw new Error(`${where}: launchers need a magazine of missiles`);
+  }
+  // Orders name the missiles to launch, so a name stands for one missile design.
+  const missiles = new Map<string, string>();
+  for (const { missile } of magazines) {
+    if (!missile) continue;
+    const known = missiles.get(missile.name);
+    if (known !== undefined && known !== JSON.stringify(missile)) {
+      throw new Error(`${where}: two different missiles are named "${missile.name}"`);
+    }
+    missiles.set(missile.name, JSON.stringify(missile));
   }
   return design;
 };
