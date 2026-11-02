@@ -21,6 +21,10 @@ export default defineConfig({
         ...devices['Desktop Firefox'],
         viewport: { width: 3840, height: 2160 },
         deviceScaleFactor: 1,
+        launchOptions: {
+          // CI runners have no GPU, so Firefox blocklists WebGL there; force its software path.
+          firefoxUserPrefs: { 'webgl.force-enabled': true, 'webgl.enable-webgl2': true },
+        },
       },
     },
   ],
