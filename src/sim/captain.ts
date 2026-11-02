@@ -1,10 +1,9 @@
 import type { OwnShipObservation, SideId, SideObservation, SideSetup } from './battle';
-import { designComponentsOfType } from './design';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE } from './heat';
 import type { ManoeuvreOrder, Order, PowerOrder, RadiatorsOrder, WeaponsOrder } from './orders';
 import type { PowerSystem } from './power';
 import { distance } from './vector';
-import { effectiveRange } from './weapons';
+import { designReach } from './weapons';
 
 /**
  * A side's commander as the battle sees it: it decides on orders from what its side observes,
@@ -40,9 +39,6 @@ const COMBAT_PRIORITIES: readonly PowerSystem[] = ['weapons', 'shields', 'drive'
 const MANOEUVRE_PRIORITIES: readonly PowerSystem[] = ['drive', 'shields', 'weapons', 'capacitors'];
 
 /** The furthest any of a design's lasers fires, m; zero without lasers. */
-const designReach = (setup: SideSetup): number =>
-  Math.max(0, ...designComponentsOfType(setup.design, 'laser').map(effectiveRange));
-
 /** The furthest the ship's working lasers fire, m; zero once none is left. */
 const ownReach = (ship: OwnShipObservation): number =>
   Math.max(0, ...ship.weapons.lasers.filter((l) => l.integrity > 0).map((l) => l.effectiveRange));
@@ -81,7 +77,7 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
  */
 export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[]): Captain => {
   const enemies = sides.filter((s) => s.id !== side);
-  const enemyReach = Math.max(0, ...enemies.map(designReach));
+  const enemyReach = Math.max(0, ...enemies.map((enemy) => designReach(enemy.design)));
   /** When the battle last got somewhere, s, and the range to measure progress from, m. */
   let progress: { time: number; range: number } | null = null;
   let pressing = false;

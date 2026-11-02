@@ -220,9 +220,13 @@ export const thrusterTorque = (ship: ShipState): number =>
 export const noseOf = (ship: ShipState): Vec3 => rotate(ship.orientation, NOSE);
 
 /** Delta-v the ship can still achieve with its remaining propellant, m/s. */
-export const deltaVOf = (ship: ShipState): number => {
-  const { mass, dryMass } = massProperties(ship.design, ship.propellantMass);
-  return designComponent(ship.design, 'drive').exhaustVelocity * Math.log(mass / dryMass);
+export const deltaVOf = (ship: ShipState): number => deltaVWith(ship.design, ship.propellantMass);
+
+/** Delta-v of a design carrying `propellantMass` (its full load by default), m/s. */
+export const deltaVWith = (design: Design, propellantMass = design.propellantMass): number => {
+  const { mass, dryMass } = massProperties(design, propellantMass);
+  // Tsiolkovsky: Δv = vₑ · ln(m₀ / m_dry).
+  return designComponent(design, 'drive').exhaustVelocity * Math.log(mass / dryMass);
 };
 
 /** The most thrust the drive can give now, within the limits of power and heat, N. */

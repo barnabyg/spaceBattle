@@ -1,6 +1,6 @@
 import type { SideId } from './battle';
 import { componentSlots } from './components';
-import type { Design, LaserDesign } from './design';
+import { designComponentsOfType, type Design, type LaserDesign } from './design';
 import type { HitEvent } from './events';
 import { thermalLimit, thermalProperties } from './heat';
 import type { FireMode } from './orders';
@@ -35,6 +35,10 @@ export const effectiveRange = (laser: LaserDesign): number => {
   if (radius < laser.aperture / 2) return 0;
   return (radius * laser.aperture) / (1.22 * laser.wavelength);
 };
+
+/** The furthest any of a design's lasers reaches at full power, m; zero if it has none. */
+export const designReach = (design: Design): number =>
+  Math.max(0, ...designComponentsOfType(design, 'laser').map(effectiveRange));
 
 /** Electrical power a laser draws at full integrity while firing, W. */
 export const laserPower = (laser: LaserDesign): number => laser.beamPower / laser.efficiency;
