@@ -17,13 +17,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps firefox
+      # The runner has no GPU: give Firefox a virtual display and Mesa's software OpenGL for WebGL.
+      - run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libegl-mesa0
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
       - run: npm run audit
       - run: npm run build
-      - run: npm run e2e
+      - run: xvfb-run -a npm run e2e -- --headed
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
