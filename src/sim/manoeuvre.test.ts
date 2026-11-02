@@ -65,7 +65,7 @@ describe('manoeuvre orders', () => {
     battle.advance(300);
     battle.giveOrder('red', { type: 'burn', throttle: 0.3, duration: HOUR / 2 });
     expect(worstRangeError(battle, range, 2 * HOUR)).toBeLessThan(TOLERANCE);
-  });
+  }, 20_000); // Simulates hours of battle; takes a few seconds.
 
   it('closes to a range and stays there', () => {
     const battle = battleWith();
