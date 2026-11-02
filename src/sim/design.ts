@@ -246,9 +246,58 @@ export interface MagazineDesign {
   readonly missile: MissileDesign | null;
 }
 
+/**
+ * A shield whose field coils, inside a section, wrap the whole ship in a magnetic field that bends
+ * charged particle beams away; it has no effect on any other weapon. A proton is bent through an
+ * angle in proportion to the field over its momentum, so the field turns softer beams clear of
+ * the ship entirely and only part of a harder one. Its coils' power holds the field up: the field
+ * goes as the square root of the power they get, and with their integrity.
+ */
+export interface MagneticShieldDesign {
+  readonly type: 'magnetic-shield';
+  /** kg */
+  readonly mass: number;
+  /** Electrical power its coils draw while it is raised, W; all of it ends up as heat. */
+  readonly power: number;
+  /**
+   * Kinetic energy of the most energetic protons it turns away entirely at full power and
+   * integrity, J. Of a beam of harder protons it turns away the share of this one's momentum to
+   * theirs.
+   */
+  readonly maxParticleEnergy: number;
+}
+
+/**
+ * A shield of pumped coolant channels beneath a section's armour. Where a laser lands on the
+ * section it carries the beam's heat away from the point of impact into the ship's heat, for the
+ * radiators to shed, so the armour does not burn away. It protects only the section it is in, and
+ * has no effect on particle beams, which heat the armour through its depth, or on slugs.
+ */
+export interface CoolantShieldDesign {
+  readonly type: 'coolant-shield';
+  /** kg */
+  readonly mass: number;
+  /** Electrical power its pumps draw while it is raised, W; all of it ends up as heat. */
+  readonly power: number;
+  /**
+   * The most laser power it can carry away at full power and integrity, W; with less power its
+   * pumps carry less, in proportion.
+   */
+  readonly capacity: number;
+}
+
+export type ShieldDesign = MagneticShieldDesign | CoolantShieldDesign;
+export type ShieldType = ShieldDesign['type'];
+
 /** Components that sit inside a section's armour. */
 export type InternalComponentDesign =
-  DriveDesign | ThrustersDesign | ReactorDesign | CapacitorDesign | MagazineDesign;
+  | DriveDesign
+  | ThrustersDesign
+  | ReactorDesign
+  | CapacitorDesign
+  | MagazineDesign
+  | MagneticShieldDesign
+  | CoolantShieldDesign;
 /** Components that must be exposed, on a section's mounts. */
 export type MountedComponentDesign =
   | RadiatorDesign
@@ -261,7 +310,15 @@ export type MountedComponentDesign =
 export type ComponentDesign = InternalComponentDesign | MountedComponentDesign;
 export type ComponentType = ComponentDesign['type'];
 
-const INTERNAL_TYPES = ['drive', 'thrusters', 'reactor', 'capacitor', 'magazine'] as const;
+const INTERNAL_TYPES = [
+  'drive',
+  'thrusters',
+  'reactor',
+  'capacitor',
+  'magazine',
+  'magnetic-shield',
+  'coolant-shield',
+] as const;
 const MOUNTED_TYPES = [
   'radiator',
   'laser',
@@ -488,6 +545,20 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
       return { type, mass, reloadTime: requireNumber(data, 'reloadTime', where) };
     case 'magazine':
       return parseMagazine(data, mass, where);
+    case 'magnetic-shield':
+      return {
+        type,
+        mass,
+        power: requireNumber(data, 'power', where),
+        maxParticleEnergy: requireNumber(data, 'maxParticleEnergy', where),
+      };
+    case 'coolant-shield':
+      return {
+        type,
+        mass,
+        power: requireNumber(data, 'power', where),
+        capacity: requireNumber(data, 'capacity', where),
+      };
   }
 };
 

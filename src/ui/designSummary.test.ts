@@ -50,6 +50,14 @@ describe('design summary', () => {
     );
   });
 
+  it("shows a design's shields: what they stop, where, and the power they draw", () => {
+    expect(summaryOf('lance').get('Shields')).toBe('None');
+    expect(summaryOf('ward').get('Shields')).toBe('Magnetic, protons to 18.7 GeV · draws 200 MW');
+    expect(summaryOf('rime').get('Shields')).toBe(
+      'Coolant, 300 MW forward, 300 MW engine · draws 60 MW',
+    );
+  });
+
   it('tells the nimble frigate from the heavier cruiser', () => {
     const lance = summaryOf('lance');
     const bastion = summaryOf('bastion');

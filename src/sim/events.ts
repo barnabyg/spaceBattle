@@ -37,9 +37,16 @@ export interface HitEvent {
   readonly section: SectionKind;
   /** The mount struck on that section, or null for the section itself. */
   readonly mount: number | null;
-  /** Beam power landing on the part, W. */
+  /** Beam power landing on the part, once the target's magnetic shields turned some away, W. */
   readonly power: number;
-  /** Beam intensity at the target, W/m². */
+  /** Beam power the target's magnetic shields turned away from the part, W. */
+  readonly deflected: number;
+  /**
+   * Of the power landing, what the target's coolant shields carried from the armour into the
+   * ship's heat, W; the rest burned the armour.
+   */
+  readonly absorbed: number;
+  /** Beam intensity at the target, once magnetic shields turned some away, W/m². */
   readonly intensity: number;
   /** Radius of the beam's spot at the target, m. */
   readonly spotRadius: number;

@@ -37,6 +37,14 @@ describe('hand-made designs', () => {
     },
   );
 
+  it.each(['magnetic-shield', 'coolant-shield'] as const)('include one carrying a %s', (type) => {
+    expect(
+      HAND_MADE_DESIGNS.some((d) =>
+        d.sections.some((s) => s.components.some((c) => c.type === type)),
+      ),
+    ).toBe(true);
+  });
+
   it('include one carrying launchers and a magazine of missiles with kinetic warheads', () => {
     const launching = HAND_MADE_DESIGNS.find((d) =>
       d.sections.some((s) => s.mounts.some((m) => m.type === 'launcher')),
@@ -356,6 +364,28 @@ describe('parseDesign', () => {
     expect(() => armed({ ...warhead, yield: undefined })).toThrow(/yield/);
     expect(armed({ ...warhead, detonationDistance: 0 })).toBeDefined();
     expect(() => armed({ ...warhead, detonationDistance: -1 })).toThrow(/detonationDistance/);
+  });
+
+  it('reads magnetic and coolant shields inside a section, not on mounts', () => {
+    const magnetic = { type: 'magnetic-shield', mass: 1, power: 1, maxParticleEnergy: 3e-9 };
+    const coolant = { type: 'coolant-shield', mass: 1, power: 1, capacity: 10 };
+    const design = parseDesign(withMiddle([thrusters, reactor, magnetic, coolant]));
+    expect(design.sections[1]?.components.slice(2)).toEqual([magnetic, coolant]);
+    expect(() => parseDesign(withMiddle([thrusters, reactor], [magnetic]))).toThrow(
+      /inside a section/,
+    );
+    expect(() => parseDesign(withMiddle([thrusters, reactor], [coolant]))).toThrow(
+      /inside a section/,
+    );
+    expect(() => parseDesign(withMiddle([thrusters, reactor, { ...magnetic, power: 0 }]))).toThrow(
+      /power/,
+    );
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, { ...magnetic, maxParticleEnergy: undefined }])),
+    ).toThrow(/maxParticleEnergy/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, { ...coolant, capacity: -1 }])),
+    ).toThrow(/capacity/);
   });
 
   it('rejects power and heat numbers outside their range', () => {

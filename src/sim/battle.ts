@@ -16,6 +16,7 @@ import {
   type Design,
   type NuclearWarheadDesign,
   type SectionKind,
+  type ShieldType,
   type WarheadType,
 } from './design';
 import {
@@ -79,6 +80,7 @@ import { endedBy, judge, lossOf, noResult, type BattleOutcome } from './outcome'
 import { IDENTITY, rotate, type Quat } from './quaternion';
 import { createRandom } from './random';
 import type { ShapePart } from './shape';
+import { coolantCapacity, fullDeflection, shieldsPowered } from './shields';
 import {
   burn,
   createShip,
@@ -180,11 +182,42 @@ export interface HeatObservation {
   readonly generated: number;
   /** Heat radiated into space in the last step, W. */
   readonly radiated: number;
+  /** Laser heat the coolant shields carried into the ship in the last step, W. */
+  readonly absorbed: number;
   readonly radiatorsDeployed: boolean;
   /** Radiating area now exposed, m². */
   readonly radiatorArea: number;
   /** The fraction of their full power systems may use at this temperature. */
   readonly thermalLimit: number;
+}
+
+/** One shield and where it sits. */
+export interface ShieldObservation {
+  readonly type: ShieldType;
+  readonly section: SectionKind;
+  /** Its place in the section's components. */
+  readonly index: number;
+  readonly integrity: number;
+}
+
+/**
+ * The ship's shields and what they can do now. A magnetic shield's field covers the whole ship; a
+ * coolant shield protects only the section it is in.
+ */
+export interface ShieldsObservation {
+  /** Whether the captain has them raised; lowered, they draw no power and do nothing. */
+  readonly raised: boolean;
+  /** The share of their full power they were given in the last step (0–1). */
+  readonly powered: number;
+  /** Every shield the ship carries, from nose to tail. */
+  readonly shields: readonly ShieldObservation[];
+  /**
+   * Kinetic energy of the hardest protons the magnetic shields turn away entirely now, J; harder
+   * ones are turned away in part. Zero without a working, powered magnetic shield.
+   */
+  readonly fullDeflection: number;
+  /** Laser power the coolant shields in each section can carry away now, W. */
+  readonly coolantCapacity: Readonly<Record<SectionKind, number>>;
 }
 
 /** A component and how much more damage it can take. */
@@ -419,6 +452,7 @@ export interface OwnShipObservation {
   readonly manoeuvre: ManoeuvreObservation | null;
   readonly power: PowerObservation;
   readonly heat: HeatObservation;
+  readonly shields: ShieldsObservation;
   /** Where the ship's energy has gone since the battle began. */
   readonly energyLedger: EnergyLedger;
   /** From nose to tail. */
@@ -569,6 +603,7 @@ const checkOrder = (order: Order): Order => {
       }
       return order;
     case 'radiators':
+    case 'shields':
     case 'weapons':
       return order;
   }
@@ -601,11 +636,35 @@ const observeHeat = (ship: ShipState): HeatObservation => {
     temperature,
     generated: ship.heatFlow.generated,
     radiated: ship.heatFlow.radiated,
+    absorbed: ship.heatFlow.absorbed,
     radiatorsDeployed: ship.radiatorsDeployed,
     radiatorArea: radiators.area,
     thermalLimit: thermalLimit(temperature),
   };
 };
+
+const observeShields = (ship: ShipState): ShieldsObservation => ({
+  raised: ship.shieldsRaised,
+  powered: shieldsPowered(ship),
+  shields: componentSlots(ship.design).flatMap((slot, i) =>
+    slot.component.type === 'magnetic-shield' || slot.component.type === 'coolant-shield'
+      ? [
+          {
+            type: slot.component.type,
+            section: slot.section,
+            index: slot.index,
+            integrity: ship.integrity[i] ?? 0,
+          },
+        ]
+      : [],
+  ),
+  fullDeflection: fullDeflection(ship),
+  coolantCapacity: {
+    forward: coolantCapacity(ship, 'forward'),
+    middle: coolantCapacity(ship, 'middle'),
+    engine: coolantCapacity(ship, 'engine'),
+  },
+});
 
 const observeSections = (ship: ShipState): SectionObservation[] => {
   const slots = componentSlots(ship.design);
@@ -820,7 +879,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
     const target = combatantOf(beam.target);
     const attacker = combatantOf(beam.attacker).ship;
     const landed = strike(target.ship, beam, { ...ctx, side: beam.target });
-    if (landed) {
+    if (landed && landed.power > 0) {
       const { point, power, spotRadius } = landed;
       target.beamsLanding.push({ attack: beam.attack, point, power, spotRadius });
     }
@@ -841,6 +900,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
         section: landed.part.section,
         mount: landed.part.mount,
         power: landed.power,
+        deflected: landed.deflected,
+        absorbed: landed.absorbed,
         intensity: landed.intensity,
         spotRadius: landed.spotRadius,
         range: beam.range,
@@ -1313,6 +1374,9 @@ export const createBattle = (setup: BattleSetup): Battle => {
         case 'radiators':
           ship.radiatorsDeployed = checked.deployed;
           break;
+        case 'shields':
+          ship.shieldsRaised = checked.raised;
+          break;
         case 'weapons':
           if (checked.target !== null && combatantOf(checked.target).side.id === sideId) {
             throw new Error('A ship cannot target itself');
@@ -1365,6 +1429,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
           manoeuvre: ship.manoeuvre ? observeManoeuvre(ship, ship.manoeuvre, contactOf(own)) : null,
           power: observePower(ship),
           heat: observeHeat(ship),
+          shields: observeShields(ship),
           energyLedger: ship.ledger,
           sections: observeSections(ship),
           weapons: observeWeapons(ship),

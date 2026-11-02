@@ -22,6 +22,7 @@ import {
   type PowerSystem,
 } from './power';
 import { conjugate, integrate, rotate, type Quat } from './quaternion';
+import { NO_COOLANT_LOAD, shieldDemand, type CoolantLoad } from './shields';
 import { TIME_STEP } from './time';
 import { add, cross, dot, length, scale, sub, vec3, ZERO, type Vec3 } from './vector';
 import {
@@ -83,9 +84,18 @@ export interface ShipState {
   /** Heat held in the ship, J: its heat capacity times its temperature. */
   heat: number;
   radiatorsDeployed: boolean;
+  /** Whether the captain has the shields raised, so they draw power and work. */
+  shieldsRaised: boolean;
+  /** Laser power each section's coolant shields are carrying in this step, W. */
+  coolantLoad: CoolantLoad;
   /** How power and heat flowed in the last step. */
   powerFlow: PowerFlow;
-  heatFlow: { readonly generated: number; readonly radiated: number };
+  /** W; `absorbed` is laser heat the coolant shields carried into the ship. */
+  heatFlow: {
+    readonly generated: number;
+    readonly radiated: number;
+    readonly absorbed: number;
+  };
   ledger: EnergyLedger;
   /** Each component's integrity (0–1), in the order of `componentSlots`. */
   integrity: readonly number[];
@@ -218,8 +228,10 @@ export const createShip = (
   storedEnergy: powerPlant(design).storageCapacity,
   heat: thermalProperties(design).heatCapacity * BASE_TEMPERATURE,
   radiatorsDeployed: false,
+  shieldsRaised: true,
+  coolantLoad: NO_COOLANT_LOAD,
   powerFlow: IDLE_FLOW,
-  heatFlow: { generated: 0, radiated: 0 },
+  heatFlow: { generated: 0, radiated: 0, absorbed: 0 },
   ledger: EMPTY_LEDGER,
   integrity: componentSlots(design).map(() => 1),
   sections: Object.fromEntries(
@@ -250,7 +262,7 @@ export const driveLimit = (ship: ShipState): number => {
   const integrity = integrityOfType(ship.design, ship.integrity, 'drive');
   const flow = powerFlowOf(
     ship,
-    { drive: power * integrity, shields: 0, weapons: ship.weapons.demand },
+    { drive: power * integrity, shields: shieldDemand(ship), weapons: ship.weapons.demand },
     TIME_STEP,
   );
   return Math.min(

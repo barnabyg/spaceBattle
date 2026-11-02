@@ -1,6 +1,7 @@
 import { integrityOfType, workingTotal } from './components';
 import { designComponent, designComponentsOfType, type Design } from './design';
 import { BASE_TEMPERATURE, radiatedPower, thermalProperties, workingRadiators } from './heat';
+import { NO_COOLANT_LOAD, shieldDemand } from './shields';
 import type { ShipState } from './ship';
 
 /**
@@ -9,7 +10,7 @@ import type { ShipState } from './ship';
  */
 export const POWER_SYSTEMS = ['drive', 'shields', 'weapons', 'capacitors'] as const;
 export type PowerSystem = (typeof POWER_SYSTEMS)[number];
-/** The systems that use power. Shields draw nothing until a design has them. */
+/** The systems that use power. Shields draw nothing on a design without them, or once lowered. */
 export type PowerConsumer = Exclude<PowerSystem, 'capacitors'>;
 
 /** Every ship starts a battle with this ranking: stored energy may cover any system. */
@@ -40,7 +41,7 @@ export interface PowerFlow {
  * Running totals of where a ship's energy has gone since the battle began, J. Electrical energy
  * balances as reactorGenerated + capacitorDischarged = Σ delivered + capacitorCharged; stored
  * energy changes by capacitorCharged − capacitorDischarged − capacitorLost; and heat as
- * heatGenerated − heatRadiated = the change in the ship's heat.
+ * heatGenerated + heatAbsorbed − heatRadiated = the change in the ship's heat.
  */
 export interface EnergyLedger {
   /** Electrical energy the reactor generated. */
@@ -70,6 +71,13 @@ export interface EnergyLedger {
    * wrecking structure and components, not into the ship's heat.
    */
   readonly hitEnergy: number;
+  /** Energy of enemy charged particle beams that the magnetic shields turned away from the ship. */
+  readonly beamDeflected: number;
+  /**
+   * Energy of enemy lasers that the coolant shields carried from the armour into the ship's heat,
+   * instead of burning the armour away.
+   */
+  readonly heatAbsorbed: number;
   /** Heat from the reactor and from every system's waste. */
   readonly heatGenerated: number;
   readonly heatRadiated: number;
@@ -86,6 +94,8 @@ export const EMPTY_LEDGER: EnergyLedger = {
   beamEmitted: 0,
   slugEnergy: 0,
   hitEnergy: 0,
+  beamDeflected: 0,
+  heatAbsorbed: 0,
   heatGenerated: 0,
   heatRadiated: 0,
 };
@@ -208,7 +218,11 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
   const thermal = thermalProperties(ship.design);
   const flow = powerFlowOf(
     ship,
-    { drive: ship.driveEnergy.used / dt, shields: 0, weapons: ship.weapons.demand },
+    {
+      drive: ship.driveEnergy.used / dt,
+      shields: shieldDemand(ship),
+      weapons: ship.weapons.demand,
+    },
     dt,
   );
   const { drive: driveShare, shields, weapons, capacitors } = flow.systems;
@@ -224,7 +238,7 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
 
   // A reactor of efficiency η gives off (1 − η)/η of its electrical output as heat. Beam weapons
   // send their efficiency's share out in the beam and kinetic guns into the slug, and the rest is
-  // heat; shields turn all their power into heat until they have somewhere else to send it.
+  // heat; shields turn all their power into heat, in their coils and pumps.
   const reactorHeat =
     (flow.reactorOutput * (1 - plant.reactorEfficiency)) / plant.reactorEfficiency;
   const driveHeat = driveShare.supplied * drive.wasteHeatFraction;
@@ -239,7 +253,9 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
     Math.max(0, surplus / dt + generated),
   );
   ship.heat += (generated - radiated) * dt;
-  ship.heatFlow = { generated, radiated };
+  // Coolant shields add the laser heat they carry as beams land later in the step.
+  ship.heatFlow = { generated, radiated, absorbed: 0 };
+  ship.coolantLoad = NO_COOLANT_LOAD;
 
   const ledger = ship.ledger;
   ship.ledger = {
@@ -257,6 +273,8 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
     beamEmitted: ledger.beamEmitted + beam * dt,
     slugEnergy: ledger.slugEnergy + slug * dt,
     hitEnergy: ledger.hitEnergy,
+    beamDeflected: ledger.beamDeflected,
+    heatAbsorbed: ledger.heatAbsorbed,
     heatGenerated: ledger.heatGenerated + generated * dt,
     heatRadiated: ledger.heatRadiated + radiated * dt,
   };

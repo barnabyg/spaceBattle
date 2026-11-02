@@ -191,3 +191,19 @@ test('a ship with point defence shows its guns and rounds, and takes priority or
   await expect(thenShip).toHaveClass(/active/);
   await expect(missilesOnly).not.toHaveClass(/active/);
 });
+
+test('a shielded ship shows its shields, and they can be lowered and raised', async ({ page }) => {
+  await startFreeBattle(page, { blue: { design: 'Rime' } });
+  await page.keyboard.press(' ');
+  const shields = page.getByLabel('Shields', { exact: true });
+  await expect(shields).toContainText('Raised');
+  await expect(shields).toContainText('coolant 300 MW forward, 300 MW engine');
+  await expect(
+    page.getByRole('region', { name: 'Damage' }).getByText('Coolant shield', { exact: true }),
+  ).toHaveCount(2);
+
+  await page.getByRole('button', { name: 'Shields down' }).click();
+  await expect(shields).toHaveText('Lowered');
+  await page.getByRole('button', { name: 'Shields up' }).click();
+  await expect(shields).toContainText('Raised');
+});

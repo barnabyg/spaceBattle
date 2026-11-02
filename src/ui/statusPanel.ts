@@ -1,4 +1,5 @@
 import type { SideObservation } from '../sim/battle';
+import { SECTION_KINDS } from '../sim/design';
 import type { BeamKind, MunitionKind } from '../sim/events';
 import { OVERHEAT_TEMPERATURE } from '../sim/heat';
 import { POWER_SYSTEMS } from '../sim/power';
@@ -6,6 +7,7 @@ import { distance, length } from '../sim/vector';
 import { BEAM_TEXT } from './damagePanel';
 import { el } from './el';
 import {
+  formatGeV,
   formatGJ,
   formatKelvin,
   formatKm,
@@ -45,6 +47,29 @@ const beamPower = ({ ownShip: { weapons } }: SideObservation): string => {
     .join(' · ');
 };
 
+/**
+ * What the ship's shields can do now, e.g. "Raised · 100% power · protons to 18.7 GeV" or
+ * "Raised · 100% power · coolant 300 MW forward, 300 MW engine · carrying 250 MW".
+ */
+const describeShields = ({ ownShip: { shields, heat } }: SideObservation): string => {
+  if (shields.shields.length === 0) return '—';
+  if (!shields.raised) return 'Lowered';
+  const coolant = SECTION_KINDS.flatMap((kind) =>
+    shields.shields.some((s) => s.type === 'coolant-shield' && s.section === kind)
+      ? [`${formatMW(shields.coolantCapacity[kind])} ${kind}`]
+      : [],
+  );
+  return [
+    'Raised',
+    `${formatPercent(shields.powered)} power`,
+    ...(shields.shields.some((s) => s.type === 'magnetic-shield')
+      ? [`protons to ${formatGeV(shields.fullDeflection)}`]
+      : []),
+    ...(coolant.length > 0 ? [`coolant ${coolant.join(', ')}`] : []),
+    ...(heat.absorbed > 0 ? [`carrying ${formatMW(heat.absorbed)}`] : []),
+  ].join(' · ');
+};
+
 /** Each readout: its label and how to show it from the captain's observation. */
 const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] = [
   [
@@ -82,6 +107,7 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   ['Heat', (o) => formatGJ(o.ownShip.heat.heat)],
   ['Heat generated', (o) => formatMW(o.ownShip.heat.generated)],
   ['Heat radiated', (o) => formatMW(o.ownShip.heat.radiated)],
+  ['Shields', describeShields],
   ['Beam power', beamPower],
   [
     'Ammunition',

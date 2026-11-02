@@ -1,4 +1,6 @@
 import type { OwnShipObservation, SideId, SideObservation, SideSetup } from './battle';
+import { effectiveRange } from './beams';
+import { designComponents, designComponentsOfType, type Design, type ShieldType } from './design';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE } from './heat';
 import type {
   LaunchOrder,
@@ -7,6 +9,7 @@ import type {
   PointDefenceOrder,
   PowerOrder,
   RadiatorsOrder,
+  ShieldsOrder,
   WeaponsOrder,
 } from './orders';
 import type { PowerSystem } from './power';
@@ -42,9 +45,40 @@ const PROGRESS_FRACTION = 0.01;
 /** Ordered ranges within this fraction of each other count as the same order. */
 const RANGE_TOLERANCE = 0.01;
 
-/** Shields draw nothing yet, so their place in the ranking matters little. */
+/**
+ * Shields come second in a fight, ahead of the drive: they draw little beside the weapons, and
+ * are raised only while an enemy weapon they counter can reach the ship.
+ */
 const COMBAT_PRIORITIES: readonly PowerSystem[] = ['weapons', 'shields', 'drive', 'capacitors'];
 const MANOEUVRE_PRIORITIES: readonly PowerSystem[] = ['drive', 'shields', 'weapons', 'capacitors'];
+
+/** The enemy beam weapons each kind of shield counters. */
+const COUNTERED: Readonly<Record<ShieldType, 'laser' | 'charged-particle-beam'>> = {
+  'magnetic-shield': 'charged-particle-beam',
+  'coolant-shield': 'laser',
+};
+
+/**
+ * How far the enemy's weapons that a design's shields counter reach, m; zero when its shields
+ * counter none of them, or it has none.
+ */
+const counteredReach = (own: Design, enemies: readonly SideSetup[]): number => {
+  const shields = new Set(
+    designComponents(own).flatMap(({ component }) =>
+      component.type === 'magnetic-shield' || component.type === 'coolant-shield'
+        ? [COUNTERED[component.type]]
+        : [],
+    ),
+  );
+  return Math.max(
+    0,
+    ...enemies.flatMap((enemy) =>
+      [...shields].flatMap((type) =>
+        designComponentsOfType(enemy.design, type).map(effectiveRange),
+      ),
+    ),
+  );
+};
 
 /** How far the ship's missiles reach while it has a working launcher and missiles left, m. */
 const missileReach = ({ weapons }: OwnShipObservation): number =>
@@ -87,6 +121,8 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
       return ship.weapons.target === order.target && ship.weapons.mode === order.mode;
     case 'radiators':
       return ship.heat.radiatorsDeployed === order.deployed;
+    case 'shields':
+      return ship.shields.raised === order.raised;
     case 'launch':
       return (
         ship.weapons.salvo?.target === order.target &&
@@ -120,12 +156,16 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
  * short reach. If it outranges the enemy it holds just
  * inside its own reach, out of the enemy's; otherwise it closes to where its beams bite hard.
  * If neither side fires and the range stops shrinking for a while, it gives up on standing off
- * and closes in for good. It ranks weapons first in a fight and the drive first otherwise, and
- * deploys its radiators to fight or to cool down, retracting them when cool and out of reach.
+ * and closes in for good. It ranks weapons, then shields, first in a fight and the drive first
+ * otherwise, and deploys its radiators to fight or to cool down, retracting them when cool and out
+ * of reach. It keeps its shields raised only while an enemy weapon they counter can reach it,
+ * saving their power and heat the rest of the time.
  */
 export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[]): Captain => {
   const enemies = sides.filter((s) => s.id !== side);
   const enemyReach = Math.max(0, ...enemies.map((enemy) => designReach(enemy.design)));
+  const own = sides.find((s) => s.id === side)?.design;
+  const shieldedReach = own ? counteredReach(own, enemies) : 0;
   /** When the battle last got somewhere, s, and the range to measure progress from, m. */
   let progress: { time: number; range: number } | null = null;
   let pressing = false;
@@ -198,6 +238,13 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
         radiators,
         power,
       ];
+      if (ship.shields.shields.length > 0) {
+        const shields: ShieldsOrder = {
+          type: 'shields',
+          raised: range <= FIGHTING_FRACTION * shieldedReach,
+        };
+        orders.push(shields);
+      }
       const inFlight = observation.munitions.some(
         (m) => m.kind === 'missile' && m.attacker === side,
       );

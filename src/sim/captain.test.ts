@@ -268,6 +268,39 @@ describe('computer captain', () => {
     expect(radiators(350, true)).toEqual({ type: 'radiators', deployed: false });
   });
 
+  it('raises its shields in a fight only against weapons they counter, and lowers them after', () => {
+    /** The shields order the computer in red gives at a range against blue's design. */
+    const shieldsOrder = (blue: string, red: string, at: number) => {
+      const setup = duelSetup(handMadeDesign(blue), handMadeDesign(red), at);
+      return createComputerCaptain('red', setup.sides)
+        .decide(createBattle(setup).observe('red'))
+        .find((order) => order.type === 'shields');
+    };
+    // Ships start with their shields raised. Out of reach the Ward lowers its magnetic shield.
+    expect(shieldsOrder('torch', 'ward', 300_000 * KM)).toEqual({ type: 'shields', raised: false });
+    expect(shieldsOrder('torch', 'ward', 1_000 * KM)).toBeUndefined();
+    // A magnetic shield is no use against a laser, so it stays down even in the fight.
+    expect(shieldsOrder('lance', 'ward', 1_000 * KM)).toEqual({ type: 'shields', raised: false });
+    // Coolant shields are, so the Rime keeps them up while lasers can reach it.
+    expect(shieldsOrder('lance', 'rime', 1_000 * KM)).toBeUndefined();
+    expect(shieldsOrder('torch', 'rime', 1_000 * KM)).toEqual({ type: 'shields', raised: false });
+
+    // Lowered out of reach, it raises them again as the enemy closes, ranked above the drive.
+    const setup = duelSetup(handMadeDesign('torch'), handMadeDesign('ward'), 1_000 * KM);
+    const battle = createBattle(setup);
+    battle.giveOrder('red', { type: 'shields', raised: false });
+    battle.giveOrder('red', {
+      type: 'power',
+      priorities: ['drive', 'weapons', 'capacitors', 'shields'],
+    });
+    const orders = createComputerCaptain('red', setup.sides).decide(battle.observe('red'));
+    expect(orders).toContainEqual({ type: 'shields', raised: true });
+    expect(orders.find((order) => order.type === 'power')).toEqual({
+      type: 'power',
+      priorities: ['weapons', 'shields', 'drive', 'capacitors'],
+    });
+  });
+
   it('closes in when nothing has happened for a while', () => {
     // Without propellant neither ship can move, so the Lance cannot reach its standoff range.
     const stranded = (id: string): Design => ({ ...handMadeDesign(id), propellantMass: 0 });

@@ -48,6 +48,15 @@ export interface RadiatorsOrder {
   readonly deployed: boolean;
 }
 
+/**
+ * Raise the shields, so they draw power under the 'shields' priority and work as far as they get
+ * it, or lower them, so they draw nothing and do nothing. Every ship starts with them raised.
+ */
+export interface ShieldsOrder {
+  readonly type: 'shields';
+  readonly raised: boolean;
+}
+
 /** Fire at the target whenever the weapons can, or hold fire. */
 export type FireMode = 'fire-freely' | 'hold-fire';
 
@@ -101,6 +110,7 @@ export type Order =
   | ManoeuvreOrder
   | PowerOrder
   | RadiatorsOrder
+  | ShieldsOrder
   | WeaponsOrder
   | LaunchOrder
   | PointDefenceOrder;

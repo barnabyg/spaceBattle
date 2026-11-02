@@ -10,6 +10,7 @@ import { holeArea, penetrationDepth, type SlugHit } from './kinetic';
 import { conjugate, rotate } from './quaternion';
 import type { Random } from './random';
 import { firstHit, shipShape, type ShapePart } from './shape';
+import { absorbLaser, deflectedShare } from './shields';
 import type { ShipState } from './ship';
 import { TIME_STEP } from './time';
 import { add, length, normalize, scale, sub, vec3, type Vec3 } from './vector';
@@ -60,8 +61,12 @@ export interface DamageContext {
 /** Where a beam landed and with how much. */
 export interface Strike {
   readonly part: ShapePart;
-  /** Beam power landing on the part, W. */
+  /** Beam power landing on the part, once magnetic shields have turned some away, W. */
   readonly power: number;
+  /** Beam power that magnetic shields turned away from the part, W. */
+  readonly deflected: number;
+  /** Of the power landing, what coolant shields carried into the ship's heat, W. */
+  readonly absorbed: number;
   /** W/m² */
   readonly intensity: number;
   /** m */
@@ -255,6 +260,11 @@ const damageMount = (ship: ShipState, part: ShapePart, energy: number, ctx: Dama
  * armour at the rate its intensity allows, I / (ρ·e) metres per second, e being the energy per
  * kilogram that the beam's kind needs (see `beamResistance`). Mounts sit outside the armour, so a
  * mounted component takes the energy directly.
+ *
+ * Shields act on the beam first. Magnetic shields turn away their share of a charged particle
+ * beam (see `deflectedShare`), so only the rest lands. Where a laser lands on a section, its
+ * coolant shields carry what they can of it into the ship's heat (see `absorbLaser`), and only the
+ * rest burns the armour.
  */
 export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike | null => {
   const direction = normalize(sub(ship.position, beam.origin));
@@ -262,19 +272,36 @@ export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike 
   const hit = firstHit(intactShape(ship), scale(body, -RAY_START), body);
   if (!hit) return null;
   const radius = spotRadius(beam.weapon, beam.range);
-  const intensity = beam.power / (Math.PI * radius ** 2);
-  const power = Math.min(beam.power, intensity * hit.projectedArea);
-  const energy = power * TIME_STEP;
-  ship.ledger = { ...ship.ledger, hitEnergy: ship.ledger.hitEnergy + energy };
+  const reaching = Math.min(beam.power, (beam.power / (Math.PI * radius ** 2)) * hit.projectedArea);
+  const share =
+    beam.weapon.type === 'charged-particle-beam'
+      ? deflectedShare(ship, beam.weapon.particleEnergy)
+      : 0;
+  const deflected = reaching * share;
+  const power = reaching - deflected;
+  const intensity = (beam.power * (1 - share)) / (Math.PI * radius ** 2);
+  const section = hit.part.section;
+  const absorbed =
+    beam.attack === 'laser' && hit.part.mount === null
+      ? absorbLaser(ship, section, power, TIME_STEP)
+      : 0;
+  // What the coolant carried away burns none of the armour.
+  const burning = power > 0 ? (power - absorbed) / power : 0;
+  const energy = (power - absorbed) * TIME_STEP;
+  ship.ledger = {
+    ...ship.ledger,
+    hitEnergy: ship.ledger.hitEnergy + energy,
+    beamDeflected: ship.ledger.beamDeflected + deflected * TIME_STEP,
+  };
   if (hit.part.mount === null) {
     const depthIn = (armour: ArmourType) =>
-      (intensity * TIME_STEP) / beamResistance(armour, beam.attack);
-    damageSection(ship, hit.part.section, energy, depthIn, ctx);
+      (intensity * burning * TIME_STEP) / beamResistance(armour, beam.attack);
+    damageSection(ship, section, energy, depthIn, ctx);
   } else {
     damageMount(ship, hit.part, energy, ctx);
   }
   const point = scale(body, hit.distance - RAY_START);
-  return { part: hit.part, power, intensity, spotRadius: radius, point };
+  return { part: hit.part, power, deflected, absorbed, intensity, spotRadius: radius, point };
 };
 
 /**

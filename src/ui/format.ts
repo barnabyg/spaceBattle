@@ -47,6 +47,10 @@ export const formatGJ = (joules: number): string => `${grouped(joules / 1e9, 1)}
 export const formatKilotons = (joules: number): string =>
   `${(joules / KILOTON).toLocaleString('en-GB', { maximumFractionDigits: 2 })} kt`;
 
+/** A particle's energy given in J, shown in GeV. */
+export const formatGeV = (joules: number): string =>
+  `${(joules / 1.602176634e-10).toLocaleString('en-GB', { maximumFractionDigits: 1 })} GeV`;
+
 /** A temperature in kelvin. */
 export const formatKelvin = (kelvin: number): string => `${grouped(kelvin, 0)} K`;
 

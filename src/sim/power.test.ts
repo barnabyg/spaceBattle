@@ -75,7 +75,7 @@ const ledgerChecker = (battle: Battle, design: Design, side = 'blue') => {
       ],
     );
     // Heat: what came in less what was radiated away is what the ship now holds.
-    expectBalanced([ledger.heatGenerated, -ledger.heatRadiated], heat);
+    expectBalanced([ledger.heatGenerated, ledger.heatAbsorbed, -ledger.heatRadiated], heat);
     expectBalanced([now.heat.heat], [now.heat.heatCapacity * now.heat.temperature]);
   };
 };

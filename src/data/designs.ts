@@ -5,8 +5,10 @@ import needle from './designs/needle.json';
 import pyre from './designs/pyre.json';
 import quiver from './designs/quiver.json';
 import rampart from './designs/rampart.json';
+import rime from './designs/rime.json';
 import sling from './designs/sling.json';
 import torch from './designs/torch.json';
+import ward from './designs/ward.json';
 
 /** The hand-made designs that ship with the game. */
 export const HAND_MADE_DESIGNS: readonly Design[] = [
@@ -18,6 +20,8 @@ export const HAND_MADE_DESIGNS: readonly Design[] = [
   torch,
   needle,
   rampart,
+  ward,
+  rime,
 ].map(parseDesign);
 
 export const handMadeDesign = (id: string): Design => {

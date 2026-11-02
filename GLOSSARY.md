@@ -193,7 +193,7 @@ The role the commander of a side plays: they give orders to their ship rather th
 _Avoid_: Pilot
 
 **Order**:
-An instruction from the captain, such as a heading, a burn, a range to hold, a target priority or a power allocation.
+An instruction from the captain, such as a heading, a burn, a range to hold, a target priority, a power allocation or raising the shields.
 _Avoid_: Command
 
 **Autopilot**:

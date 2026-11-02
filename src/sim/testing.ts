@@ -4,6 +4,8 @@ import {
   parseDesign,
   type ChargedParticleBeamDesign,
   type ComponentDesign,
+  type CoolantShieldDesign,
+  type MagneticShieldDesign,
   type ComponentType,
   type Design,
   type KineticGunDesign,
@@ -139,6 +141,25 @@ export const TEST_NEUTRAL_BEAM: NeutralParticleBeamDesign = {
   efficiency: 0.5,
   aperture: 1,
   divergence: 1e-7,
+};
+
+/**
+ * A magnetic shield for test designs drawing 100 MW, that turns away the test charged beam's
+ * 20 GeV protons entirely at full power.
+ */
+export const TEST_MAGNETIC_SHIELD: MagneticShieldDesign = {
+  type: 'magnetic-shield',
+  mass: 20e3,
+  power: 100e6,
+  maxParticleEnergy: TEST_CHARGED_BEAM.particleEnergy,
+};
+
+/** A coolant shield for test designs whose 30 MW of pumps carry away 300 MW of laser heat. */
+export const TEST_COOLANT_SHIELD: CoolantShieldDesign = {
+  type: 'coolant-shield',
+  mass: 10e3,
+  power: 30e6,
+  capacity: 300e6,
 };
 
 /** The test design with a weapon, such as a particle beam, on a forward mount. */

@@ -24,7 +24,7 @@ const ELEMENTARY_CHARGE = 1.602_176_634e-19;
 /** F/m */
 const VACUUM_PERMITTIVITY = 8.854_187_8188e-12;
 /** A proton's rest energy, mc², J. */
-const PROTON_REST_ENERGY = 1.503_277_618e-10;
+export const PROTON_REST_ENERGY = 1.503_277_618e-10;
 /**
  * The current scale of a beam of protons, 4πε₀mc³/e, about 31 MA: a beam's own charge pushes it
  * apart in proportion to its current as a fraction of this.

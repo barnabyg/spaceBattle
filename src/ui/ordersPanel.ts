@@ -223,6 +223,15 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   const deployRadiators = button('Deploy radiators');
   const retractRadiators = button('Retract radiators');
 
+  const raiseShields = button('Shields up');
+  const lowerShields = button('Shields down');
+  raiseShields.addEventListener('click', () => {
+    giveOrder({ type: 'shields', raised: true });
+  });
+  lowerShields.addEventListener('click', () => {
+    giveOrder({ type: 'shields', raised: false });
+  });
+
   const targetEnemy = button('Target enemy');
   const noTarget = button('No target');
   const fireFreely = button('Fire freely');
@@ -350,6 +359,8 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     priorityList,
     el('h3', { text: 'Radiators' }),
     el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
+    el('h3', { text: 'Shields' }),
+    el('div', { className: 'order-row' }, raiseShields, lowerShields),
     el('h3', { text: 'Weapons' }),
     el('div', { className: 'order-row' }, targetEnemy, noTarget),
     el('div', { className: 'order-row' }, fireFreely, holdFire),
@@ -404,6 +415,11 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       });
       deployRadiators.classList.toggle('active', ship.heat.radiatorsDeployed);
       retractRadiators.classList.toggle('active', !ship.heat.radiatorsDeployed);
+      const shielded = ship.shields.shields.length > 0;
+      raiseShields.disabled = !shielded;
+      lowerShields.disabled = !shielded;
+      raiseShields.classList.toggle('active', shielded && ship.shields.raised);
+      lowerShields.classList.toggle('active', shielded && !ship.shields.raised);
 
       weapons = { target: ship.weapons.target, mode: ship.weapons.mode };
       enemy = observation.contacts[0]?.sideId ?? null;

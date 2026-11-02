@@ -1,6 +1,6 @@
 import type { BattleEvent, SectionObservation, SideId, SideObservation } from '../sim/battle';
 import type { ComponentType, SectionKind } from '../sim/design';
-import type { BeamKind, ImpactKind } from '../sim/events';
+import type { BeamKind, HitEvent, ImpactKind } from '../sim/events';
 import { el } from './el';
 import { formatBattleTime, formatGJ, formatKilotons, formatKm, formatMm, formatMW } from './format';
 
@@ -16,6 +16,8 @@ export const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
   reactor: 'Reactor',
   capacitor: 'Capacitor',
   magazine: 'Magazine',
+  'magnetic-shield': 'Magnetic shield',
+  'coolant-shield': 'Coolant shield',
   radiator: 'Radiator',
   laser: 'Laser',
   'charged-particle-beam': 'Charged particle beam',
@@ -59,15 +61,28 @@ const describeSection = (section: SectionObservation): string => {
   return `${armourText} · ${structure}`;
 };
 
+/**
+ * What the target's shields did to a beam hit, e.g. " · 400 MW deflected" or
+ * " · 300 MW taken by coolant"; nothing when they did nothing.
+ */
+export const describeShielding = ({ deflected, absorbed }: HitEvent): string =>
+  [
+    ...(deflected > 0 ? [`${formatMW(deflected)} deflected`] : []),
+    ...(absorbed > 0 ? [`${formatMW(absorbed)} taken by coolant`] : []),
+  ]
+    .map((text) => ` · ${text}`)
+    .join('');
+
 /** One line of the battle log, from the viewing side's point of view. */
 const describeEvent = (event: BattleEvent, viewer: SideId): string => {
   const time = formatBattleTime(event.time);
   switch (event.type) {
     case 'hit': {
       const part = `${SECTION_TEXT[event.section].toLowerCase()} ${event.mount === null ? 'section' : 'mount'}`;
+      const landed = `${formatMW(event.power)}${describeShielding(event)}`;
       return event.attacker === viewer
-        ? `${time} ${BEAM_TEXT[event.attack]} hit enemy ${part} · ${formatMW(event.power)}`
-        : `${time} ${BEAM_TEXT[event.attack]} hit on our ${part} · ${formatMW(event.power)}`;
+        ? `${time} ${BEAM_TEXT[event.attack]} hit enemy ${part} · ${landed}`
+        : `${time} ${BEAM_TEXT[event.attack]} hit on our ${part} · ${landed}`;
     }
     case 'impact': {
       const part = `${SECTION_TEXT[event.section].toLowerCase()} ${event.mount === null ? 'section' : 'mount'}`;
