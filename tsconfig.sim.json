@@ -1,0 +1,10 @@
+{
+  "//": "Type-checks the headless core without DOM types, so any DOM reference fails (ADR-0001).",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": []
+  },
+  "include": ["src/sim", "src/game"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -1,0 +1,207 @@
+/* Laid out for a 4K desktop monitor in Firefox (ADR-0003). */
+:root {
+  --bg: #05070d;
+  --panel: #0c1220;
+  --panel-border: #1f2c44;
+  --text: #d6e2f5;
+  --muted: #7d8ca8;
+  --accent: #4fa3ff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 24px;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 600;
+}
+
+h1 {
+  font-size: 1.3rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin-bottom: 0.6rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.battle-screen {
+  display: grid;
+  grid-template-columns: 1fr 900px;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    'top top'
+    'map side';
+  height: 100%;
+}
+
+.top-bar {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: 3rem;
+  padding: 0.6rem 1.2rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.time-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.battle-clock {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.2rem;
+  min-width: 8em;
+}
+
+.time-button {
+  min-width: 2.6rem;
+  padding: 0.2rem 0.6rem;
+  background: #16223a;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.time-button:hover {
+  border-color: var(--accent);
+}
+
+.time-compression {
+  min-width: 5em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.tactical-map {
+  grid-area: map;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tactical-map > canvas {
+  display: block;
+}
+
+.tactical-map__labels {
+  position: absolute;
+  inset: 0;
+}
+
+.side-panel {
+  grid-area: side;
+  padding: 1rem;
+  background: var(--panel);
+  border-left: 1px solid var(--panel-border);
+  overflow-y: auto;
+}
+
+.panel + .panel {
+  margin-top: 1.5rem;
+}
+
+.status-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.3rem 1rem;
+  margin: 0;
+}
+
+.status-list dt {
+  color: var(--muted);
+}
+
+.status-list dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ship-symbol {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--side-colour);
+  pointer-events: none;
+  /* Centre the glyph, not the whole symbol, on the ship's position. */
+  transform: translateX(calc(50% - 0.5rem));
+}
+
+.ship-symbol__glyph {
+  width: 1rem;
+  height: 1rem;
+  border: 3px solid var(--side-colour);
+  background: color-mix(in srgb, var(--side-colour) 30%, transparent);
+}
+
+.ship-symbol--own .ship-symbol__glyph {
+  border-radius: 50%;
+}
+
+.ship-symbol--contact .ship-symbol__glyph {
+  transform: rotate(45deg);
+}
+
+.ship-symbol__label {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  text-shadow: 0 0 4px #000;
+}
+
+.range-label {
+  color: #4d6488;
+  font-size: 0.7rem;
+}
+
+.scale-bar {
+  position: absolute;
+  left: 2rem;
+  bottom: 2rem;
+  height: 0.6rem;
+  border: 2px solid var(--muted);
+  border-top: none;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.scale-bar__label {
+  position: absolute;
+  bottom: 0.8rem;
+  left: 0;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
