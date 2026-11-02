@@ -1,4 +1,5 @@
 import type { BattleEvent, SideSetup } from '../sim/battle';
+import { targetsMissile } from '../sim/missile';
 import {
   BEAM_TEXT,
   COMPONENT_TEXT,
@@ -46,9 +47,9 @@ export const describeTestEvent = (event: BattleEvent, sides: readonly SideSetup[
       return `${time} ${nameOf(event.attacker)} ${IMPACT_TEXT[event.munition].toLowerCase()} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatGJ(event.energy)} · ${formatKmPerS(event.speed)}`;
     case 'launch': {
       const { target } = event;
-      return typeof target === 'string'
-        ? `${time} ${nameOf(event.attacker)} launched missile ${event.munition} at ${nameOf(target)} from ${partText(event.section, event.mount)}`
-        : `${time} ${nameOf(event.attacker)} launched anti-missile missile ${event.munition} at missile ${target.munition} from ${partText(event.section, event.mount)}`;
+      return targetsMissile(target)
+        ? `${time} ${nameOf(event.attacker)} launched anti-missile missile ${event.munition} at missile ${target.munition} from ${partText(event.section, event.mount)}`
+        : `${time} ${nameOf(event.attacker)} launched missile ${event.munition} at ${nameOf(target)} from ${partText(event.section, event.mount)}`;
     }
     case 'intercept': {
       const chance = Math.round(event.chance * 100);

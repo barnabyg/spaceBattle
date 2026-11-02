@@ -1,6 +1,7 @@
 import type { BattleEvent, SectionObservation, SideId, SideObservation } from '../sim/battle';
 import type { ComponentType, SectionKind } from '../sim/design';
 import type { BeamKind, HitEvent, ImpactKind, InterceptWeapon } from '../sim/events';
+import { targetsMissile } from '../sim/missile';
 import { el } from './el';
 import { formatBattleTime, formatGJ, formatKilotons, formatKm, formatMm, formatMW } from './format';
 
@@ -98,7 +99,7 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
         : `${time} ${munition} hit on our ${part} · ${formatGJ(event.energy)}`;
     }
     case 'launch':
-      if (typeof event.target !== 'string') {
+      if (targetsMissile(event.target)) {
         return event.attacker === viewer
           ? `${time} Anti-missile missile launched`
           : `${time} Enemy anti-missile missile launched`;

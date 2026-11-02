@@ -6,6 +6,7 @@ import type {
 } from '../sim/battle';
 import type { MissileRole } from '../sim/design';
 import type { ManoeuvreObservation } from '../sim/manoeuvre';
+import { targetsMissile } from '../sim/missile';
 import type { FireMode, ManoeuvreGoal, Order, PointDefencePriority } from '../sim/orders';
 import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/power';
 import { distance, length, vec3 } from '../sim/vector';
@@ -109,7 +110,7 @@ const describeLaunch = (weapons: WeaponsObservation): string => {
   const { designs, left } = missilesIn(weapons, 'anti-ship');
   if (designs.length === 0) return 'No anti-ship missiles';
   const missiles = `${left.toLocaleString('en-GB')} missiles`;
-  if (salvo && typeof salvo.target === 'string') {
+  if (salvo && !targetsMissile(salvo.target)) {
     return `Launching · ${salvo.remaining.toLocaleString('en-GB')} to go · ${missiles} left`;
   }
   if (left === 0) return 'Out of missiles';
@@ -511,7 +512,7 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       const { salvo } = ship.weapons;
       launch.disabled = !canLaunch || missilesIn(ship.weapons, 'anti-ship').left === 0;
       callOff.disabled = salvo === null;
-      launch.classList.toggle('active', salvo !== null && typeof salvo.target === 'string');
+      launch.classList.toggle('active', salvo !== null && !targetsMissile(salvo.target));
       launchState.textContent = describeLaunch(ship.weapons);
       const antiMissiles = missilesIn(ship.weapons, 'anti-missile');
       const defending = antiMissiles.designs.length > 0;
