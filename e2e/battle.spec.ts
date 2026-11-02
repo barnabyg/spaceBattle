@@ -91,3 +91,25 @@ test('weapons orders work while paused and the damage panel shows each section',
   await page.getByRole('button', { name: 'Hold fire' }).click();
   await expect(weapons).toHaveText('Holding fire · enemy targeted');
 });
+
+test('End battle asks first, then shows the player forfeited', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'End battle' }).click();
+  const confirm = page.getByRole('dialog', { name: 'End battle' });
+  await expect(confirm).toContainText('forfeit');
+  await expect(page.getByLabel('Time compression')).toHaveText('Paused');
+  await confirm.getByRole('button', { name: 'Keep fighting' }).click();
+  await expect(confirm).toBeHidden();
+  await expect(page.getByLabel('Time compression')).toHaveText('1×');
+
+  await page.getByRole('button', { name: 'End battle' }).click();
+  await confirm.getByRole('button', { name: 'Forfeit' }).click();
+  const result = page.getByRole('dialog', { name: 'Battle result' });
+  await expect(result).toBeVisible();
+  await expect(result.getByRole('heading')).toHaveText('Red wins');
+  await expect(result).toContainText('Blue forfeited');
+  await expect(page.getByRole('button', { name: 'End battle' })).toBeDisabled();
+  const clock = await page.getByLabel('Battle time').textContent();
+  await page.waitForTimeout(1_200);
+  await expect(page.getByLabel('Battle time')).toHaveText(clock ?? '');
+});

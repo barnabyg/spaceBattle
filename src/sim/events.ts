@@ -1,5 +1,6 @@
 import type { SideId } from './battle';
 import type { ComponentType, SectionKind } from './design';
+import type { BattleOutcome } from './outcome';
 
 /** A laser's beam started landing on a part of the target: a section, or one of its mounts. */
 export interface HitEvent {
@@ -50,10 +51,25 @@ export interface StructuralFailureEvent {
   readonly section: SectionKind;
 }
 
+/** The battle is over; nothing changes after this. */
+export interface BattleEndedEvent {
+  readonly type: 'battle-ended';
+  readonly time: number;
+  readonly outcome: BattleOutcome;
+}
+
 /** Something significant that happened in a battle. */
 export type BattleEvent =
-  HitEvent | ArmourBreachedEvent | ComponentLostEvent | StructuralFailureEvent;
+  HitEvent | ArmourBreachedEvent | ComponentLostEvent | StructuralFailureEvent | BattleEndedEvent;
 
-/** Whether an event concerns a side: its own ship, or a hit it scored. */
-export const involves = (event: BattleEvent, side: SideId): boolean =>
-  event.type === 'hit' ? event.attacker === side || event.target === side : event.side === side;
+/** Whether an event concerns a side: its own ship, a hit it scored, or the end of the battle. */
+export const involves = (event: BattleEvent, side: SideId): boolean => {
+  switch (event.type) {
+    case 'hit':
+      return event.attacker === side || event.target === side;
+    case 'battle-ended':
+      return true;
+    default:
+      return event.side === side;
+  }
+};

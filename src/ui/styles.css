@@ -351,3 +351,41 @@ h3 {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+
+.end-battle {
+  margin-left: auto;
+}
+
+.end-battle:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.battle-dialog {
+  min-width: 36rem;
+  padding: 2rem 2.4rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+}
+
+.battle-dialog::backdrop {
+  background: rgb(0 0 0 / 60%);
+}
+
+.result-headline {
+  font-size: 2rem;
+  color: var(--text);
+}
+
+.result-details {
+  margin: 1rem 0;
+  padding: 0;
+  list-style: none;
+  font-size: 1.2rem;
+}
+
+.result-time {
+  color: var(--muted);
+}

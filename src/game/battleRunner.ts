@@ -10,6 +10,7 @@ const SIGNIFICANT_EVENTS: ReadonlySet<BattleEvent['type']> = new Set([
   'armour-breached',
   'component-lost',
   'structural-failure',
+  'battle-ended',
 ]);
 
 /** Real time longer than this between updates (e.g. a background tab) is not caught up. */
@@ -28,7 +29,7 @@ export interface BattleRunner {
   /**
    * Runs the battle forward by `realSeconds` of real time, returning what happened. A
    * significant event, such as a hit or a component lost, drops time compression to 1× and
-   * ends the update there.
+   * ends the update there. Once the battle has ended, updates do nothing.
    */
   update(realSeconds: number): readonly BattleEvent[];
 }
@@ -64,7 +65,7 @@ export const createBattleRunner = (battle: Battle): BattleRunner => {
       compressionIndex = Math.max(compressionIndex - 1, 0);
     },
     update(realSeconds) {
-      if (paused) return [];
+      if (paused || battle.outcome) return [];
       owed += Math.min(Math.max(realSeconds, 0), MAX_REAL_DELTA) * compression();
       // The small allowance stops rounding error in `owed` from dropping a step.
       const steps = Math.floor(owed / TIME_STEP + 1e-9);

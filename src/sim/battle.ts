@@ -20,6 +20,7 @@ import {
   type PowerShare,
   type PowerSystem,
 } from './power';
+import { endedBy, judge, lossOf, type BattleOutcome } from './outcome';
 import { IDENTITY, rotate, type Quat } from './quaternion';
 import { createRandom } from './random';
 import {
@@ -40,7 +41,7 @@ import { add, distance, length, normalize, scale, sub, type Vec3 } from './vecto
 import { aimWeapons, effectiveRange, emitBeams, type Beam } from './weapons';
 
 export { TIME_STEP };
-export type { BattleEvent };
+export type { BattleEvent, BattleOutcome };
 
 export type SideId = string;
 export type Commander = 'player' | 'computer';
@@ -206,20 +207,36 @@ export interface SideObservation {
   readonly contacts: readonly ContactObservation[];
   /** The latest events about this side's ship or hits it scored, oldest first. */
   readonly events: readonly BattleEvent[];
+  /** How the battle ended, or null while it goes on. */
+  readonly outcome: BattleOutcome | null;
 }
 
 export interface Battle {
   readonly sides: readonly SideSetup[];
   /** Simulated seconds since the battle began. */
   readonly time: number;
+  /**
+   * How the battle ended, or null while it goes on. Once it has ended the battle is frozen:
+   * time stops, steps do nothing and return no events, and orders are ignored.
+   */
+  readonly outcome: BattleOutcome | null;
   /** Gives an order to a side's ship; it takes effect from the next step. */
   giveOrder(sideId: SideId, order: Order): void;
-  /** Advances the battle by one fixed time step, returning what happened in it. */
+  /**
+   * Advances the battle by one fixed time step, returning what happened in it. A step in which
+   * a ship loses ends the battle, with a 'battle-ended' event last.
+   */
   step(): readonly BattleEvent[];
   /** Advances the battle by whole time steps covering `seconds`, returning what happened. */
   advance(seconds: number): readonly BattleEvent[];
   /** What one side knows about the battle. */
   observe(sideId: SideId): SideObservation;
+  /**
+   * A side chooses "End battle", ending it at once: a forfeit for a player side, no result
+   * between computer sides (see `endedBy`). Returns the 'battle-ended' event, or nothing if the
+   * battle was already over.
+   */
+  endBattle(sideId: SideId): readonly BattleEvent[];
 }
 
 interface Combatant {
@@ -353,6 +370,15 @@ export const createBattle = (setup: BattleSetup): Battle => {
   /** Beams on their way to their targets, in the order fired. */
   let beams: Beam[] = [];
   const logs = new Map<SideId, BattleEvent[]>(setup.sides.map((side) => [side.id, []]));
+  let outcome: BattleOutcome | null = null;
+
+  /** Keeps each side's latest events about it. */
+  const record = (events: readonly BattleEvent[]) => {
+    for (const [side, log] of logs) {
+      log.push(...events.filter((event) => involves(event, side)));
+      log.splice(0, Math.max(0, log.length - EVENT_LOG_LENGTH));
+    }
+  };
 
   const combatantOf = (sideId: SideId): Combatant => {
     const combatant = combatants.find((c) => c.side.id === sideId);
@@ -422,6 +448,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
   };
 
   const step = (): readonly BattleEvent[] => {
+    if (outcome) return [];
     const start = steps * TIME_STEP;
     // Weapons choose whether to fire first, so the drive knows what power they will ask for.
     combatants.forEach((c) => {
@@ -473,10 +500,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
     combatants.forEach(({ side, ship }) => {
       overheat(ship, TIME_STEP, { side: side.id, time, random, events });
     });
-    for (const [side, log] of logs) {
-      log.push(...events.filter((event) => involves(event, side)));
-      log.splice(0, Math.max(0, log.length - EVENT_LOG_LENGTH));
-    }
+    // Ships that lost in this step lose together; if all of them did, nobody wins.
+    outcome = judge(
+      time,
+      combatants.map(({ side, ship }) => ({ side: side.id, loss: lossOf(ship) })),
+    );
+    if (outcome) events.push({ type: 'battle-ended', time, outcome });
+    record(events);
     return events;
   };
 
@@ -485,9 +515,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
     get time() {
       return steps * TIME_STEP;
     },
+    get outcome() {
+      return outcome;
+    },
     giveOrder(sideId, order) {
       const { ship } = combatantOf(sideId);
       const checked = checkOrder(order);
+      if (outcome) return;
       // Manual orders and manoeuvres replace each other: one or the other steers the ship.
       switch (checked.type) {
         case 'manoeuvre':
@@ -563,7 +597,15 @@ export const createBattle = (setup: BattleSetup): Battle => {
             orientation: s.orientation,
           })),
         events: [...(logs.get(sideId) ?? [])],
+        outcome,
       };
+    },
+    endBattle(sideId) {
+      if (outcome) return [];
+      outcome = endedBy(steps * TIME_STEP, setup.sides, sideId);
+      const events: BattleEvent[] = [{ type: 'battle-ended', time: outcome.time, outcome }];
+      record(events);
+      return events;
     },
   };
 };

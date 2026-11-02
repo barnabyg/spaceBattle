@@ -1,13 +1,20 @@
 import type { BattleRunner } from '../game/battleRunner';
 import { el } from './el';
 import { createDamagePanel } from './damagePanel';
+import { createEndBattle } from './endBattle';
 import { createOrdersPanel } from './ordersPanel';
+import { createResultScreen } from './resultScreen';
 import { createStatusPanel } from './statusPanel';
 import { createTacticalMap } from './tacticalMap';
 import { createTimeControls } from './timeControls';
 
+export interface BattleScreenOptions {
+  /** Called when the captain goes on from the result screen; by default, reloads the page. */
+  readonly onContinue?: () => void;
+}
+
 /** The battle as one side's captain sees it, running in real time. */
-export const createBattleScreen = (runner: BattleRunner) => {
+export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOptions = {}) => {
   const { battle } = runner;
   const viewer = battle.sides.find((s) => s.commander === 'player') ?? battle.sides[0];
   if (!viewer) throw new Error('A battle needs at least one side');
@@ -21,6 +28,14 @@ export const createBattleScreen = (runner: BattleRunner) => {
   const orders = createOrdersPanel((order) => {
     battle.giveOrder(viewer.id, order);
   });
+  const endBattle = createEndBattle(runner, viewer, () => battle.endBattle(viewer.id));
+  const result = createResultScreen(
+    battle.sides,
+    options.onContinue ??
+      (() => {
+        location.reload();
+      }),
+  );
 
   const element = el(
     'div',
@@ -30,9 +45,12 @@ export const createBattleScreen = (runner: BattleRunner) => {
       { className: 'top-bar' },
       el('h1', { text: 'Space Battle' }),
       timeControls.element,
+      endBattle.button,
     ),
     map.element,
     el('aside', { className: 'side-panel' }, status.element, damage.element, orders.element),
+    endBattle.dialog,
+    result.element,
   );
 
   let last = performance.now();
@@ -47,6 +65,8 @@ export const createBattleScreen = (runner: BattleRunner) => {
     orders.update(observation);
     map.update(observation);
     map.render();
+    endBattle.update(observation.outcome !== null);
+    if (observation.outcome) result.show(observation.outcome);
     frame = requestAnimationFrame(tick);
   };
   frame = requestAnimationFrame(tick);

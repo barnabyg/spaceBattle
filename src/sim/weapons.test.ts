@@ -224,7 +224,7 @@ describe('hits', () => {
 });
 
 describe('integrity', () => {
-  it("scales a drive's thrust with its integrity, down to nothing at zero", () => {
+  it("scales a drive's thrust with its integrity until it is lost", () => {
     // Red flies away from blue, so blue's beam lands on its unarmoured engine section.
     const battle = createBattle(
       duelSetup(armedTestDesign(), testDesign(), 20_000 * KM, fromAxisAngle(vec3(0, 0, 1), 0)),
@@ -240,13 +240,16 @@ describe('integrity', () => {
       expect(drive?.type).toBe('drive');
       const integrity = drive?.integrity ?? 0;
       seen.push(integrity);
-      expect(red.thrust / thrust).toBeCloseTo(integrity, 2);
       if (integrity === 0) break;
+      expect(red.thrust / thrust).toBeCloseTo(integrity, 2);
     }
     expect(seen.some((x) => x > 0.2 && x < 0.9)).toBe(true);
     expect(seen.at(-1)).toBe(0);
-    battle.advance(10);
-    expect(own(battle, 'red').thrust).toBe(0);
+    // With no working drive the ship is disabled and the battle is over.
+    expect(battle.outcome?.sides[1]?.loss).toEqual({
+      result: 'disabled',
+      cause: 'no-working-drive',
+    });
   });
 
   it("scales a radiator's area with its integrity", () => {

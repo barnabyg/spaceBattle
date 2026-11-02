@@ -54,6 +54,8 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
       return `${time} ${COMPONENT_TEXT[event.component]} lost (${SECTION_TEXT[event.section].toLowerCase()})`;
     case 'structural-failure':
       return `${time} ${SECTION_TEXT[event.section]} section structural failure`;
+    case 'battle-ended':
+      return `${time} Battle over`;
   }
 };
 
