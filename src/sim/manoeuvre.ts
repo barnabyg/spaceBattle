@@ -34,7 +34,7 @@ export interface ManoeuvreState {
 }
 
 /** What the autopilot knows of the enemy: the contact's position and velocity. */
-export interface ManoeuvreTarget {
+export interface ContactMotion {
   readonly position: Vec3;
   readonly velocity: Vec3;
 }
@@ -113,11 +113,11 @@ const stoppingSpeed = (ship: ShipState, distance: number): number => {
 const guidance = (
   ship: ShipState,
   order: ActiveManoeuvreOrder,
-  target: ManoeuvreTarget,
+  contact: ContactMotion,
 ): Guidance => {
-  const offset = sub(ship.position, target.position);
+  const offset = sub(ship.position, contact.position);
   const outward = normalize(offset);
-  const relative = sub(ship.velocity, target.velocity);
+  const relative = sub(ship.velocity, contact.velocity);
   let rangeError: number | null = null;
   let rangeRate = 0;
   if (order.goal !== 'match-velocity') {
@@ -149,10 +149,10 @@ const angleBetween = (a: Vec3, b: Vec3): number =>
 export const manoeuvreCommand = (
   ship: ShipState,
   state: ManoeuvreState,
-  target: ManoeuvreTarget | null,
+  contact: ContactMotion | null,
 ): ManoeuvreCommand => {
-  if (!target) return { heading: null, velocityError: ZERO, correcting: false };
-  const { velocityError } = guidance(ship, state.order, target);
+  if (!contact) return { heading: null, velocityError: ZERO, correcting: false };
+  const { velocityError } = guidance(ship, state.order, contact);
   const correcting = isCorrecting(state, velocityError);
   return { heading: correcting ? normalize(velocityError) : null, velocityError, correcting };
 };
@@ -213,10 +213,10 @@ const planBurns = (ship: ShipState, plan: Guidance, correcting: boolean): Planne
 export const observeManoeuvre = (
   ship: ShipState,
   state: ManoeuvreState,
-  target: ManoeuvreTarget | null,
+  contact: ContactMotion | null,
 ): ManoeuvreObservation => {
   const range = state.order.goal === 'match-velocity' ? null : state.order.range;
-  if (!target) {
+  if (!contact) {
     return {
       goal: state.order.goal,
       range,
@@ -226,7 +226,7 @@ export const observeManoeuvre = (
       plannedBurns: [],
     };
   }
-  const plan = guidance(ship, state.order, target);
+  const plan = guidance(ship, state.order, contact);
   const correcting = isCorrecting(state, plan.velocityError);
   const aligned = angleBetween(noseOf(ship), plan.velocityError) < BURN_ANGLE;
   return {

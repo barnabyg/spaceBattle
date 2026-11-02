@@ -21,7 +21,7 @@ export const createEndBattle = (runner: BattleRunner, viewer: SideSetup, onEnd: 
   });
   const cancel = el('button', {
     className: 'order-button',
-    text: forfeit ? 'Keep fighting' : 'Keep watching',
+    text: forfeit ? 'Continue battle' : 'Keep watching',
     attrs: { type: 'button' },
   });
   const dialog = el(

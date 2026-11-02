@@ -8,7 +8,7 @@ import {
   observeManoeuvre,
   type ManoeuvreCommand,
   type ManoeuvreObservation,
-  type ManoeuvreTarget,
+  type ContactMotion,
 } from './manoeuvre';
 import { thermalLimit, thermalProperties, workingRadiators } from './heat';
 import type { AttitudeOrder, FireMode, Order } from './orders';
@@ -441,7 +441,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
   };
 
   /** What the ship knows of the enemy for its autopilot: the contact's position and velocity. */
-  const contactOf = (combatant: Combatant): ManoeuvreTarget | null => {
+  const contactOf = (combatant: Combatant): ContactMotion | null => {
     const enemy = enemyOf(combatant);
     return enemy ? { position: enemy.ship.position, velocity: enemy.ship.velocity } : null;
   };

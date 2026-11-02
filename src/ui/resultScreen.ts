@@ -45,7 +45,7 @@ export const outcomeDetails = (
 export const createResultScreen = (
   sides: readonly SideSetup[],
   onContinue: () => void,
-  continueLabel = 'Fight again',
+  continueLabel = 'New battle',
 ) => {
   const headline = el('h2', { className: 'result-headline' });
   const details = el('ul', { className: 'result-details' });

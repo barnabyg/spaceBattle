@@ -99,7 +99,7 @@ test('End battle asks first, then shows the player forfeited', async ({ page }) 
   const confirm = page.getByRole('dialog', { name: 'End battle' });
   await expect(confirm).toContainText('forfeit');
   await expect(page.getByLabel('Time compression')).toHaveText('Paused');
-  await confirm.getByRole('button', { name: 'Keep fighting' }).click();
+  await confirm.getByRole('button', { name: 'Continue battle' }).click();
   await expect(confirm).toBeHidden();
   await expect(page.getByLabel('Time compression')).toHaveText('1×');
 

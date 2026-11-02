@@ -21,7 +21,7 @@ const STANDOFF_FRACTION = 0.95;
 /** A ship that cannot outrange its enemy closes to this fraction of its own reach. */
 const CLOSE_FRACTION = 0.5;
 /** A ship with no working weapons opens the range to this multiple of the enemy's reach. */
-const ESCAPE_FRACTION = 1.1;
+const DISENGAGE_FRACTION = 1.1;
 /** Within this multiple of the longer reach a ship is fighting, not just manoeuvring. */
 const FIGHTING_FRACTION = 1.05;
 /** Radiators deploy above this temperature, K... */
@@ -104,7 +104,7 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
   const manoeuvre = (reach: number): ManoeuvreOrder | null => {
     if (reach === 0) {
       return enemyReach > 0
-        ? { type: 'manoeuvre', goal: 'open', range: ESCAPE_FRACTION * enemyReach }
+        ? { type: 'manoeuvre', goal: 'open', range: DISENGAGE_FRACTION * enemyReach }
         : null;
     }
     const standoff = STANDOFF_FRACTION * reach;

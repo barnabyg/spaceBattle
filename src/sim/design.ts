@@ -5,7 +5,7 @@ export type HullSize = (typeof HULL_SIZES)[number];
 export const SECTION_KINDS = ['forward', 'middle', 'engine'] as const;
 export type SectionKind = (typeof SECTION_KINDS)[number];
 
-/** The main engine; it pushes along the ship's long axis. */
+/** The drive; it pushes along the ship's long axis. */
 export interface DriveDesign {
   readonly type: 'drive';
   /** kg */
@@ -117,7 +117,7 @@ export interface SectionDesign {
   readonly mounts: readonly MountedComponentDesign[];
 }
 
-/** A reusable blueprint for a ship. */
+/** A reusable design for a ship: a hull plus the components in each section. */
 export interface Design {
   readonly id: string;
   readonly name: string;
