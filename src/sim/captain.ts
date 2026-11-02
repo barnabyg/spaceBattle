@@ -134,24 +134,20 @@ const missileReachOf = ({ weapons }: OwnShipObservation): number =>
       )
     : 0;
 
+/** The longest `range` of any working one of `weapons`, m; zero without any. */
+const reachOf = <W extends { readonly integrity: number }>(
+  weapons: readonly W[],
+  range: (weapon: W) => number,
+): number => Math.max(0, ...weapons.filter((weapon) => weapon.integrity > 0).map(range));
+
 /** How far the ship's working lasers and particle beams fire, m; zero without any. */
 const beamReach = ({ weapons }: OwnShipObservation): number =>
-  Math.max(
-    0,
-    ...[...weapons.lasers, ...weapons.particleBeams]
-      .filter((weapon) => weapon.integrity > 0)
-      .map((weapon) => weapon.effectiveRange),
-  );
+  reachOf([...weapons.lasers, ...weapons.particleBeams], (weapon) => weapon.effectiveRange);
 
 /** How close its working kinetic guns need the enemy to hit it for sure while it has slugs, m. */
 const gunReach = ({ weapons }: OwnShipObservation): number =>
   weapons.ammunition.slugs > 0
-    ? Math.max(
-        0,
-        ...weapons.kineticGuns
-          .filter((gun) => gun.integrity > 0)
-          .map((gun) => sureRange(gun.muzzleVelocity)),
-      )
+    ? reachOf(weapons.kineticGuns, (gun) => sureRange(gun.muzzleVelocity))
     : 0;
 
 /**
@@ -165,12 +161,7 @@ const ownReach = (ship: OwnShipObservation): number =>
 
 /** How far the ship's point defence reaches while it has a working gun and rounds left, m. */
 const pointDefenceReach = ({ weapons }: OwnShipObservation): number =>
-  weapons.ammunition.rounds > 0
-    ? Math.max(
-        0,
-        ...weapons.pointDefence.filter((gun) => gun.integrity > 0).map((gun) => gun.effectiveRange),
-      )
-    : 0;
+  weapons.ammunition.rounds > 0 ? reachOf(weapons.pointDefence, (gun) => gun.effectiveRange) : 0;
 
 /**
  * What the captain makes of the enemy's arms: it knows the enemy's design, sees which of its
