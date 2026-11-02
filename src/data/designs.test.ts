@@ -7,6 +7,13 @@ describe('hand-made designs', () => {
     expect(HAND_MADE_DESIGNS.length).toBeGreaterThanOrEqual(2);
     expect(new Set(HAND_MADE_DESIGNS.map((d) => d.id)).size).toBe(HAND_MADE_DESIGNS.length);
   });
+
+  it('carry armour on every section and at least one laser', () => {
+    for (const design of HAND_MADE_DESIGNS) {
+      for (const section of design.sections) expect(section.armour.thickness).toBeGreaterThan(0);
+      expect(design.sections.flatMap((s) => s.mounts).some((m) => m.type === 'laser')).toBe(true);
+    }
+  });
 });
 
 describe('parseDesign', () => {
@@ -90,6 +97,43 @@ describe('parseDesign', () => {
     expect(() => parseDesign(withMiddle([thrusters, reactor, reactor]))).toThrow(/reactor/);
     expect(() => parseDesign(withMiddle([thrusters, reactor, radiator]))).toThrow(/mount/);
     expect(() => parseDesign(withMiddle([thrusters], [reactor]))).toThrow(/inside a section/);
+  });
+
+  it('reads armour and lasers, and leaves a section without armour unarmoured', () => {
+    const laser = {
+      type: 'laser',
+      mass: 1,
+      beamPower: 1,
+      efficiency: 0.4,
+      aperture: 1,
+      wavelength: 1e-7,
+    };
+    const armour = { type: 'ablative', thickness: 0.05 };
+    const design = parseDesign({ ...valid, sections: [{ ...forward, armour }, middle, engine] });
+    expect(design.sections[0]?.armour).toEqual(armour);
+    expect(design.sections[1]?.armour).toEqual({ type: 'heavy', thickness: 0 });
+    expect(parseDesign(withMiddle([thrusters, reactor], [laser])).sections[1]?.mounts).toEqual([
+      laser,
+    ]);
+    expect(() => parseDesign(withMiddle([thrusters, reactor, laser]))).toThrow(/mount/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor], [{ ...laser, efficiency: 1.5 }])),
+    ).toThrow(/efficiency/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor], [{ ...laser, aperture: 0 }])),
+    ).toThrow(/aperture/);
+    expect(() =>
+      parseDesign({
+        ...valid,
+        sections: [{ ...forward, armour: { type: 'cardboard', thickness: 1 } }, middle, engine],
+      }),
+    ).toThrow(/type/);
+    expect(() =>
+      parseDesign({
+        ...valid,
+        sections: [{ ...forward, armour: { type: 'heavy', thickness: -1 } }, middle, engine],
+      }),
+    ).toThrow(/thickness/);
   });
 
   it('rejects power and heat numbers outside their range', () => {

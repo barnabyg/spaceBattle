@@ -26,6 +26,7 @@ const PROJECTION_POINTS = 121;
 /** Planned burns shown on the map, in order. */
 const MAX_PLANNED_BURNS = 4;
 const PLANNED_BURN_COLOUR = '#ffb347';
+const BEAM_COLOUR = '#7dffb0';
 /** Heading lines are this fraction of the camera's distance from the own ship. */
 const HEADING_SCALE = 0.06;
 
@@ -179,6 +180,14 @@ export const createTacticalMap = (sides: readonly SideSetup[]) => {
   });
   const ownDrive = sides[0] ? designComponent(sides[0].design, 'drive') : undefined;
 
+  // The own ship's laser beam, while it is firing.
+  const beam = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+    new THREE.LineBasicMaterial({ color: BEAM_COLOUR, transparent: true, opacity: 0.8 }),
+  );
+  beam.visible = false;
+  scene.add(beam);
+
   const resize = () => {
     const { clientWidth: width, clientHeight: height } = element;
     if (width === 0 || height === 0) return;
@@ -282,6 +291,12 @@ export const createTacticalMap = (sides: readonly SideSetup[]) => {
           observation.time,
         );
       }
+      const target = observation.contacts.find((c) => c.sideId === own.weapons.target);
+      beam.visible = target !== undefined && own.weapons.lasers.some((l) => l.firing);
+      if (target && beam.visible) {
+        beam.geometry.setFromPoints([centre, toScene(target.position)]);
+      }
+
       if (ownDrive) {
         const lastBurnEnd = Math.max(
           0,

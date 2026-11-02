@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createBattle, TIME_STEP } from './battle';
-import { testSetup } from './testing';
+import { duelSetup, TEST_LASER, testDesign, testSetup, withSection } from './testing';
 import { distance } from './vector';
 
 describe('battle simulation', () => {
@@ -15,6 +15,23 @@ describe('battle simulation', () => {
     for (const side of ['blue', 'red']) {
       expect(a.observe(side)).toStrictEqual(b.observe(side));
     }
+  });
+
+  it('gives identical damage from the same seed when lasers fire', () => {
+    // Nothing armoured, so beams soon reach components and the seeded chance of which is struck.
+    const design = withSection(testDesign(), 'engine', { mounts: [TEST_LASER] });
+    const run = () => {
+      const battle = createBattle({ ...duelSetup(design, design, 20_000e3), seed: 7 });
+      battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+      battle.giveOrder('red', { type: 'weapons', target: 'blue', mode: 'fire-freely' });
+      battle.giveOrder('red', { type: 'manoeuvre', goal: 'open', range: 25_000e3 });
+      const events = battle.advance(900);
+      return { events, blue: battle.observe('blue'), red: battle.observe('red') };
+    };
+    const a = run();
+    const b = run();
+    expect(a.events.some((e) => e.type === 'component-lost')).toBe(true);
+    expect(a).toStrictEqual(b);
   });
 
   it('advances in whole fixed time steps', () => {

@@ -69,19 +69,48 @@ export interface RadiatorDesign {
   readonly emissivity: number;
 }
 
+/** A weapon firing light; its beam spreads by diffraction, so it weakens with range. */
+export interface LaserDesign {
+  readonly type: 'laser';
+  /** kg */
+  readonly mass: number;
+  /** Power carried off in the beam while firing, W. */
+  readonly beamPower: number;
+  /** Fraction of the electrical power drawn that leaves in the beam; the rest is heat (0–1). */
+  readonly efficiency: number;
+  /** Diameter of the focusing mirror, m. */
+  readonly aperture: number;
+  /** m */
+  readonly wavelength: number;
+}
+
 /** Components that sit inside a section's armour. */
 export type InternalComponentDesign =
   DriveDesign | ThrustersDesign | ReactorDesign | CapacitorDesign;
 /** Components that must be exposed, on a section's mounts. */
-export type MountedComponentDesign = RadiatorDesign;
+export type MountedComponentDesign = RadiatorDesign | LaserDesign;
 export type ComponentDesign = InternalComponentDesign | MountedComponentDesign;
 export type ComponentType = ComponentDesign['type'];
 
 const INTERNAL_TYPES = ['drive', 'thrusters', 'reactor', 'capacitor'] as const;
-const MOUNTED_TYPES = ['radiator'] as const;
+const MOUNTED_TYPES = ['radiator', 'laser'] as const;
+
+export const ARMOUR_TYPES = ['heavy', 'ablative'] as const;
+export type ArmourType = (typeof ARMOUR_TYPES)[number];
+
+/** A section's armour: one type, one thickness over its whole outer surface. */
+export interface ArmourDesign {
+  readonly type: ArmourType;
+  /** m */
+  readonly thickness: number;
+}
+
+/** A section with no armour. */
+export const NO_ARMOUR: ArmourDesign = { type: 'heavy', thickness: 0 };
 
 export interface SectionDesign {
   readonly kind: SectionKind;
+  readonly armour: ArmourDesign;
   /** Components inside the section's armour. */
   readonly components: readonly InternalComponentDesign[];
   /** Exposed components on the outside of the section. */
@@ -236,7 +265,25 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
         emissivity: requireFraction(data, 'emissivity', where),
       };
     }
+    case 'laser':
+      return {
+        type,
+        mass,
+        beamPower: requireNumber(data, 'beamPower', where),
+        efficiency: requireFraction(data, 'efficiency', where),
+        aperture: requireNumber(data, 'aperture', where),
+        wavelength: requireNumber(data, 'wavelength', where),
+      };
   }
+};
+
+const parseArmour = (data: unknown, where: string): ArmourDesign => {
+  if (data === undefined) return NO_ARMOUR;
+  if (!isRecord(data)) throw new Error(`${where}: "armour" must be an object`);
+  return {
+    type: requireOneOf(data, 'type', ARMOUR_TYPES, `${where} armour`),
+    thickness: requireNumber(data, 'thickness', `${where} armour`, { positive: false }),
+  };
 };
 
 const isMounted = (component: ComponentDesign): component is MountedComponentDesign =>
@@ -262,7 +309,7 @@ const parseSection = (data: unknown, where: string): SectionDesign => {
     }
     return component;
   });
-  return { kind, components, mounts };
+  return { kind, armour: parseArmour(data.armour, `${where} ${kind}`), components, mounts };
 };
 
 /** Reads a design from untrusted data, such as a design file, throwing if it is invalid. */

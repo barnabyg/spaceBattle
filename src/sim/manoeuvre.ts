@@ -99,6 +99,8 @@ const approachSpeed = (ship: ShipState, distance: number): number => {
   const a = BRAKING_MARGIN * accelerationOf(ship);
   if (!(a > 0)) return 0;
   const t = turnTime(ship, Math.PI);
+  // A ship that cannot turn cannot plan to stop.
+  if (!Number.isFinite(t)) return 0;
   const stoppable = a * (Math.sqrt(t * t + (2 * distance) / a) - t);
   return Math.min(stoppable, CRUISE_FRACTION * deltaVOf(ship));
 };
@@ -167,7 +169,7 @@ export const manoeuvreThrottle = (ship: ShipState, command: ManoeuvreCommand, dt
  */
 const planBurns = (ship: ShipState, plan: Guidance, correcting: boolean): PlannedBurn[] => {
   const a = accelerationOf(ship);
-  if (!(a > 0)) return [];
+  if (!(a > 0) || !Number.isFinite(turnTime(ship, Math.PI))) return [];
   const burns: PlannedBurn[] = [];
   const throttle = fullAvailableThrottle(ship);
   let pointing = noseOf(ship);

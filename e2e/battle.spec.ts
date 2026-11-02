@@ -35,7 +35,7 @@ test('a manoeuvre order shows its goal and planned burns on the map', async ({ p
   await page.goto('/');
   await page.keyboard.press(' ');
   await page.getByLabel('Range km').fill('150000');
-  await page.getByRole('button', { name: 'Hold' }).click();
+  await page.getByRole('button', { name: 'Hold', exact: true }).click();
   await expect(page.getByLabel('Manoeuvre state')).toContainText('Holding 150,000 km · error');
   const burns = page.getByRole('region', { name: 'Tactical map' }).locator('.planned-burn');
   await expect(burns.first()).toBeVisible();
@@ -70,4 +70,24 @@ test('the ship heats up during a burn', async ({ page }) => {
   for (let i = 0; i < 6; i++) await page.keyboard.press('+');
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect.poll(async () => kmOf(await temperature.textContent())).toBeGreaterThan(400);
+});
+
+test('weapons orders work while paused and the damage panel shows each section', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.keyboard.press(' ');
+  const damage = page.getByRole('region', { name: 'Damage' });
+  await expect(damage.getByLabel('Forward section')).toHaveText(
+    'ablative armour 50 mm of 50 mm · structure 100%',
+  );
+  await expect(damage.getByText('Laser (mount)')).toBeVisible();
+
+  const weapons = page.getByLabel('Weapons state');
+  await expect(weapons).toHaveText('Holding fire');
+  await page.getByRole('button', { name: 'Fire freely' }).click();
+  // The opening pass starts beyond laser range.
+  await expect(weapons).toContainText('Out of range · reach');
+  await page.getByRole('button', { name: 'Hold fire' }).click();
+  await expect(weapons).toHaveText('Holding fire · enemy targeted');
 });

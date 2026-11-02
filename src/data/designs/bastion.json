@@ -2,10 +2,11 @@
   "id": "bastion",
   "name": "Bastion",
   "hullSize": "cruiser",
-  "propellantMass": 1100000,
+  "propellantMass": 1600000,
   "sections": [
     {
       "kind": "forward",
+      "armour": { "type": "heavy", "thickness": 0.008 },
       "components": [
         {
           "type": "capacitor",
@@ -18,6 +19,7 @@
     },
     {
       "kind": "middle",
+      "armour": { "type": "ablative", "thickness": 0.015 },
       "components": [
         { "type": "thrusters", "mass": 80000, "torque": 60000000 },
         { "type": "reactor", "mass": 120000, "output": 5000000000, "efficiency": 0.75 }
@@ -36,11 +38,28 @@
           "deployedArea": 22000,
           "retractedArea": 1600,
           "emissivity": 0.9
+        },
+        {
+          "type": "laser",
+          "mass": 40000,
+          "beamPower": 400000000,
+          "efficiency": 0.4,
+          "aperture": 4,
+          "wavelength": 2.5e-7
+        },
+        {
+          "type": "laser",
+          "mass": 40000,
+          "beamPower": 400000000,
+          "efficiency": 0.4,
+          "aperture": 4,
+          "wavelength": 2.5e-7
         }
       ]
     },
     {
       "kind": "engine",
+      "armour": { "type": "ablative", "thickness": 0.01 },
       "components": [
         {
           "type": "drive",

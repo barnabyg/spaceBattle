@@ -1,6 +1,6 @@
-import type { OwnShipObservation } from '../sim/battle';
+import type { SideObservation, WeaponsObservation } from '../sim/battle';
 import type { ManoeuvreObservation } from '../sim/manoeuvre';
-import type { ManoeuvreGoal, Order } from '../sim/orders';
+import type { FireMode, ManoeuvreGoal, Order } from '../sim/orders';
 import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/power';
 import { length, vec3 } from '../sim/vector';
 import { el } from './el';
@@ -50,6 +50,22 @@ const describePlan = (m: ManoeuvreObservation): string => {
   if (m.phase === 'turning') return 'Turning to burn';
   if (!next) return 'Coasting · no burn planned';
   return `Coasting · next burn in ${formatDuration(next.start)} for ${formatDuration(next.duration)}`;
+};
+
+/** What the lasers are doing, e.g. "Firing · 500 MW" or "Out of range · reach 165,000 km". */
+const describeWeapons = (weapons: WeaponsObservation): string => {
+  const { lasers, target, mode } = weapons;
+  if (lasers.length === 0) return 'No weapons';
+  if (lasers.every((l) => l.integrity === 0)) return 'All lasers lost';
+  if (mode === 'hold-fire') return target ? 'Holding fire · enemy targeted' : 'Holding fire';
+  if (!target) return 'No target';
+  const firing = lasers.filter((l) => l.firing);
+  if (firing.length > 0) {
+    const power = firing.reduce((total, l) => total + l.beamPower, 0);
+    return `Firing ${firing.length} of ${lasers.length} · ${formatMW(power)}`;
+  }
+  const reach = Math.max(...lasers.filter((l) => l.integrity > 0).map((l) => l.effectiveRange));
+  return `Out of range · reach ${formatKm(reach)}`;
 };
 
 /** The captain's orders to their own ship. Orders can be given while running or paused. */
@@ -141,6 +157,30 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   const deployRadiators = button('Deploy radiators');
   const retractRadiators = button('Retract radiators');
 
+  const targetEnemy = button('Target enemy');
+  const noTarget = button('No target');
+  const fireFreely = button('Fire freely');
+  const holdFire = button('Hold fire');
+  const weaponsState = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Weapons state' },
+  });
+  // The latest weapons order and contact, so each button changes only its own part.
+  let weapons: { target: string | null; mode: FireMode } = { target: null, mode: 'hold-fire' };
+  let enemy: string | null = null;
+  targetEnemy.addEventListener('click', () => {
+    giveOrder({ type: 'weapons', target: enemy, mode: weapons.mode });
+  });
+  noTarget.addEventListener('click', () => {
+    giveOrder({ type: 'weapons', target: null, mode: weapons.mode });
+  });
+  fireFreely.addEventListener('click', () => {
+    giveOrder({ type: 'weapons', target: weapons.target ?? enemy, mode: 'fire-freely' });
+  });
+  holdFire.addEventListener('click', () => {
+    giveOrder({ type: 'weapons', target: weapons.target, mode: 'hold-fire' });
+  });
+
   deployRadiators.addEventListener('click', () => {
     giveOrder({ type: 'radiators', deployed: true });
   });
@@ -215,11 +255,16 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     priorityList,
     el('h3', { text: 'Radiators' }),
     el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
+    el('h3', { text: 'Weapons' }),
+    el('div', { className: 'order-row' }, targetEnemy, noTarget),
+    el('div', { className: 'order-row' }, fireFreely, holdFire),
+    weaponsState,
   );
 
   return {
     element,
-    update(ship: OwnShipObservation) {
+    update(observation: SideObservation) {
+      const ship = observation.ownShip;
       const { attitude, manoeuvre } = ship;
       attitudeState.textContent = manoeuvre
         ? 'Set by the manoeuvre'
@@ -257,6 +302,14 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       });
       deployRadiators.classList.toggle('active', ship.heat.radiatorsDeployed);
       retractRadiators.classList.toggle('active', !ship.heat.radiatorsDeployed);
+
+      weapons = { target: ship.weapons.target, mode: ship.weapons.mode };
+      enemy = observation.contacts[0]?.sideId ?? null;
+      targetEnemy.classList.toggle('active', weapons.target !== null);
+      noTarget.classList.toggle('active', weapons.target === null);
+      fireFreely.classList.toggle('active', weapons.mode === 'fire-freely');
+      holdFire.classList.toggle('active', weapons.mode === 'hold-fire');
+      weaponsState.textContent = describeWeapons(ship.weapons);
     },
   };
 };

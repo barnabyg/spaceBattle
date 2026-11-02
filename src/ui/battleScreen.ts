@@ -1,5 +1,6 @@
 import type { BattleRunner } from '../game/battleRunner';
 import { el } from './el';
+import { createDamagePanel } from './damagePanel';
 import { createOrdersPanel } from './ordersPanel';
 import { createStatusPanel } from './statusPanel';
 import { createTacticalMap } from './tacticalMap';
@@ -16,6 +17,7 @@ export const createBattleScreen = (runner: BattleRunner) => {
   const timeControls = createTimeControls(runner);
   const map = createTacticalMap(ordered);
   const status = createStatusPanel();
+  const damage = createDamagePanel(viewer.id);
   const orders = createOrdersPanel((order) => {
     battle.giveOrder(viewer.id, order);
   });
@@ -30,7 +32,7 @@ export const createBattleScreen = (runner: BattleRunner) => {
       timeControls.element,
     ),
     map.element,
-    el('aside', { className: 'side-panel' }, status.element, orders.element),
+    el('aside', { className: 'side-panel' }, status.element, damage.element, orders.element),
   );
 
   let last = performance.now();
@@ -41,7 +43,8 @@ export const createBattleScreen = (runner: BattleRunner) => {
     const observation = battle.observe(viewer.id);
     timeControls.update();
     status.update(observation);
-    orders.update(observation.ownShip);
+    damage.update(observation);
+    orders.update(observation);
     map.update(observation);
     map.render();
     frame = requestAnimationFrame(tick);

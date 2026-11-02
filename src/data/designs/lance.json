@@ -2,10 +2,11 @@
   "id": "lance",
   "name": "Lance",
   "hullSize": "frigate",
-  "propellantMass": 300000,
+  "propellantMass": 400000,
   "sections": [
     {
       "kind": "forward",
+      "armour": { "type": "ablative", "thickness": 0.05 },
       "components": [
         {
           "type": "capacitor",
@@ -18,6 +19,7 @@
     },
     {
       "kind": "middle",
+      "armour": { "type": "ablative", "thickness": 0.02 },
       "components": [
         { "type": "thrusters", "mass": 20000, "torque": 8000000 },
         { "type": "reactor", "mass": 40000, "output": 2000000000, "efficiency": 0.75 }
@@ -26,21 +28,30 @@
         {
           "type": "radiator",
           "mass": 15000,
-          "deployedArea": 8000,
+          "deployedArea": 12000,
           "retractedArea": 600,
           "emissivity": 0.9
         },
         {
           "type": "radiator",
           "mass": 15000,
-          "deployedArea": 8000,
+          "deployedArea": 12000,
           "retractedArea": 600,
           "emissivity": 0.9
+        },
+        {
+          "type": "laser",
+          "mass": 30000,
+          "beamPower": 500000000,
+          "efficiency": 0.4,
+          "aperture": 4,
+          "wavelength": 2.5e-7
         }
       ]
     },
     {
       "kind": "engine",
+      "armour": { "type": "ablative", "thickness": 0.01 },
       "components": [
         {
           "type": "drive",

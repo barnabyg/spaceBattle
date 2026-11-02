@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createBattle } from '../sim/battle';
-import { testSetup } from '../sim/testing';
+import { createBattle, type Battle, type BattleEvent } from '../sim/battle';
+import { armedTestDesign, duelSetup, testDesign, testSetup } from '../sim/testing';
 import { createBattleRunner, TIME_COMPRESSIONS } from './battleRunner';
 
 const runner = () => createBattleRunner(createBattle(testSetup()));
@@ -42,6 +42,46 @@ describe('battle runner', () => {
     const r = runner();
     for (let i = 0; i < 60; i++) r.update(1 / 60);
     expect(r.battle.time).toBeCloseTo(1, 1);
+  });
+
+  it('drops to real time when a laser hits', () => {
+    const battle = createBattle(duelSetup(armedTestDesign(), testDesign(), 50_000e3));
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    const r = createBattleRunner(battle);
+    r.setTimeCompression(1000);
+    const events = r.update(0.1);
+    expect(events.map((e) => e.type)).toEqual(['hit']);
+    expect(r.timeCompression).toBe(1);
+    // The rest of the update's compressed time is not run.
+    expect(r.battle.time).toBeLessThan(1);
+  });
+
+  it('drops to real time when a component is lost', () => {
+    const lost: BattleEvent = {
+      type: 'component-lost',
+      time: 0.1,
+      side: 'blue',
+      section: 'middle',
+      mounted: true,
+      index: 0,
+      component: 'radiator',
+    };
+    const real = createBattle(testSetup());
+    let stepsTaken = 0;
+    // A battle whose 50th step loses a component.
+    const scripted: Battle = {
+      ...real,
+      step: () => {
+        stepsTaken += 1;
+        real.step();
+        return stepsTaken === 50 ? [lost] : [];
+      },
+    };
+    const r = createBattleRunner(scripted);
+    r.setTimeCompression(100);
+    expect(r.update(0.1)).toEqual([lost]);
+    expect(stepsTaken).toBe(50);
+    expect(r.timeCompression).toBe(1);
   });
 
   it('does not try to catch up a long gap in real time', () => {

@@ -40,5 +40,8 @@ export const formatGJ = (joules: number): string => `${grouped(joules / 1e9, 1)}
 /** A temperature in kelvin. */
 export const formatKelvin = (kelvin: number): string => `${grouped(kelvin, 0)} K`;
 
+/** A thickness given in metres, shown in mm. */
+export const formatMm = (metres: number): string => `${grouped(metres * 1000, 0)} mm`;
+
 /** A fraction from 0 to 1 as a whole percentage. */
 export const formatPercent = (fraction: number): string => `${Math.round(fraction * 100)}%`;

@@ -1,4 +1,12 @@
-import { designComponent, designComponents, type Design, type SectionKind } from './design';
+import { armourMass } from './armour';
+import { componentSlots, integrityOfType } from './components';
+import {
+  designComponent,
+  designComponents,
+  SECTION_KINDS,
+  type Design,
+  type SectionKind,
+} from './design';
 import { BASE_TEMPERATURE, thermalLimit, thermalProperties } from './heat';
 import { HULLS } from './hull';
 import type { ManoeuvreState } from './manoeuvre';
@@ -16,6 +24,7 @@ import {
 import { conjugate, integrate, rotate, type Quat } from './quaternion';
 import { TIME_STEP } from './time';
 import { add, cross, dot, length, scale, sub, vec3, ZERO, type Vec3 } from './vector';
+import { initialWeapons, type WeaponsState } from './weapons';
 
 /** The ship's long axis in its own body frame: the drive pushes along it. */
 export const NOSE: Vec3 = vec3(1, 0, 0);
@@ -30,6 +39,16 @@ export interface BurnState {
   readonly throttle: number;
   /** Seconds of burn left. */
   readonly remaining: number;
+}
+
+/** A section's own state: its armour and structure, and what a beam inside it bores into. */
+export interface SectionState {
+  /** Armour thickness left, m. */
+  readonly armour: number;
+  /** Integrity of the section's own structure (0–1); at zero the section has failed. */
+  readonly structure: number;
+  /** The component slot a beam through the armour is boring into, if any. */
+  readonly struck: number | null;
 }
 
 /** A single built ship and its changing state. */
@@ -61,12 +80,18 @@ export interface ShipState {
   powerFlow: PowerFlow;
   heatFlow: { readonly generated: number; readonly radiated: number };
   ledger: EnergyLedger;
+  /** Each component's integrity (0–1), in the order of `componentSlots`. */
+  integrity: readonly number[];
+  sections: Record<SectionKind, SectionState>;
+  weapons: WeaponsState;
 }
 
 /** Mass, centre of mass and principal moments of inertia (body axes), from hull and contents. */
 export interface MassProperties {
   readonly mass: number;
   readonly dryMass: number;
+  /** How far the centre of mass lies behind the nose, m. */
+  readonly centreOfMass: number;
   readonly inertia: Vec3;
 }
 
@@ -92,6 +117,9 @@ const computeMassProperties = (design: Design, propellantMass: number): MassProp
   for (const { component, section } of designComponents(design)) {
     contents.set(section, (contents.get(section) ?? 0) + component.mass);
   }
+  for (const section of design.sections) {
+    contents.set(section.kind, (contents.get(section.kind) ?? 0) + armourMass(design, section));
+  }
   // Propellant tanks sit in the middle section.
   contents.set('middle', (contents.get('middle') ?? 0) + propellantMass);
 
@@ -114,7 +142,12 @@ const computeMassProperties = (design: Design, propellantMass: number): MassProp
     iyy += (m * (shape.length ** 2 + shape.height ** 2)) / 12 + m * d2;
     izz += (m * (shape.length ** 2 + shape.width ** 2)) / 12 + m * d2;
   }
-  return { mass, dryMass: mass - propellantMass, inertia: vec3(ixx, iyy, izz) };
+  return {
+    mass,
+    dryMass: mass - propellantMass,
+    centreOfMass: -centreOfMass,
+    inertia: vec3(ixx, iyy, izz),
+  };
 };
 
 export const createShip = (
@@ -142,6 +175,18 @@ export const createShip = (
   powerFlow: IDLE_FLOW,
   heatFlow: { generated: 0, radiated: 0 },
   ledger: EMPTY_LEDGER,
+  integrity: componentSlots(design).map(() => 1),
+  sections: Object.fromEntries(
+    SECTION_KINDS.map((kind) => [
+      kind,
+      {
+        armour: design.sections.find((s) => s.kind === kind)?.armour.thickness ?? 0,
+        structure: 1,
+        struck: null,
+      },
+    ]),
+  ) as Record<SectionKind, SectionState>,
+  weapons: initialWeapons(design),
 });
 
 /** K */
@@ -149,14 +194,28 @@ export const temperatureOf = (ship: ShipState): number =>
   ship.heat / thermalProperties(ship.design).heatCapacity;
 
 /**
- * The fraction of the drive's full thrust it can use now: no more than the ship's temperature
- * allows, nor than the power left for it after higher priorities.
+ * The fraction of the drive's full thrust it can use now: no more than its integrity and the
+ * ship's temperature allow, nor than the power left for it after higher priorities.
  */
 export const driveLimit = (ship: ShipState): number => {
   const { power } = designComponent(ship.design, 'drive');
-  const flow = powerFlowOf(ship, { drive: power, shields: 0, weapons: 0 }, TIME_STEP);
-  return Math.min(thermalLimit(temperatureOf(ship)), flow.systems.drive.supplied / power);
+  const integrity = integrityOfType(ship.design, ship.integrity, 'drive');
+  const flow = powerFlowOf(
+    ship,
+    { drive: power * integrity, shields: 0, weapons: ship.weapons.demand },
+    TIME_STEP,
+  );
+  return Math.min(
+    integrity,
+    thermalLimit(temperatureOf(ship)),
+    flow.systems.drive.supplied / power,
+  );
 };
+
+/** The largest torque the thrusters can apply now, by their integrity, N·m. */
+export const thrusterTorque = (ship: ShipState): number =>
+  designComponent(ship.design, 'thrusters').torque *
+  integrityOfType(ship.design, ship.integrity, 'thrusters');
 
 export const noseOf = (ship: ShipState): Vec3 => rotate(ship.orientation, NOSE);
 
@@ -173,7 +232,7 @@ export const availableThrust = (ship: ShipState): number =>
 /** Angular acceleration about the slowest pitch/yaw axis at full thruster torque, rad/s². */
 export const turnAcceleration = (ship: ShipState): number => {
   const { inertia } = massProperties(ship.design, ship.propellantMass);
-  return designComponent(ship.design, 'thrusters').torque / Math.max(inertia.y, inertia.z);
+  return thrusterTorque(ship) / Math.max(inertia.y, inertia.z);
 };
 
 /**
@@ -199,7 +258,7 @@ const desiredAngularVelocity = (ship: ShipState, target: Vec3, turnRate: number)
 /** Turns the ship's nose towards `target` (or holds it still) within the thrusters' torque. */
 export const steer = (ship: ShipState, target: Vec3 | null, dt: number): void => {
   const { inertia } = massProperties(ship.design, ship.propellantMass);
-  const maxTorque = designComponent(ship.design, 'thrusters').torque;
+  const maxTorque = thrusterTorque(ship);
   // Plan with the slowest pitch/yaw axis so the turn can always be stopped in time.
   const turnRate = turnAcceleration(ship);
   const desired = target ? desiredAngularVelocity(ship, target, turnRate) : ZERO;

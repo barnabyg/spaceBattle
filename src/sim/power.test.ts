@@ -4,7 +4,15 @@ import { createBattle, type Battle, type OwnShipObservation } from './battle';
 import { designComponent, type Design } from './design';
 import { OVERHEAT_TEMPERATURE, BASE_TEMPERATURE } from './heat';
 import type { PowerSystem } from './power';
-import { testDesign, testSetup, testSides, withComponent } from './testing';
+import {
+  duelSetup,
+  TEST_LASER,
+  testDesign,
+  testSetup,
+  testSides,
+  withComponent,
+  withSection,
+} from './testing';
 
 const MINUTE = 60;
 const GW = 1e9;
@@ -28,46 +36,54 @@ const weakReactor = (): Design =>
     maxCharge: 0.3 * GW,
   });
 
+/** Checks a ship's energy ledger balances against what it held at the start. */
+const ledgerChecker = (battle: Battle, design: Design, side = 'blue') => {
+  const start = battle.observe(side).ownShip;
+  return () => {
+    const now = battle.observe(side).ownShip;
+    const { delivered, ...ledger } = now.energyLedger;
+    const stored = [now.power.stored, -start.power.stored];
+    const heat = [now.heat.heat, -start.heat.heat];
+    // Electrical energy: what the reactor made is now stored, was lost with damaged capacitors,
+    // or was delivered to a system.
+    expectBalanced(
+      [ledger.reactorGenerated],
+      [...stored, ledger.capacitorLost, delivered.drive, delivered.shields, delivered.weapons],
+    );
+    expectBalanced(stored, [
+      ledger.capacitorCharged,
+      -ledger.capacitorDischarged,
+      -ledger.capacitorLost,
+    ]);
+    // The reactor's waste and whatever the systems did not send elsewhere became heat.
+    const efficiency = designComponent(design, 'reactor').efficiency;
+    expectBalanced([ledger.reactorHeat * efficiency], [ledger.reactorGenerated * (1 - efficiency)]);
+    expectBalanced(
+      [ledger.driveExhaust],
+      [delivered.drive * (1 - designComponent(design, 'drive').wasteHeatFraction)],
+    );
+    expectBalanced(
+      [ledger.heatGenerated],
+      [
+        ledger.reactorHeat,
+        delivered.drive,
+        -ledger.driveExhaust,
+        delivered.shields,
+        delivered.weapons,
+        -ledger.beamEmitted,
+      ],
+    );
+    // Heat: what came in less what was radiated away is what the ship now holds.
+    expectBalanced([ledger.heatGenerated, -ledger.heatRadiated], heat);
+    expectBalanced([now.heat.heat], [now.heat.heatCapacity * now.heat.temperature]);
+  };
+};
+
 describe('power and heat', () => {
   it('conserves energy across reactor, capacitor, consumers and heat', () => {
     const design = withComponent(weakReactor(), 'radiator', { retractedArea: 500 });
     const battle = battleWith(design);
-    const start = own(battle);
-    const check = () => {
-      const now = own(battle);
-      const { delivered, ...ledger } = now.energyLedger;
-      const stored = [now.power.stored, -start.power.stored];
-      const heat = [now.heat.heat, -start.heat.heat];
-      // Electrical energy: what the reactor made is now stored or was delivered to a system.
-      expectBalanced(
-        [ledger.reactorGenerated],
-        [...stored, delivered.drive, delivered.shields, delivered.weapons],
-      );
-      expectBalanced(stored, [ledger.capacitorCharged, -ledger.capacitorDischarged]);
-      // The reactor's waste and whatever the systems did not send elsewhere became heat.
-      const efficiency = designComponent(design, 'reactor').efficiency;
-      expectBalanced(
-        [ledger.reactorHeat * efficiency],
-        [ledger.reactorGenerated * (1 - efficiency)],
-      );
-      expectBalanced(
-        [ledger.driveExhaust],
-        [delivered.drive * (1 - designComponent(design, 'drive').wasteHeatFraction)],
-      );
-      expectBalanced(
-        [ledger.heatGenerated],
-        [
-          ledger.reactorHeat,
-          delivered.drive,
-          -ledger.driveExhaust,
-          delivered.shields,
-          delivered.weapons,
-        ],
-      );
-      // Heat: what came in less what was radiated away is what the ship now holds.
-      expectBalanced([ledger.heatGenerated, -ledger.heatRadiated], heat);
-      expectBalanced([now.heat.heat], [now.heat.heatCapacity * now.heat.temperature]);
-    };
+    const check = ledgerChecker(battle, design);
 
     // A full burn drains the capacitors, then overheats; then they recharge with the radiators out.
     battle.giveOrder('blue', { type: 'burn', throttle: 1, duration: 10 * MINUTE });
@@ -84,6 +100,30 @@ describe('power and heat', () => {
     expect(end.energyLedger.capacitorCharged).toBeGreaterThan(0);
     expect(end.energyLedger.heatRadiated).toBeGreaterThan(0);
     expect(end.energyLedger.driveExhaust).toBeGreaterThan(0);
+  });
+
+  it('keeps the books while lasers fire and damaged capacitors lose their charge', () => {
+    // A laser at the back survives while the beams work through the nose to the capacitor.
+    const design = withSection(testDesign(), 'engine', { mounts: [TEST_LASER] });
+    const battle = createBattle(duelSetup(design, design, 20_000e3));
+    const checks = (['blue', 'red'] as const).map((side) => {
+      battle.giveOrder(side, {
+        type: 'weapons',
+        target: side === 'blue' ? 'red' : 'blue',
+        mode: 'fire-freely',
+      });
+      battle.giveOrder(side, { type: 'burn', throttle: 1, duration: MINUTE });
+      battle.giveOrder(side, { type: 'radiators', deployed: true });
+      return ledgerChecker(battle, design, side);
+    });
+    for (let minute = 0; minute < 10; minute++) {
+      battle.advance(MINUTE);
+      for (const check of checks) check();
+    }
+    const { energyLedger } = own(battle);
+    expect(energyLedger.beamEmitted).toBeGreaterThan(0);
+    expect(energyLedger.hitEnergy).toBeGreaterThan(0);
+    expect(energyLedger.capacitorLost).toBeGreaterThan(0);
   });
 
   it.each(['lance', 'bastion'])(

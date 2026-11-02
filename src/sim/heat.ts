@@ -1,3 +1,5 @@
+import { armourMass } from './armour';
+import { workingTotal } from './components';
 import { designComponents, designComponentsOfType, type Design } from './design';
 import { HULLS } from './hull';
 
@@ -14,7 +16,10 @@ export const BASE_TEMPERATURE = 300;
 export const OVERHEAT_TEMPERATURE = 1_000;
 /** At this temperature systems are throttled right back to nothing, K. */
 export const CUTOFF_TEMPERATURE = 1_200;
-/** Above this temperature components take damage, K (from heat brought in from outside). */
+/**
+ * Above this temperature components take damage, K. Systems are already throttled to nothing
+ * by then, so only heat that keeps coming in, such as the reactor charging capacitors, gets here.
+ */
 export const DAMAGE_TEMPERATURE = 1_300;
 
 /** A design's fixed thermal numbers. */
@@ -34,7 +39,8 @@ export const thermalProperties = (design: Design): ThermalProperties => {
   if (cached) return cached;
   const dryMass =
     HULLS[design.hullSize].structureMass +
-    designComponents(design).reduce((total, { component }) => total + component.mass, 0);
+    designComponents(design).reduce((total, { component }) => total + component.mass, 0) +
+    design.sections.reduce((total, section) => total + armourMass(design, section), 0);
   const radiators = designComponentsOfType(design, 'radiator');
   const sum = (f: (r: (typeof radiators)[number]) => number) =>
     radiators.reduce((total, r) => total + f(r), 0);
@@ -48,6 +54,20 @@ export const thermalProperties = (design: Design): ThermalProperties => {
   };
   cache.set(design, result);
   return result;
+};
+
+/** Radiating area (m²) and emittance (εA, m²) the radiators have now, by their integrity. */
+export const workingRadiators = (
+  design: Design,
+  integrity: readonly number[],
+  deployed: boolean,
+): { readonly area: number; readonly emittance: number } => {
+  const area = (r: { deployedArea: number; retractedArea: number }) =>
+    deployed ? r.deployedArea : r.retractedArea;
+  return {
+    area: workingTotal(design, integrity, 'radiator', area),
+    emittance: workingTotal(design, integrity, 'radiator', (r) => r.emissivity * area(r)),
+  };
 };
 
 /** Power radiated into space by a surface of emittance εA (m²) at temperature T: P = εσAT⁴, W. */

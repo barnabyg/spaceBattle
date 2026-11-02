@@ -1,3 +1,4 @@
+import type { SideId } from './battle';
 import type { PowerSystem } from './power';
 import type { Vec3 } from './vector';
 
@@ -47,5 +48,20 @@ export interface RadiatorsOrder {
   readonly deployed: boolean;
 }
 
+/** Fire at the target whenever the weapons can, or hold fire. */
+export type FireMode = 'fire-freely' | 'hold-fire';
+
+/**
+ * Choose the contact the weapons aim at (a side, or null for none) and whether they fire at it.
+ * Firing freely, each laser fires while the target is within its effective range, drawing power
+ * under the 'weapons' priority. Every ship starts with no target, holding fire.
+ */
+export interface WeaponsOrder {
+  readonly type: 'weapons';
+  readonly target: SideId | null;
+  readonly mode: FireMode;
+}
+
 /** An instruction from a side's captain to its ship. */
-export type Order = AttitudeOrder | BurnOrder | ManoeuvreOrder | PowerOrder | RadiatorsOrder;
+export type Order =
+  AttitudeOrder | BurnOrder | ManoeuvreOrder | PowerOrder | RadiatorsOrder | WeaponsOrder;

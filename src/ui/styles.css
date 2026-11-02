@@ -310,3 +310,44 @@ h3 {
   opacity: 0.35;
   cursor: default;
 }
+
+.damage-section h3 {
+  margin-bottom: 0.2rem;
+}
+
+.damage-summary {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.damage-parts {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.damage-parts li {
+  display: flex;
+  justify-content: space-between;
+  font-variant-numeric: tabular-nums;
+}
+
+.damage-parts li.damaged {
+  color: #ffb347;
+}
+
+.damage-parts li.lost {
+  color: #ff5a4f;
+  text-decoration: line-through;
+}
+
+.battle-log {
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}

@@ -1,4 +1,7 @@
-import type { Design } from './design';
+import { componentSlots } from './components';
+import { overheat, strike, type DamageContext } from './damage';
+import type { ArmourType, ComponentType, Design, SectionKind } from './design';
+import { involves, type BattleEvent, type HitEvent } from './events';
 import {
   manoeuvreCommand,
   manoeuvreThrottle,
@@ -7,17 +10,18 @@ import {
   type ManoeuvreObservation,
   type ManoeuvreTarget,
 } from './manoeuvre';
-import { thermalLimit, thermalProperties } from './heat';
-import type { AttitudeOrder, Order } from './orders';
+import { thermalLimit, thermalProperties, workingRadiators } from './heat';
+import type { AttitudeOrder, FireMode, Order } from './orders';
 import {
   POWER_SYSTEMS,
-  powerPlant,
+  powerPlantOf,
   settlePowerAndHeat,
   type EnergyLedger,
   type PowerShare,
   type PowerSystem,
 } from './power';
 import { IDENTITY, rotate, type Quat } from './quaternion';
+import { createRandom } from './random';
 import {
   burn,
   createShip,
@@ -32,9 +36,11 @@ import {
   type ShipState,
 } from './ship';
 import { TIME_STEP } from './time';
-import { add, length, normalize, scale, sub, type Vec3 } from './vector';
+import { add, distance, length, normalize, scale, sub, type Vec3 } from './vector';
+import { aimWeapons, effectiveRange, emitBeams, type Beam } from './weapons';
 
 export { TIME_STEP };
+export type { BattleEvent };
 
 export type SideId = string;
 export type Commander = 'player' | 'computer';
@@ -104,6 +110,54 @@ export interface HeatObservation {
   readonly thermalLimit: number;
 }
 
+/** A component and how much more damage it can take. */
+export interface ComponentObservation {
+  readonly type: ComponentType;
+  /** 0–1; it works in proportion and stops at zero. */
+  readonly integrity: number;
+}
+
+/** A section's armour, structure and components. */
+export interface SectionObservation {
+  readonly kind: SectionKind;
+  readonly armour: {
+    readonly type: ArmourType;
+    /** As designed, m. */
+    readonly thickness: number;
+    /** Left at the point of fire, m. */
+    readonly remaining: number;
+  };
+  /** Integrity of the section's own structure (0–1); at zero it has failed and is lost. */
+  readonly structure: number;
+  /** Inside the armour. */
+  readonly components: readonly ComponentObservation[];
+  readonly mounts: readonly ComponentObservation[];
+}
+
+/** One laser and what it is doing. */
+export interface LaserObservation {
+  readonly section: SectionKind;
+  /** Its place in the section's mounts. */
+  readonly mount: number;
+  readonly integrity: number;
+  /** Whether it put power into its beam in the last step. */
+  readonly firing: boolean;
+  /** Power it put into its beam in the last step, W. */
+  readonly beamPower: number;
+  /** Beam power at full integrity, W. */
+  readonly fullBeamPower: number;
+  /** How far it fires: out to where its beam keeps a useful intensity, m. */
+  readonly effectiveRange: number;
+}
+
+/** The ship's weapons: the captain's weapons order, the lasers and the latest hit scored. */
+export interface WeaponsObservation {
+  readonly target: SideId | null;
+  readonly mode: FireMode;
+  readonly lasers: readonly LaserObservation[];
+  readonly lastHit: HitEvent | null;
+}
+
 /** A side's own ship, which it knows in full. */
 export interface OwnShipObservation {
   readonly sideId: SideId;
@@ -133,6 +187,9 @@ export interface OwnShipObservation {
   readonly heat: HeatObservation;
   /** Where the ship's energy has gone since the battle began. */
   readonly energyLedger: EnergyLedger;
+  /** From nose to tail. */
+  readonly sections: readonly SectionObservation[];
+  readonly weapons: WeaponsObservation;
 }
 
 /** An enemy ship as a side perceives it; its position, motion and orientation are known. */
@@ -147,6 +204,8 @@ export interface SideObservation {
   readonly time: number;
   readonly ownShip: OwnShipObservation;
   readonly contacts: readonly ContactObservation[];
+  /** The latest events about this side's ship or hits it scored, oldest first. */
+  readonly events: readonly BattleEvent[];
 }
 
 export interface Battle {
@@ -155,10 +214,10 @@ export interface Battle {
   readonly time: number;
   /** Gives an order to a side's ship; it takes effect from the next step. */
   giveOrder(sideId: SideId, order: Order): void;
-  /** Advances the battle by one fixed time step. */
-  step(): void;
-  /** Advances the battle by whole time steps covering `seconds`. */
-  advance(seconds: number): void;
+  /** Advances the battle by one fixed time step, returning what happened in it. */
+  step(): readonly BattleEvent[];
+  /** Advances the battle by whole time steps covering `seconds`, returning what happened. */
+  advance(seconds: number): readonly BattleEvent[];
   /** What one side knows about the battle. */
   observe(sideId: SideId): SideObservation;
 }
@@ -199,12 +258,16 @@ const checkOrder = (order: Order): Order => {
       return { ...order, priorities: [...priorities] };
     }
     case 'radiators':
+    case 'weapons':
       return order;
   }
 };
 
+/** How many recent events each side's observation keeps. */
+const EVENT_LOG_LENGTH = 20;
+
 const observePower = (ship: ShipState): PowerObservation => {
-  const plant = powerPlant(ship.design);
+  const plant = powerPlantOf(ship);
   return {
     priorities: ship.priorities,
     reactorOutput: ship.powerFlow.reactorOutput,
@@ -220,6 +283,7 @@ const observePower = (ship: ShipState): PowerObservation => {
 const observeHeat = (ship: ShipState): HeatObservation => {
   const thermal = thermalProperties(ship.design);
   const temperature = temperatureOf(ship);
+  const radiators = workingRadiators(ship.design, ship.integrity, ship.radiatorsDeployed);
   return {
     heat: ship.heat,
     heatCapacity: thermal.heatCapacity,
@@ -227,8 +291,48 @@ const observeHeat = (ship: ShipState): HeatObservation => {
     generated: ship.heatFlow.generated,
     radiated: ship.heatFlow.radiated,
     radiatorsDeployed: ship.radiatorsDeployed,
-    radiatorArea: ship.radiatorsDeployed ? thermal.area.deployed : thermal.area.retracted,
+    radiatorArea: radiators.area,
     thermalLimit: thermalLimit(temperature),
+  };
+};
+
+const observeSections = (ship: ShipState): SectionObservation[] => {
+  const slots = componentSlots(ship.design);
+  const parts = (kind: SectionKind, mounted: boolean): ComponentObservation[] =>
+    slots.flatMap((slot, i) =>
+      slot.section === kind && slot.mounted === mounted
+        ? [{ type: slot.component.type, integrity: ship.integrity[i] ?? 0 }]
+        : [],
+    );
+  return ship.design.sections.map((section) => ({
+    kind: section.kind,
+    armour: {
+      type: section.armour.type,
+      thickness: section.armour.thickness,
+      remaining: ship.sections[section.kind].armour,
+    },
+    structure: ship.sections[section.kind].structure,
+    components: parts(section.kind, false),
+    mounts: parts(section.kind, true),
+  }));
+};
+
+const observeWeapons = (ship: ShipState): WeaponsObservation => {
+  const slots = componentSlots(ship.design);
+  const { weapons } = ship;
+  return {
+    target: weapons.target,
+    mode: weapons.mode,
+    lasers: weapons.lasers.map((laser) => ({
+      section: slots[laser.slot]?.section ?? 'forward',
+      mount: slots[laser.slot]?.index ?? 0,
+      integrity: ship.integrity[laser.slot] ?? 0,
+      firing: laser.beamPower > 0,
+      beamPower: laser.beamPower,
+      fullBeamPower: laser.laser.beamPower,
+      effectiveRange: effectiveRange(laser.laser),
+    })),
+    lastHit: weapons.lastHit,
   };
 };
 
@@ -245,6 +349,10 @@ export const createBattle = (setup: BattleSetup): Battle => {
     };
   });
   let steps = 0;
+  const random = createRandom(setup.seed);
+  /** Beams on their way to their targets, in the order fired. */
+  let beams: Beam[] = [];
+  const logs = new Map<SideId, BattleEvent[]>(setup.sides.map((side) => [side.id, []]));
 
   const combatantOf = (sideId: SideId): Combatant => {
     const combatant = combatants.find((c) => c.side.id === sideId);
@@ -271,7 +379,55 @@ export const createBattle = (setup: BattleSetup): Battle => {
     return enemy ? { position: enemy.ship.position, velocity: enemy.ship.velocity } : null;
   };
 
-  const step = (): void => {
+  /** The ship a side's weapons are ordered to fire at, if any. */
+  const targetOf = (combatant: Combatant): Combatant | undefined => {
+    const id = combatant.ship.weapons.target;
+    return id === null ? undefined : combatants.find((c) => c.side.id === id);
+  };
+
+  /** A beam arriving: it strikes the target, and the attacker learns of a new hit. */
+  const resolveBeam = (beam: Beam, ctx: Omit<DamageContext, 'side'>) => {
+    const target = combatantOf(beam.target);
+    const attacker = combatantOf(beam.attacker).ship;
+    const landed = strike(target.ship, beam, { ...ctx, side: beam.target });
+    const part = landed
+      ? landed.part.mount === null
+        ? landed.part.section
+        : `${landed.part.section}/${String(landed.part.mount)}`
+      : null;
+    const laser = attacker.weapons.lasers[beam.laser];
+    if (!laser) return;
+    if (landed && part && (!beam.continuing || laser.striking !== part)) {
+      const hit: HitEvent = {
+        type: 'hit',
+        time: ctx.time,
+        attacker: beam.attacker,
+        target: beam.target,
+        section: landed.part.section,
+        mount: landed.part.mount,
+        power: landed.power,
+        intensity: landed.intensity,
+        spotRadius: landed.spotRadius,
+        range: beam.range,
+      };
+      ctx.events.push(hit);
+      attacker.weapons = { ...attacker.weapons, lastHit: hit };
+    }
+    attacker.weapons = {
+      ...attacker.weapons,
+      lasers: attacker.weapons.lasers.map((l, i) =>
+        i === beam.laser ? { ...l, striking: part } : l,
+      ),
+    };
+  };
+
+  const step = (): readonly BattleEvent[] => {
+    const start = steps * TIME_STEP;
+    // Weapons choose whether to fire first, so the drive knows what power they will ask for.
+    combatants.forEach((c) => {
+      const target = targetOf(c);
+      aimWeapons(c.ship, target ? distance(c.ship.position, target.ship.position) : null);
+    });
     // Every ship plans from the same snapshot of positions, so the order of sides never matters.
     const plans = combatants.map(
       (c): { heading: Vec3 | null; command: ManoeuvreCommand | null } => {
@@ -281,7 +437,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
         return { heading: command.heading, command };
       },
     );
-    combatants.forEach(({ ship }, i) => {
+    combatants.forEach((combatant, i) => {
+      const { ship } = combatant;
       const { heading, command } = plans[i] ?? { heading: null, command: null };
       steer(ship, heading, TIME_STEP);
       if (command && ship.manoeuvre) {
@@ -291,9 +448,36 @@ export const createBattle = (setup: BattleSetup): Battle => {
         burn(ship, TIME_STEP);
       }
       settlePowerAndHeat(ship, TIME_STEP);
+      const target = targetOf(combatant);
+      beams.push(
+        ...emitBeams(
+          ship,
+          combatant.side.id,
+          target ? { id: target.side.id, position: target.ship.position } : null,
+          start,
+        ),
+      );
+    });
+    // Ships move after all have fired, so every beam leaves from the same snapshot.
+    combatants.forEach(({ ship }) => {
       ship.position = add(ship.position, scale(ship.velocity, TIME_STEP));
     });
     steps += 1;
+
+    // Beams that reach their targets by the end of the step strike them, in the order fired.
+    const time = steps * TIME_STEP;
+    const events: BattleEvent[] = [];
+    const arriving = beams.filter((b) => b.arrival <= time + 1e-9);
+    beams = beams.filter((b) => b.arrival > time + 1e-9);
+    for (const beam of arriving) resolveBeam(beam, { time, random, events });
+    combatants.forEach(({ side, ship }) => {
+      overheat(ship, TIME_STEP, { side: side.id, time, random, events });
+    });
+    for (const [side, log] of logs) {
+      log.push(...events.filter((event) => involves(event, side)));
+      log.splice(0, Math.max(0, log.length - EVENT_LOG_LENGTH));
+    }
+    return events;
   };
 
   return {
@@ -328,12 +512,20 @@ export const createBattle = (setup: BattleSetup): Battle => {
         case 'radiators':
           ship.radiatorsDeployed = checked.deployed;
           break;
+        case 'weapons':
+          if (checked.target !== null && combatantOf(checked.target).side.id === sideId) {
+            throw new Error('A ship cannot target itself');
+          }
+          ship.weapons = { ...ship.weapons, target: checked.target, mode: checked.mode };
+          break;
       }
     },
     step,
     advance(seconds) {
       const count = Math.round(seconds / TIME_STEP);
-      for (let i = 0; i < count; i++) step();
+      const events: BattleEvent[] = [];
+      for (let i = 0; i < count; i++) events.push(...step());
+      return events;
     },
     observe(sideId) {
       const own = combatantOf(sideId);
@@ -359,6 +551,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
           power: observePower(ship),
           heat: observeHeat(ship),
           energyLedger: ship.ledger,
+          sections: observeSections(ship),
+          weapons: observeWeapons(ship),
         },
         contacts: combatants
           .filter((c) => c !== own)
@@ -368,6 +562,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
             velocity: s.velocity,
             orientation: s.orientation,
           })),
+        events: [...(logs.get(sideId) ?? [])],
       };
     },
   };

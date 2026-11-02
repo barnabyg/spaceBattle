@@ -1,6 +1,15 @@
 import type { BattleSetup, Scenario, SideSetup } from './battle';
-import { parseDesign, type ComponentDesign, type ComponentType, type Design } from './design';
-import { vec3 } from './vector';
+import {
+  parseDesign,
+  type ComponentDesign,
+  type ComponentType,
+  type Design,
+  type LaserDesign,
+  type SectionDesign,
+  type SectionKind,
+} from './design';
+import { fromAxisAngle, type Quat } from './quaternion';
+import { vec3, ZERO } from './vector';
 
 /** Test helpers for building battles. Not used by the game itself. */
 
@@ -69,6 +78,56 @@ export const withComponent = <T extends ComponentType>(
     })),
   };
 };
+
+/** A section of a design changed. */
+export const withSection = (
+  design: Design,
+  kind: SectionKind,
+  changes: Partial<Omit<SectionDesign, 'kind'>>,
+): Design => ({
+  ...design,
+  sections: design.sections.map((section) =>
+    section.kind === kind ? { ...section, ...changes } : section,
+  ),
+});
+
+/** A laser for test designs: a 400 MW ultraviolet beam from a 4 m mirror. */
+export const TEST_LASER: LaserDesign = {
+  type: 'laser',
+  mass: 20e3,
+  beamPower: 400e6,
+  efficiency: 0.4,
+  aperture: 4,
+  wavelength: 250e-9,
+};
+
+/** The test design with the test laser on a forward mount. */
+export const armedTestDesign = (): Design =>
+  withSection(testDesign(), 'forward', { mounts: [TEST_LASER] });
+
+/** Turns red's nose (+x) to point back along −x, at blue. */
+export const FACING_BLUE: Quat = fromAxisAngle(vec3(0, 0, 1), Math.PI);
+
+/**
+ * Two ships at rest `range` metres apart: blue at the origin, red out along +x. Red faces blue
+ * nose-on unless given another orientation.
+ */
+export const duelSetup = (
+  blue: Design,
+  red: Design,
+  range: number,
+  redOrientation: Quat = FACING_BLUE,
+): BattleSetup => ({
+  seed: 1,
+  scenario: {
+    name: 'Duel',
+    starts: [
+      { position: ZERO, velocity: ZERO },
+      { position: vec3(range, 0, 0), velocity: ZERO, orientation: redOrientation },
+    ],
+  },
+  sides: testSides([blue, red]),
+});
 
 export const testScenario: Scenario = {
   name: 'Test',
