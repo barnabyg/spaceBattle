@@ -30,7 +30,15 @@ import {
   type ManoeuvreCommand,
   type ContactMotion,
 } from './manoeuvre';
-import { shapeRadius, slugPassed, sweepSlug, type Motion, type Slug, type Target } from './kinetic';
+import {
+  motionOf,
+  shapeRadius,
+  slugPassed,
+  sweepSlug,
+  type Motion,
+  type Slug,
+  type Target,
+} from './kinetic';
 import {
   fuseTrigger,
   guideMissile,
@@ -780,18 +788,10 @@ export const createBattle = (setup: BattleSetup): Battle => {
     // Fire control sees every ship as it was at the start of the step, so the order of sides
     // never matters.
     const motions = new Map<SideId, Motion>(
-      combatants.map(({ side, ship }) => [
-        side.id,
-        { position: ship.position, velocity: ship.velocity, acceleration: ship.acceleration },
-      ]),
+      combatants.map(({ side, ship }) => [side.id, motionOf(ship)]),
     );
     // So do missile guidance and missile defence, for missiles.
-    const missileMotions = new Map<number, Motion>(
-      missiles.map((m) => [
-        m.id,
-        { position: m.position, velocity: m.velocity, acceleration: m.acceleration },
-      ]),
-    );
+    const missileMotions = new Map<number, Motion>(missiles.map((m) => [m.id, motionOf(m)]));
     // Automatic defence launches at each incoming missile none of the ship's anti-missile
     // missiles is after yet.
     const defence = new Map<SideId, number[]>(
@@ -814,19 +814,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
         const target = targetOf(c);
         const motion = target && motions.get(target.side.id);
         const threats = missiles.flatMap((m): Threat[] =>
-          m.target !== c.side.id
-            ? []
-            : [
-                {
-                  id: m.id,
-                  design: m.design,
-                  motion: {
-                    position: m.position,
-                    velocity: m.velocity,
-                    acceleration: m.acceleration,
-                  },
-                },
-              ],
+          m.target !== c.side.id ? [] : [{ id: m.id, design: m.design, motion: motionOf(m) }],
         );
         return [
           c.side.id,
