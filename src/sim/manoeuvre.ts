@@ -1,3 +1,4 @@
+import { designComponent } from './design';
 import type { ManoeuvreGoal, ManoeuvreOrder } from './orders';
 import {
   availableThrust,
@@ -46,6 +47,7 @@ export interface PlannedBurn {
   readonly duration: number;
   /** World unit vector the drive will push along. */
   readonly direction: Vec3;
+  /** A fraction of the drive's full thrust. */
   readonly throttle: number;
 }
 
@@ -83,6 +85,10 @@ interface Guidance {
 
 const accelerationOf = (ship: ShipState): number =>
   availableThrust(ship) / massProperties(ship.design, ship.propellantMass).mass;
+
+/** The throttle (a fraction of full thrust) that gives all the thrust power and heat allow. */
+const fullAvailableThrottle = (ship: ShipState): number =>
+  availableThrust(ship) / designComponent(ship.design, 'drive').thrust;
 
 /**
  * The speed towards the ordered range from which the ship can still stop on arrival: it coasts
@@ -142,15 +148,17 @@ export const manoeuvreCommand = (
 };
 
 /**
- * The throttle for this step, once the ship has turned: zero unless the nose is close to the
- * wanted velocity change, and never more than closes the error along the nose.
+ * The throttle for this step (a fraction of full thrust), once the ship has turned: zero unless
+ * the nose is close to the wanted velocity change, and never more than closes the error along
+ * the nose or than power and heat allow.
  */
 export const manoeuvreThrottle = (ship: ShipState, command: ManoeuvreCommand, dt: number) => {
   if (!command.correcting) return 0;
   const along = dot(command.velocityError, noseOf(ship));
   if (along <= length(command.velocityError) * Math.cos(BURN_ANGLE)) return 0;
-  const a = accelerationOf(ship);
-  return a > 0 ? Math.min(1, along / (a * Math.max(THROTTLE_TIME, dt))) : 0;
+  const { mass } = massProperties(ship.design, ship.propellantMass);
+  const wanted = (along * mass) / Math.max(THROTTLE_TIME, dt);
+  return Math.min(availableThrust(ship), wanted) / designComponent(ship.design, 'drive').thrust;
 };
 
 /**
@@ -161,6 +169,7 @@ const planBurns = (ship: ShipState, plan: Guidance, correcting: boolean): Planne
   const a = accelerationOf(ship);
   if (!(a > 0)) return [];
   const burns: PlannedBurn[] = [];
+  const throttle = fullAvailableThrottle(ship);
   let pointing = noseOf(ship);
   let time = 0;
   const error = length(plan.velocityError);
@@ -168,7 +177,7 @@ const planBurns = (ship: ShipState, plan: Guidance, correcting: boolean): Planne
     const direction = normalize(plan.velocityError);
     const angle = angleBetween(pointing, direction);
     const start = angle < BURN_ANGLE ? 0 : turnTime(ship, angle);
-    burns.push({ start, duration: error / a, direction, throttle: 1 });
+    burns.push({ start, duration: error / a, direction, throttle });
     pointing = direction;
     time = start + error / a;
   }
@@ -184,7 +193,7 @@ const planBurns = (ship: ShipState, plan: Guidance, correcting: boolean): Planne
       start: time + coast + (angle < BURN_ANGLE ? 0 : turnTime(ship, angle)),
       duration: speed / brakeAcceleration,
       direction,
-      throttle: BRAKING_MARGIN,
+      throttle: BRAKING_MARGIN * throttle,
     });
   }
   return burns;

@@ -14,6 +14,13 @@ export interface DriveDesign {
   readonly thrust: number;
   /** m/s */
   readonly exhaustVelocity: number;
+  /**
+   * Electrical power drawn at full throttle, W, in proportion to thrust. It runs ignition and
+   * the magnetic nozzle; the exhaust's kinetic energy comes mostly from the propellant itself.
+   */
+  readonly power: number;
+  /** Fraction of the drive's electrical power that ends up as heat in the ship (0–1). */
+  readonly wasteHeatFraction: number;
 }
 
 /** Small jets that rotate the ship. */
@@ -25,13 +32,60 @@ export interface ThrustersDesign {
   readonly torque: number;
 }
 
-export type ComponentDesign = DriveDesign | ThrustersDesign;
+/** Generates the ship's power; it only produces what the ship draws. */
+export interface ReactorDesign {
+  readonly type: 'reactor';
+  /** kg */
+  readonly mass: number;
+  /** Electrical output at full power, W. */
+  readonly output: number;
+  /** Fraction of the reactor's thermal power that becomes electrical power; the rest is heat. */
+  readonly efficiency: number;
+}
+
+/** Stores power for later use. */
+export interface CapacitorDesign {
+  readonly type: 'capacitor';
+  /** kg */
+  readonly mass: number;
+  /** Energy it can hold, J. */
+  readonly capacity: number;
+  /** Fastest it can charge, W. */
+  readonly maxCharge: number;
+  /** Fastest it can discharge, W. */
+  readonly maxDischarge: number;
+}
+
+/** Sheds heat into space from its surface; it sheds more when deployed. */
+export interface RadiatorDesign {
+  readonly type: 'radiator';
+  /** kg */
+  readonly mass: number;
+  /** Radiating area when deployed, both faces counted, m². */
+  readonly deployedArea: number;
+  /** Radiating area left exposed when retracted against the hull, m². */
+  readonly retractedArea: number;
+  /** How close its surface comes to a perfect black body (0–1). */
+  readonly emissivity: number;
+}
+
+/** Components that sit inside a section's armour. */
+export type InternalComponentDesign =
+  DriveDesign | ThrustersDesign | ReactorDesign | CapacitorDesign;
+/** Components that must be exposed, on a section's mounts. */
+export type MountedComponentDesign = RadiatorDesign;
+export type ComponentDesign = InternalComponentDesign | MountedComponentDesign;
 export type ComponentType = ComponentDesign['type'];
+
+const INTERNAL_TYPES = ['drive', 'thrusters', 'reactor', 'capacitor'] as const;
+const MOUNTED_TYPES = ['radiator'] as const;
 
 export interface SectionDesign {
   readonly kind: SectionKind;
   /** Components inside the section's armour. */
-  readonly components: readonly ComponentDesign[];
+  readonly components: readonly InternalComponentDesign[];
+  /** Exposed components on the outside of the section. */
+  readonly mounts: readonly MountedComponentDesign[];
 }
 
 /** A reusable blueprint for a ship. */
@@ -45,22 +99,36 @@ export interface Design {
   readonly propellantMass: number;
 }
 
-/** Every component of a design, with the section it sits in. */
+/** Every component of a design, inside sections and on mounts, with the section it belongs to. */
 export const designComponents = (
   design: Design,
 ): readonly { component: ComponentDesign; section: SectionKind }[] =>
   design.sections.flatMap((section) =>
-    section.components.map((component) => ({ component, section: section.kind })),
+    [...section.components, ...section.mounts].map((component) => ({
+      component,
+      section: section.kind,
+    })),
   );
 
+/** All of a design's components of one type. */
+export const designComponentsOfType = <T extends ComponentType>(
+  design: Design,
+  type: T,
+): readonly Extract<ComponentDesign, { type: T }>[] =>
+  designComponents(design)
+    .map(({ component }) => component)
+    .filter(
+      (component): component is Extract<ComponentDesign, { type: T }> => component.type === type,
+    );
+
 /** The design's single component of a type that every design has exactly one of. */
-export const designComponent = <T extends ComponentType>(
+export const designComponent = <T extends 'drive' | 'thrusters' | 'reactor'>(
   design: Design,
   type: T,
 ): Extract<ComponentDesign, { type: T }> => {
-  const found = designComponents(design).find(({ component }) => component.type === type);
+  const found = designComponentsOfType(design, type)[0];
   if (!found) throw new Error(`Design "${design.id}" has no ${type}`);
-  return found.component as Extract<ComponentDesign, { type: T }>;
+  return found;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -94,6 +162,22 @@ const requireNumber = (
   return value;
 };
 
+/** A number from 0 to 1, or above 0 to 1 when it must be positive. */
+const requireFraction = (
+  data: Record<string, unknown>,
+  key: string,
+  where: string,
+  { positive = true } = {},
+): number => {
+  const value = data[key];
+  if (typeof value !== 'number' || !(value <= 1 && (positive ? value > 0 : value >= 0))) {
+    throw new Error(
+      `${where}: "${key}" must be a fraction ${positive ? 'above 0' : 'from 0'} to 1`,
+    );
+  }
+  return value;
+};
+
 const requireOneOf = <T extends string>(
   data: Record<string, unknown>,
   key: string,
@@ -109,7 +193,7 @@ const requireOneOf = <T extends string>(
 
 const parseComponent = (data: unknown, where: string): ComponentDesign => {
   if (!isRecord(data)) throw new Error(`${where}: expected a component object`);
-  const type = requireOneOf(data, 'type', ['drive', 'thrusters'] as const, where);
+  const type = requireOneOf(data, 'type', [...INTERNAL_TYPES, ...MOUNTED_TYPES], where);
   const mass = requireNumber(data, 'mass', where);
   switch (type) {
     case 'drive':
@@ -118,21 +202,67 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
         mass,
         thrust: requireNumber(data, 'thrust', where),
         exhaustVelocity: requireNumber(data, 'exhaustVelocity', where),
+        power: requireNumber(data, 'power', where),
+        wasteHeatFraction: requireFraction(data, 'wasteHeatFraction', where, { positive: false }),
       };
     case 'thrusters':
       return { type, mass, torque: requireNumber(data, 'torque', where) };
+    case 'reactor':
+      return {
+        type,
+        mass,
+        output: requireNumber(data, 'output', where),
+        efficiency: requireFraction(data, 'efficiency', where),
+      };
+    case 'capacitor':
+      return {
+        type,
+        mass,
+        capacity: requireNumber(data, 'capacity', where),
+        maxCharge: requireNumber(data, 'maxCharge', where),
+        maxDischarge: requireNumber(data, 'maxDischarge', where),
+      };
+    case 'radiator': {
+      const deployedArea = requireNumber(data, 'deployedArea', where);
+      const retractedArea = requireNumber(data, 'retractedArea', where, { positive: false });
+      if (retractedArea > deployedArea) {
+        throw new Error(`${where}: "retractedArea" must not exceed "deployedArea"`);
+      }
+      return {
+        type,
+        mass,
+        deployedArea,
+        retractedArea,
+        emissivity: requireFraction(data, 'emissivity', where),
+      };
+    }
   }
 };
+
+const isMounted = (component: ComponentDesign): component is MountedComponentDesign =>
+  (MOUNTED_TYPES as readonly string[]).includes(component.type);
 
 const parseSection = (data: unknown, where: string): SectionDesign => {
   if (!isRecord(data)) throw new Error(`${where}: expected a section object`);
   const kind = requireOneOf(data, 'kind', SECTION_KINDS, where);
-  const components = data.components;
-  if (!Array.isArray(components)) throw new Error(`${where}: "components" must be a list`);
-  return {
-    kind,
-    components: components.map((c, i) => parseComponent(c, `${where} ${kind} component ${i + 1}`)),
-  };
+  const { components: componentData, mounts: mountData = [] } = data;
+  if (!Array.isArray(componentData)) throw new Error(`${where}: "components" must be a list`);
+  if (!Array.isArray(mountData)) throw new Error(`${where}: "mounts" must be a list`);
+  const components = componentData.map((c, i) => {
+    const component = parseComponent(c, `${where} ${kind} component ${i + 1}`);
+    if (isMounted(component)) {
+      throw new Error(`${where}: a ${component.type} goes on a mount, not inside a section`);
+    }
+    return component;
+  });
+  const mounts = mountData.map((c, i) => {
+    const component = parseComponent(c, `${where} ${kind} mount ${i + 1}`);
+    if (!isMounted(component)) {
+      throw new Error(`${where}: a ${component.type} goes inside a section, not on a mount`);
+    }
+    return component;
+  });
+  return { kind, components, mounts };
 };
 
 /** Reads a design from untrusted data, such as a design file, throwing if it is invalid. */
@@ -149,10 +279,8 @@ export const parseDesign = (data: unknown): Design => {
     throw new Error(`${where}: needs exactly the sections ${SECTION_KINDS.join(', ')}, in order`);
   }
   const design: Design = { id, name, hullSize, sections, propellantMass };
-  for (const type of ['drive', 'thrusters'] as const) {
-    const count = designComponents(design).filter(
-      ({ component }) => component.type === type,
-    ).length;
+  for (const type of ['drive', 'thrusters', 'reactor'] as const) {
+    const count = designComponentsOfType(design, type).length;
     if (count !== 1) throw new Error(`${where}: needs exactly one ${type}, has ${count}`);
   }
   if (

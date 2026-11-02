@@ -1,8 +1,20 @@
 import { designComponent, designComponents, type Design, type SectionKind } from './design';
+import { BASE_TEMPERATURE, thermalLimit, thermalProperties } from './heat';
 import { HULLS } from './hull';
 import type { ManoeuvreState } from './manoeuvre';
 import type { AttitudeOrder } from './orders';
+import {
+  DEFAULT_PRIORITIES,
+  EMPTY_LEDGER,
+  IDLE_FLOW,
+  powerFlowOf,
+  powerPlant,
+  type EnergyLedger,
+  type PowerFlow,
+  type PowerSystem,
+} from './power';
 import { conjugate, integrate, rotate, type Quat } from './quaternion';
+import { TIME_STEP } from './time';
 import { add, cross, dot, length, scale, sub, vec3, ZERO, type Vec3 } from './vector';
 
 /** The ship's long axis in its own body frame: the drive pushes along it. */
@@ -36,6 +48,19 @@ export interface ShipState {
   /** What the ship applied during the last step. */
   thrust: number;
   torque: Vec3;
+  /** The drive's electrical energy in the last step: what its throttle asked for and used, J. */
+  driveEnergy: { readonly wanted: number; readonly used: number };
+  /** The captain's power order: every power system, highest priority first. */
+  priorities: readonly PowerSystem[];
+  /** Energy held in the capacitors, J. */
+  storedEnergy: number;
+  /** Heat held in the ship, J: its heat capacity times its temperature. */
+  heat: number;
+  radiatorsDeployed: boolean;
+  /** How power and heat flowed in the last step. */
+  powerFlow: PowerFlow;
+  heatFlow: { readonly generated: number; readonly radiated: number };
+  ledger: EnergyLedger;
 }
 
 /** Mass, centre of mass and principal moments of inertia (body axes), from hull and contents. */
@@ -109,7 +134,29 @@ export const createShip = (
   manoeuvre: null,
   thrust: 0,
   torque: ZERO,
+  driveEnergy: { wanted: 0, used: 0 },
+  priorities: DEFAULT_PRIORITIES,
+  storedEnergy: powerPlant(design).storageCapacity,
+  heat: thermalProperties(design).heatCapacity * BASE_TEMPERATURE,
+  radiatorsDeployed: false,
+  powerFlow: IDLE_FLOW,
+  heatFlow: { generated: 0, radiated: 0 },
+  ledger: EMPTY_LEDGER,
 });
+
+/** K */
+export const temperatureOf = (ship: ShipState): number =>
+  ship.heat / thermalProperties(ship.design).heatCapacity;
+
+/**
+ * The fraction of the drive's full thrust it can use now: no more than the ship's temperature
+ * allows, nor than the power left for it after higher priorities.
+ */
+export const driveLimit = (ship: ShipState): number => {
+  const { power } = designComponent(ship.design, 'drive');
+  const flow = powerFlowOf(ship, { drive: power, shields: 0, weapons: 0 }, TIME_STEP);
+  return Math.min(thermalLimit(temperatureOf(ship)), flow.systems.drive.supplied / power);
+};
 
 export const noseOf = (ship: ShipState): Vec3 => rotate(ship.orientation, NOSE);
 
@@ -119,9 +166,9 @@ export const deltaVOf = (ship: ShipState): number => {
   return designComponent(ship.design, 'drive').exhaustVelocity * Math.log(mass / dryMass);
 };
 
-/** The drive's thrust at full throttle, N. */
+/** The most thrust the drive can give now, within the limits of power and heat, N. */
 export const availableThrust = (ship: ShipState): number =>
-  designComponent(ship.design, 'drive').thrust;
+  designComponent(ship.design, 'drive').thrust * driveLimit(ship);
 
 /** Angular acceleration about the slowest pitch/yaw axis at full thruster torque, rad/s². */
 export const turnAcceleration = (ship: ShipState): number => {
@@ -176,9 +223,11 @@ export const steer = (ship: ShipState, target: Vec3 | null, dt: number): void =>
 
 /** Fires the drive for this step if a burn is ordered, spending propellant by the rocket equation. */
 export const burn = (ship: ShipState, dt: number): void => {
-  ship.thrust = 0;
   const order = ship.burn;
-  if (!order) return;
+  if (!order) {
+    fireDrive(ship, 0, dt);
+    return;
+  }
   const burnTime = Math.min(dt, order.remaining);
   const remaining = order.remaining - burnTime;
   // Treat rounding crumbs as done so a burn ends on the step it was due to.
@@ -186,12 +235,18 @@ export const burn = (ship: ShipState, dt: number): void => {
   fireDrive(ship, order.throttle, burnTime);
 };
 
-/** Pushes along the nose at `throttle` (0–1) for `burnTime` seconds, as propellant allows. */
+/**
+ * Pushes along the nose at `throttle` (0–1 of full thrust) for `burnTime` seconds, as far as
+ * power, heat and propellant allow. The drive draws power in proportion to its thrust.
+ */
 export const fireDrive = (ship: ShipState, throttle: number, burnTime: number): void => {
   ship.thrust = 0;
-  if (throttle <= 0 || burnTime <= 0 || ship.propellantMass <= 0) return;
   const drive = designComponent(ship.design, 'drive');
-  const force = Math.min(throttle, 1) * availableThrust(ship);
+  const ordered = Math.min(Math.max(throttle, 0), 1);
+  ship.driveEnergy = { wanted: ordered * drive.power * Math.max(burnTime, 0), used: 0 };
+  if (ordered <= 0 || burnTime <= 0 || ship.propellantMass <= 0) return;
+  const force = Math.min(ordered * drive.thrust, availableThrust(ship));
+  if (force <= 0) return;
   const wanted = (force / drive.exhaustVelocity) * burnTime;
   const used = Math.min(wanted, ship.propellantMass);
   const { mass } = massProperties(ship.design, ship.propellantMass);
@@ -199,4 +254,8 @@ export const fireDrive = (ship: ShipState, throttle: number, burnTime: number): 
   ship.propellantMass = used === ship.propellantMass ? 0 : ship.propellantMass - used;
   ship.velocity = add(ship.velocity, scale(noseOf(ship), deltaV));
   ship.thrust = (force * used) / wanted;
+  ship.driveEnergy = {
+    ...ship.driveEnergy,
+    used: ((drive.power * ship.thrust) / drive.thrust) * burnTime,
+  };
 };

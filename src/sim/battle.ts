@@ -7,23 +7,34 @@ import {
   type ManoeuvreObservation,
   type ManoeuvreTarget,
 } from './manoeuvre';
+import { thermalLimit, thermalProperties } from './heat';
 import type { AttitudeOrder, Order } from './orders';
+import {
+  POWER_SYSTEMS,
+  powerPlant,
+  settlePowerAndHeat,
+  type EnergyLedger,
+  type PowerShare,
+  type PowerSystem,
+} from './power';
 import { IDENTITY, rotate, type Quat } from './quaternion';
 import {
   burn,
   createShip,
   deltaVOf,
+  driveLimit,
   fireDrive,
   massProperties,
   noseOf,
   steer,
+  temperatureOf,
   type BurnState,
   type ShipState,
 } from './ship';
+import { TIME_STEP } from './time';
 import { add, length, normalize, scale, sub, type Vec3 } from './vector';
 
-/** The fixed simulation time step, in seconds. */
-export const TIME_STEP = 0.1;
+export { TIME_STEP };
 
 export type SideId = string;
 export type Commander = 'player' | 'computer';
@@ -54,6 +65,45 @@ export interface BattleSetup {
   readonly sides: readonly SideSetup[];
 }
 
+/** A ship's power: its ranking, where power went in the last step, and what is stored. */
+export interface PowerObservation {
+  /** Highest priority first. */
+  readonly priorities: readonly PowerSystem[];
+  /** Electrical output in the last step, W. */
+  readonly reactorOutput: number;
+  /** The most the reactor can produce, W. */
+  readonly reactorCapacity: number;
+  /** What each system asked for and got in the last step, W; for capacitors, charging. */
+  readonly systems: Readonly<Record<PowerSystem, PowerShare>>;
+  /** Power drawn from the capacitors in the last step, W. */
+  readonly discharge: number;
+  /** Energy in the capacitors, J. */
+  readonly stored: number;
+  /** J */
+  readonly storageCapacity: number;
+  /** The fraction of the drive's full thrust that power and heat allow now. */
+  readonly driveLimit: number;
+}
+
+/** A ship's heat and how fast it is coming and going. */
+export interface HeatObservation {
+  /** Heat held in the ship, J: its heat capacity times its temperature. */
+  readonly heat: number;
+  /** J/K */
+  readonly heatCapacity: number;
+  /** K */
+  readonly temperature: number;
+  /** Heat generated in the last step, W. */
+  readonly generated: number;
+  /** Heat radiated into space in the last step, W. */
+  readonly radiated: number;
+  readonly radiatorsDeployed: boolean;
+  /** Radiating area now exposed, m². */
+  readonly radiatorArea: number;
+  /** The fraction of their full power systems may use at this temperature. */
+  readonly thermalLimit: number;
+}
+
 /** A side's own ship, which it knows in full. */
 export interface OwnShipObservation {
   readonly sideId: SideId;
@@ -79,6 +129,10 @@ export interface OwnShipObservation {
   readonly burn: BurnState | null;
   /** The standing manoeuvre order and its plan; null under manual control. */
   readonly manoeuvre: ManoeuvreObservation | null;
+  readonly power: PowerObservation;
+  readonly heat: HeatObservation;
+  /** Where the ship's energy has gone since the battle began. */
+  readonly energyLedger: EnergyLedger;
 }
 
 /** An enemy ship as a side perceives it; its position, motion and orientation are known. */
@@ -134,7 +188,48 @@ const checkOrder = (order: Order): Order => {
         throw new Error('A manoeuvre range must be a positive number of metres');
       }
       return order;
+    case 'power': {
+      const { priorities } = order;
+      const complete =
+        priorities.length === POWER_SYSTEMS.length &&
+        POWER_SYSTEMS.every((system) => priorities.includes(system));
+      if (!complete) {
+        throw new Error(`A power order must rank each of ${POWER_SYSTEMS.join(', ')} once`);
+      }
+      return { ...order, priorities: [...priorities] };
+    }
+    case 'radiators':
+      return order;
   }
+};
+
+const observePower = (ship: ShipState): PowerObservation => {
+  const plant = powerPlant(ship.design);
+  return {
+    priorities: ship.priorities,
+    reactorOutput: ship.powerFlow.reactorOutput,
+    reactorCapacity: plant.reactorOutput,
+    systems: ship.powerFlow.systems,
+    discharge: ship.powerFlow.discharge,
+    stored: ship.storedEnergy,
+    storageCapacity: plant.storageCapacity,
+    driveLimit: driveLimit(ship),
+  };
+};
+
+const observeHeat = (ship: ShipState): HeatObservation => {
+  const thermal = thermalProperties(ship.design);
+  const temperature = temperatureOf(ship);
+  return {
+    heat: ship.heat,
+    heatCapacity: thermal.heatCapacity,
+    temperature,
+    generated: ship.heatFlow.generated,
+    radiated: ship.heatFlow.radiated,
+    radiatorsDeployed: ship.radiatorsDeployed,
+    radiatorArea: ship.radiatorsDeployed ? thermal.area.deployed : thermal.area.retracted,
+    thermalLimit: thermalLimit(temperature),
+  };
 };
 
 export const createBattle = (setup: BattleSetup): Battle => {
@@ -195,6 +290,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
       } else {
         burn(ship, TIME_STEP);
       }
+      settlePowerAndHeat(ship, TIME_STEP);
       ship.position = add(ship.position, scale(ship.velocity, TIME_STEP));
     });
     steps += 1;
@@ -209,19 +305,29 @@ export const createBattle = (setup: BattleSetup): Battle => {
       const { ship } = combatantOf(sideId);
       const checked = checkOrder(order);
       // Manual orders and manoeuvres replace each other: one or the other steers the ship.
-      if (checked.type === 'manoeuvre') {
-        ship.attitude = null;
-        ship.burn = null;
-        ship.manoeuvre = checked.goal === 'none' ? null : { order: checked, correcting: false };
-      } else if (checked.type === 'attitude') {
-        ship.manoeuvre = null;
-        ship.attitude = checked;
-      } else {
-        ship.manoeuvre = null;
-        ship.burn =
-          checked.throttle > 0 && checked.duration > 0
-            ? { throttle: checked.throttle, remaining: checked.duration }
-            : null;
+      switch (checked.type) {
+        case 'manoeuvre':
+          ship.attitude = null;
+          ship.burn = null;
+          ship.manoeuvre = checked.goal === 'none' ? null : { order: checked, correcting: false };
+          break;
+        case 'attitude':
+          ship.manoeuvre = null;
+          ship.attitude = checked;
+          break;
+        case 'burn':
+          ship.manoeuvre = null;
+          ship.burn =
+            checked.throttle > 0 && checked.duration > 0
+              ? { throttle: checked.throttle, remaining: checked.duration }
+              : null;
+          break;
+        case 'power':
+          ship.priorities = checked.priorities;
+          break;
+        case 'radiators':
+          ship.radiatorsDeployed = checked.deployed;
+          break;
       }
     },
     step,
@@ -250,6 +356,9 @@ export const createBattle = (setup: BattleSetup): Battle => {
           attitude: ship.attitude,
           burn: ship.burn,
           manoeuvre: ship.manoeuvre ? observeManoeuvre(ship, ship.manoeuvre, contactOf(own)) : null,
+          power: observePower(ship),
+          heat: observeHeat(ship),
+          energyLedger: ship.ledger,
         },
         contacts: combatants
           .filter((c) => c !== own)

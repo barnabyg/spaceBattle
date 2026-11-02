@@ -1,9 +1,10 @@
 import type { OwnShipObservation } from '../sim/battle';
 import type { ManoeuvreObservation } from '../sim/manoeuvre';
 import type { ManoeuvreGoal, Order } from '../sim/orders';
+import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/power';
 import { length, vec3 } from '../sim/vector';
 import { el } from './el';
-import { formatDuration, formatKm, formatMetresPerS } from './format';
+import { formatDuration, formatKm, formatMetresPerS, formatMW } from './format';
 
 const DEGREES = Math.PI / 180;
 
@@ -23,6 +24,13 @@ const GOAL_TEXT: Readonly<Record<ManoeuvreGoal, string>> = {
   hold: 'Holding',
   open: 'Opening to',
   'match-velocity': 'Matching velocity',
+};
+
+const SYSTEM_TEXT: Readonly<Record<PowerSystem, string>> = {
+  drive: 'Drive',
+  shields: 'Shields',
+  weapons: 'Weapons',
+  capacitors: 'Capacitor charging',
 };
 
 /** The active goal and how far off it the ship is, e.g. "Holding 100,000 km · error 1,200 km". */
@@ -76,6 +84,69 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     attrs: { 'aria-label': 'Manoeuvre plan' },
   });
 
+  // One row per rank; each update shows the system now at that rank.
+  let priorities: readonly PowerSystem[] = DEFAULT_PRIORITIES;
+  const swapRanks = (rank: number, other: number) => {
+    const a = priorities[rank];
+    const b = priorities[other];
+    if (!a || !b) return;
+    const next = [...priorities];
+    next[rank] = b;
+    next[other] = a;
+    giveOrder({ type: 'power', priorities: next });
+  };
+  const priorityRows = POWER_SYSTEMS.map((_, rank) => {
+    const name = el('span', { className: 'priority-name' });
+    const share = el('span', { className: 'priority-share' });
+    const raise = el('button', {
+      className: 'order-button priority-button',
+      text: '▲',
+      attrs: { type: 'button' },
+    });
+    const lower = el('button', {
+      className: 'order-button priority-button',
+      text: '▼',
+      attrs: { type: 'button' },
+    });
+    raise.addEventListener('click', () => {
+      swapRanks(rank, rank - 1);
+    });
+    lower.addEventListener('click', () => {
+      swapRanks(rank, rank + 1);
+    });
+    raise.disabled = rank === 0;
+    lower.disabled = rank === POWER_SYSTEMS.length - 1;
+    return {
+      name,
+      share,
+      raise,
+      lower,
+      element: el(
+        'li',
+        {},
+        el('span', { className: 'priority-rank', text: `${rank + 1}.` }),
+        name,
+        share,
+        raise,
+        lower,
+      ),
+    };
+  });
+  const priorityList = el(
+    'ol',
+    { className: 'priority-list', attrs: { 'aria-label': 'Power priorities' } },
+    ...priorityRows.map((row) => row.element),
+  );
+
+  const deployRadiators = button('Deploy radiators');
+  const retractRadiators = button('Retract radiators');
+
+  deployRadiators.addEventListener('click', () => {
+    giveOrder({ type: 'radiators', deployed: true });
+  });
+  retractRadiators.addEventListener('click', () => {
+    giveOrder({ type: 'radiators', deployed: false });
+  });
   pointAtEnemy.addEventListener('click', () => {
     giveOrder({ type: 'attitude', mode: 'enemy' });
   });
@@ -140,6 +211,10 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     ),
     manoeuvreState,
     planState,
+    el('h3', { text: 'Power' }),
+    priorityList,
+    el('h3', { text: 'Radiators' }),
+    el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
   );
 
   return {
@@ -169,6 +244,19 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       manual.classList.toggle('active', !manoeuvre);
       manoeuvreState.textContent = manoeuvre ? describeGoal(manoeuvre) : 'Manual control';
       planState.textContent = manoeuvre ? describePlan(manoeuvre) : '';
+
+      priorities = ship.power.priorities;
+      priorities.forEach((system, rank) => {
+        const row = priorityRows[rank];
+        if (!row) return;
+        const { demand, supplied } = ship.power.systems[system];
+        row.name.textContent = SYSTEM_TEXT[system];
+        row.share.textContent = `${formatMW(supplied)} of ${formatMW(demand)}`;
+        row.raise.setAttribute('aria-label', `Raise ${SYSTEM_TEXT[system]}`);
+        row.lower.setAttribute('aria-label', `Lower ${SYSTEM_TEXT[system]}`);
+      });
+      deployRadiators.classList.toggle('active', ship.heat.radiatorsDeployed);
+      retractRadiators.classList.toggle('active', !ship.heat.radiatorsDeployed);
     },
   };
 };

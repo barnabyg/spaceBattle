@@ -45,3 +45,29 @@ test('a manoeuvre order shows its goal and planned burns on the map', async ({ p
   await expect(page.getByLabel('Manoeuvre state')).toHaveText('Manual control');
   await expect(burns.filter({ visible: true })).toHaveCount(0);
 });
+
+test('power and radiator orders work while paused', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press(' ');
+  const priorities = page.getByRole('list', { name: 'Power priorities' }).getByRole('listitem');
+  await expect(priorities.first()).toContainText('Shields');
+  await page.getByRole('button', { name: 'Raise Drive' }).click();
+  await page.getByRole('button', { name: 'Raise Drive' }).click();
+  await expect(priorities.first()).toContainText('Drive');
+
+  await expect(page.getByLabel('Radiators')).toContainText('Retracted');
+  await page.getByRole('button', { name: 'Deploy radiators' }).click();
+  await expect(page.getByLabel('Radiators')).toContainText('Deployed');
+});
+
+test('the ship heats up during a burn', async ({ page }) => {
+  await page.goto('/');
+  await page.keyboard.press(' ');
+  const temperature = page.getByLabel('Temperature');
+  await expect(temperature).toHaveText('300 K');
+  await page.getByLabel('Duration s').fill('600');
+  await page.getByRole('button', { name: 'Burn', exact: true }).click();
+  for (let i = 0; i < 6; i++) await page.keyboard.press('+');
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect.poll(async () => kmOf(await temperature.textContent())).toBeGreaterThan(400);
+});

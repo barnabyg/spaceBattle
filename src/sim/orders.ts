@@ -1,3 +1,4 @@
+import type { PowerSystem } from './power';
 import type { Vec3 } from './vector';
 
 /** Turn the ship so its nose points at the enemy, away from it, or along a world direction. */
@@ -27,5 +28,24 @@ export type ManoeuvreOrder =
   | { readonly type: 'manoeuvre'; readonly goal: 'match-velocity' }
   | { readonly type: 'manoeuvre'; readonly goal: 'none' };
 
+/**
+ * Rank the power systems, highest priority first; every one of them must appear once. When
+ * demand exceeds supply the lowest are starved first. 'capacitors' is the priority of charging
+ * them, and only systems ranked above it may draw on stored energy.
+ */
+export interface PowerOrder {
+  readonly type: 'power';
+  readonly priorities: readonly PowerSystem[];
+}
+
+/**
+ * Deploy the radiators to shed more heat, at the cost of exposing them, or retract them. The
+ * autopilot never moves them itself.
+ */
+export interface RadiatorsOrder {
+  readonly type: 'radiators';
+  readonly deployed: boolean;
+}
+
 /** An instruction from a side's captain to its ship. */
-export type Order = AttitudeOrder | BurnOrder | ManoeuvreOrder;
+export type Order = AttitudeOrder | BurnOrder | ManoeuvreOrder | PowerOrder | RadiatorsOrder;

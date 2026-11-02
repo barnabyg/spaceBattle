@@ -272,3 +272,41 @@ h3 {
   /* Sit above the arrow's base rather than on top of it. */
   margin-top: -2rem;
 }
+
+.priority-list {
+  margin: 0 0 0.6rem;
+  padding: 0;
+  list-style: none;
+}
+
+.priority-rank {
+  min-width: 1.4em;
+  color: var(--muted);
+}
+
+.priority-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+}
+
+.priority-name {
+  min-width: 9em;
+}
+
+.priority-share {
+  flex: 1;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.priority-button {
+  padding: 0.1rem 0.6rem;
+}
+
+.priority-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

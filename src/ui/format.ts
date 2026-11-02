@@ -30,3 +30,15 @@ export const formatDuration = (seconds: number): string => {
   if (whole < 3600) return `${Math.floor(whole / 60)} min ${whole % 60} s`;
   return `${Math.floor(whole / 3600)} h ${Math.floor(whole / 60) % 60} min`;
 };
+
+/** A power given in W, shown in MW. */
+export const formatMW = (watts: number): string => `${grouped(watts / 1e6, 0)} MW`;
+
+/** An energy given in J, shown in GJ. */
+export const formatGJ = (joules: number): string => `${grouped(joules / 1e9, 1)} GJ`;
+
+/** A temperature in kelvin. */
+export const formatKelvin = (kelvin: number): string => `${grouped(kelvin, 0)} K`;
+
+/** A fraction from 0 to 1 as a whole percentage. */
+export const formatPercent = (fraction: number): string => `${Math.round(fraction * 100)}%`;

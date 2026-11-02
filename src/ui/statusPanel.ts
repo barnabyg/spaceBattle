@@ -1,7 +1,9 @@
 import type { SideObservation } from '../sim/battle';
+import { OVERHEAT_TEMPERATURE } from '../sim/heat';
+import { POWER_SYSTEMS } from '../sim/power';
 import { distance, length } from '../sim/vector';
 import { el } from './el';
-import { formatKm, formatKmPerS } from './format';
+import { formatGJ, formatKelvin, formatKm, formatKmPerS, formatMW, formatPercent } from './format';
 
 const formatTonnes = (kg: number) =>
   `${(kg / 1000).toLocaleString('en-GB', { maximumFractionDigits: 1 })} t`;
@@ -20,6 +22,36 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   ['Propellant', (o) => formatTonnes(o.ownShip.propellantMass)],
   ['Mass', (o) => formatTonnes(o.ownShip.mass)],
   ['Drive thrust', (o) => formatMN(o.ownShip.thrust)],
+  ['Drive limit', (o) => formatPercent(o.ownShip.power.driveLimit)],
+  [
+    'Power generated',
+    ({ ownShip: { power } }) =>
+      `${formatMW(power.reactorOutput)} of ${formatMW(power.reactorCapacity)}`,
+  ],
+  [
+    'Power demand',
+    ({ ownShip: { power } }) =>
+      formatMW(POWER_SYSTEMS.reduce((total, s) => total + power.systems[s].demand, 0)),
+  ],
+  [
+    'Stored energy',
+    ({ ownShip: { power } }) => `${formatGJ(power.stored)} of ${formatGJ(power.storageCapacity)}`,
+  ],
+  [
+    'Temperature',
+    ({ ownShip: { heat } }) =>
+      heat.temperature > OVERHEAT_TEMPERATURE
+        ? `${formatKelvin(heat.temperature)} · overheating`
+        : formatKelvin(heat.temperature),
+  ],
+  ['Heat', (o) => formatGJ(o.ownShip.heat.heat)],
+  ['Heat generated', (o) => formatMW(o.ownShip.heat.generated)],
+  ['Heat radiated', (o) => formatMW(o.ownShip.heat.radiated)],
+  [
+    'Radiators',
+    ({ ownShip: { heat } }) =>
+      `${heat.radiatorsDeployed ? 'Deployed' : 'Retracted'} · ${Math.round(heat.radiatorArea).toLocaleString('en-GB')} m²`,
+  ],
 ];
 
 /** Numbers about the captain's ship and its contact, in real units. */

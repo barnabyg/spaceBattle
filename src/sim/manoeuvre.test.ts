@@ -56,6 +56,8 @@ describe('manoeuvre orders', () => {
 
   it('holds a range in a heavy cruiser against a nimble frigate', () => {
     const battle = battleWith(handMadeDesign('bastion'), handMadeDesign('lance'));
+    // Following a long burn needs the radiators out, or the drive overheats and falls behind.
+    battle.giveOrder('blue', { type: 'radiators', deployed: true });
     const range = 100_000 * KM;
     battle.giveOrder('blue', { type: 'manoeuvre', goal: 'hold', range });
     battle.advance(6 * HOUR);

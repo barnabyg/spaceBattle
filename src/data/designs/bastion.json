@@ -4,15 +4,52 @@
   "hullSize": "cruiser",
   "propellantMass": 1100000,
   "sections": [
-    { "kind": "forward", "components": [] },
+    {
+      "kind": "forward",
+      "components": [
+        {
+          "type": "capacitor",
+          "mass": 30000,
+          "capacity": 60000000000,
+          "maxCharge": 1500000000,
+          "maxDischarge": 15000000000
+        }
+      ]
+    },
     {
       "kind": "middle",
-      "components": [{ "type": "thrusters", "mass": 80000, "torque": 60000000 }]
+      "components": [
+        { "type": "thrusters", "mass": 80000, "torque": 60000000 },
+        { "type": "reactor", "mass": 120000, "output": 5000000000, "efficiency": 0.75 }
+      ],
+      "mounts": [
+        {
+          "type": "radiator",
+          "mass": 45000,
+          "deployedArea": 22000,
+          "retractedArea": 1600,
+          "emissivity": 0.9
+        },
+        {
+          "type": "radiator",
+          "mass": 45000,
+          "deployedArea": 22000,
+          "retractedArea": 1600,
+          "emissivity": 0.9
+        }
+      ]
     },
     {
       "kind": "engine",
       "components": [
-        { "type": "drive", "mass": 300000, "thrust": 6000000, "exhaustVelocity": 130000 }
+        {
+          "type": "drive",
+          "mass": 300000,
+          "thrust": 6000000,
+          "exhaustVelocity": 130000,
+          "power": 4000000000,
+          "wasteHeatFraction": 0.1
+        }
       ]
     }
   ]

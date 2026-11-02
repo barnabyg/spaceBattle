@@ -12,13 +12,15 @@ export interface ProjectedBurn {
   readonly burn: PlannedBurn;
 }
 
-/** The burns the ship expects to make: the manoeuvre's plan, or the rest of its current burn. */
+/**
+ * The burns the ship expects to make: the manoeuvre's plan, or the rest of its current burn at
+ * the throttle power and heat allow now.
+ */
 const burnsOf = (ship: OwnShipObservation): readonly PlannedBurn[] => {
   if (ship.manoeuvre) return ship.manoeuvre.plannedBurns;
   if (!ship.burn) return [];
-  return [
-    { start: 0, duration: ship.burn.remaining, direction: ship.nose, throttle: ship.burn.throttle },
-  ];
+  const throttle = Math.min(ship.burn.throttle, ship.power.driveLimit);
+  return [{ start: 0, duration: ship.burn.remaining, direction: ship.nose, throttle }];
 };
 
 /**
