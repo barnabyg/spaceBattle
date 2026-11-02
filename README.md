@@ -18,7 +18,9 @@ Run from the repository root after `npm ci` (and `npx playwright install firefox
 
 ## Playing
 
-`npm run dev` opens the main menu. Choose **Free battle**, pick a hand-made design for Blue and Red and whether the player or the computer commands each side, then **Start battle**. When the battle ends, the result screen leads back to setup with the same choices.
+On Windows, double-click `run.bat` in the repository root. It installs the dependencies on first run, then starts the game in Firefox; close its window to stop the game. From a terminal, `npm run dev` does the same once dependencies are installed.
+
+The game opens on the main menu. Choose **Free battle**, pick a hand-made design for Blue and Red and whether the player or the computer commands each side, then **Start battle**. When the battle ends, the result screen leads back to setup with the same choices.
 
 ## Layout
 
