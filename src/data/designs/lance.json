@@ -1,5 +1,19 @@
 {
   "id": "lance",
   "name": "Lance",
-  "hullSize": "frigate"
+  "hullSize": "frigate",
+  "propellantMass": 300000,
+  "sections": [
+    { "kind": "forward", "components": [] },
+    {
+      "kind": "middle",
+      "components": [{ "type": "thrusters", "mass": 20000, "torque": 8000000 }]
+    },
+    {
+      "kind": "engine",
+      "components": [
+        { "type": "drive", "mass": 80000, "thrust": 2000000, "exhaustVelocity": 150000 }
+      ]
+    }
+  ]
 }

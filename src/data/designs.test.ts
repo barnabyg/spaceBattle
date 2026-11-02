@@ -10,9 +10,45 @@ describe('hand-made designs', () => {
 });
 
 describe('parseDesign', () => {
+  const valid = {
+    id: 'x',
+    name: 'X',
+    hullSize: 'frigate',
+    propellantMass: 1000,
+    sections: [
+      { kind: 'forward', components: [] },
+      { kind: 'middle', components: [{ type: 'thrusters', mass: 1, torque: 1 }] },
+      { kind: 'engine', components: [{ type: 'drive', mass: 1, thrust: 1, exhaustVelocity: 1 }] },
+    ],
+  };
+
+  it('accepts a complete design', () => {
+    expect(parseDesign(valid).name).toBe('X');
+  });
+
   it('rejects data that is not a design', () => {
     expect(() => parseDesign(null)).toThrow();
-    expect(() => parseDesign({ id: 'x', name: 'X', hullSize: 'dreadnought' })).toThrow(/hull size/);
-    expect(() => parseDesign({ id: 'x', hullSize: 'frigate' })).toThrow(/name/);
+    expect(() => parseDesign({ ...valid, hullSize: 'dreadnought' })).toThrow(/hullSize/);
+    expect(() => parseDesign({ ...valid, name: undefined })).toThrow(/name/);
+    expect(() => parseDesign({ ...valid, propellantMass: -1 })).toThrow(/propellantMass/);
+  });
+
+  it('needs every section in order and exactly one drive, in the engine section', () => {
+    expect(() => parseDesign({ ...valid, sections: valid.sections.slice(1) })).toThrow(/sections/);
+    const [forward, middle, engine] = valid.sections;
+    expect(() => parseDesign({ ...valid, sections: [forward, middle, forward] })).toThrow();
+    expect(() =>
+      parseDesign({ ...valid, sections: [forward, { ...middle, components: [] }, engine] }),
+    ).toThrow(/thrusters/);
+    expect(() =>
+      parseDesign({
+        ...valid,
+        sections: [
+          { ...forward, components: engine?.components },
+          middle,
+          { ...engine, components: [] },
+        ],
+      }),
+    ).toThrow(/engine section/);
   });
 });

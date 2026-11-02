@@ -4,8 +4,22 @@ import { vec3 } from './vector';
 
 /** Test helpers for building battles. Not used by the game itself. */
 
+/** A frigate with a drive and thrusters and nothing else. */
 export const testDesign = (overrides: Partial<Design> = {}): Design => ({
-  ...parseDesign({ id: 'test', name: 'Test', hullSize: 'frigate' }),
+  ...parseDesign({
+    id: 'test',
+    name: 'Test',
+    hullSize: 'frigate',
+    propellantMass: 300e3,
+    sections: [
+      { kind: 'forward', components: [] },
+      { kind: 'middle', components: [{ type: 'thrusters', mass: 20e3, torque: 8e6 }] },
+      {
+        kind: 'engine',
+        components: [{ type: 'drive', mass: 80e3, thrust: 2e6, exhaustVelocity: 150e3 }],
+      },
+    ],
+  }),
   ...overrides,
 });
 

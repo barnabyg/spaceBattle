@@ -1,8 +1,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import type { SideId, SideObservation } from '../sim/battle';
-import { length, type Vec3 } from '../sim/vector';
+import { projectPath } from '../game/projection';
+import type { SideId, SideObservation, SideSetup } from '../sim/battle';
+import { designComponent } from '../sim/design';
+import { rotate, type Quat } from '../sim/quaternion';
+import { length, vec3, type Vec3 } from '../sim/vector';
 import { el } from './el';
 import { formatKm, formatKmPerS } from './format';
 
@@ -15,6 +18,11 @@ const VECTOR_SECONDS = 20_000;
 /** Simulated seconds between points on a ship's trail. */
 const TRAIL_INTERVAL = 30;
 const TRAIL_POINTS = 2_000;
+/** How far ahead the own ship's projected path reaches, s. */
+const PROJECTION_HORIZON = 7_200;
+const PROJECTION_INTERVAL = 60;
+/** Heading lines are this fraction of the camera's distance from the own ship. */
+const HEADING_SCALE = 0.06;
 
 export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
 
@@ -25,6 +33,7 @@ interface ShipMarker {
   readonly label: HTMLElement;
   readonly velocity: THREE.ArrowHelper;
   readonly dropLine: THREE.Line;
+  readonly heading: THREE.Line;
   readonly trail: THREE.Line;
   readonly trailPositions: Float32Array;
   trailCount: number;
@@ -39,7 +48,7 @@ const niceLength = (target: number): number => {
 };
 
 /** The captain's main working view: symbols and exact data, centred on their own ship. */
-export const createTacticalMap = (sides: readonly { id: SideId; name: string }[]) => {
+export const createTacticalMap = (sides: readonly SideSetup[]) => {
   const element = el('section', {
     className: 'tactical-map',
     attrs: { 'aria-label': 'Tactical map' },
@@ -120,18 +129,34 @@ export const createTacticalMap = (sides: readonly { id: SideId; name: string }[]
       trailGeometry,
       new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 0.45 }),
     );
-    scene.add(symbol, velocity, dropLine, trail);
+    const heading = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+      new THREE.LineBasicMaterial({ color: '#ffffff' }),
+    );
+    scene.add(symbol, velocity, dropLine, heading, trail);
     markers.set(side.id, {
       symbol,
       label,
       velocity,
       dropLine,
+      heading,
       trail,
       trailPositions,
       trailCount: 0,
       lastTrailTime: -Infinity,
     });
   });
+
+  // The own ship's projected path, if it holds its heading and finishes its burn.
+  const projectionPositions = new Float32Array((PROJECTION_HORIZON / PROJECTION_INTERVAL + 1) * 3);
+  const projectionGeometry = new THREE.BufferGeometry();
+  projectionGeometry.setAttribute('position', new THREE.BufferAttribute(projectionPositions, 3));
+  const projection = new THREE.Line(
+    projectionGeometry,
+    new THREE.LineDashedMaterial({ color: '#9fd0ff', dashSize: 2_000, gapSize: 2_000 }),
+  );
+  scene.add(projection);
+  const ownDrive = sides[0] ? designComponent(sides[0].design, 'drive') : undefined;
 
   const resize = () => {
     const { clientWidth: width, clientHeight: height } = element;
@@ -146,13 +171,17 @@ export const createTacticalMap = (sides: readonly { id: SideId; name: string }[]
 
   const placeShip = (
     marker: ShipMarker,
-    position: Vec3,
-    velocity: Vec3,
+    ship: { position: Vec3; velocity: Vec3; orientation: Quat },
     planeZ: number,
     text: string,
     time: number,
   ) => {
+    const { position, velocity } = ship;
     const p = toScene(position);
+    const headingLength = camera.position.distanceTo(controls.target) * HEADING_SCALE;
+    const nose = toScene(rotate(ship.orientation, vec3(1, 0, 0))).normalize();
+    marker.heading.geometry.setFromPoints([p, p.clone().addScaledVector(nose, headingLength)]);
+
     marker.symbol.position.copy(p);
     marker.label.textContent = text;
 
@@ -215,8 +244,7 @@ export const createTacticalMap = (sides: readonly { id: SideId; name: string }[]
       if (ownMarker) {
         placeShip(
           ownMarker,
-          own.position,
-          own.velocity,
+          own,
           centre.z,
           `${sideName(own.sideId)} · ${formatKmPerS(length(own.velocity))}`,
           observation.time,
@@ -227,12 +255,21 @@ export const createTacticalMap = (sides: readonly { id: SideId; name: string }[]
         if (!marker) continue;
         placeShip(
           marker,
-          contact.position,
-          contact.velocity,
+          contact,
           centre.z,
           `${sideName(contact.sideId)} · ${formatKmPerS(length(contact.velocity))}`,
           observation.time,
         );
+      }
+      if (ownDrive) {
+        const path = projectPath(own, ownDrive, PROJECTION_HORIZON, PROJECTION_INTERVAL);
+        path.forEach((point, i) => {
+          projectionPositions.set([point.x / KM, point.y / KM, point.z / KM], i * 3);
+        });
+        projectionGeometry.setDrawRange(0, path.length);
+        projectionGeometry.getAttribute('position').needsUpdate = true;
+        projectionGeometry.computeBoundingSphere();
+        projection.computeLineDistances();
       }
     },
     render() {

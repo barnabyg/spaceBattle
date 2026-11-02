@@ -1,5 +1,17 @@
 import type { Design } from './design';
-import { add, scale, type Vec3 } from './vector';
+import type { AttitudeOrder, Order } from './orders';
+import { IDENTITY, rotate, type Quat } from './quaternion';
+import {
+  burn,
+  createShip,
+  deltaVOf,
+  massProperties,
+  noseOf,
+  steer,
+  type BurnState,
+  type ShipState,
+} from './ship';
+import { add, length, normalize, scale, sub, type Vec3 } from './vector';
 
 /** The fixed simulation time step, in seconds. */
 export const TIME_STEP = 0.1;
@@ -18,6 +30,8 @@ export interface SideSetup {
 export interface ShipStart {
   readonly position: Vec3;
   readonly velocity: Vec3;
+  /** Body frame to world; the identity points the nose along +x. */
+  readonly orientation?: Quat;
 }
 
 export interface Scenario {
@@ -37,13 +51,31 @@ export interface OwnShipObservation {
   readonly designName: string;
   readonly position: Vec3;
   readonly velocity: Vec3;
+  readonly orientation: Quat;
+  /** World unit vector along the ship's long axis. */
+  readonly nose: Vec3;
+  /** World frame, rad/s. */
+  readonly angularVelocity: Vec3;
+  /** kg */
+  readonly mass: number;
+  /** kg */
+  readonly propellantMass: number;
+  /** m/s */
+  readonly deltaV: number;
+  /** Drive thrust applied in the last step, N. */
+  readonly thrust: number;
+  /** Thruster torque applied in the last step (body frame), N·m. */
+  readonly torque: Vec3;
+  readonly attitude: AttitudeOrder | null;
+  readonly burn: BurnState | null;
 }
 
-/** An enemy ship as a side perceives it; its position and motion are always known. */
+/** An enemy ship as a side perceives it; its position, motion and orientation are known. */
 export interface ContactObservation {
   readonly sideId: SideId;
   readonly position: Vec3;
   readonly velocity: Vec3;
+  readonly orientation: Quat;
 }
 
 export interface SideObservation {
@@ -56,6 +88,8 @@ export interface Battle {
   readonly sides: readonly SideSetup[];
   /** Simulated seconds since the battle began. */
   readonly time: number;
+  /** Gives an order to a side's ship; it takes effect from the next step. */
+  giveOrder(sideId: SideId, order: Order): void;
   /** Advances the battle by one fixed time step. */
   step(): void;
   /** Advances the battle by whole time steps covering `seconds`. */
@@ -64,33 +98,69 @@ export interface Battle {
   observe(sideId: SideId): SideObservation;
 }
 
-interface ShipState {
+interface Combatant {
   readonly side: SideSetup;
-  position: Vec3;
-  velocity: Vec3;
+  readonly ship: ShipState;
 }
+
+const checkOrder = (order: Order): Order => {
+  switch (order.type) {
+    case 'burn':
+      if (!(order.throttle >= 0 && order.throttle <= 1)) throw new Error('Throttle must be 0–1');
+      if (!(order.duration >= 0 && Number.isFinite(order.duration))) {
+        throw new Error('Burn duration must be a non-negative number of seconds');
+      }
+      return order;
+    case 'attitude':
+      if (order.mode !== 'direction') return order;
+      if (!(length(order.direction) > 0)) {
+        throw new Error('An attitude direction needs a length');
+      }
+      return { ...order, direction: normalize(order.direction) };
+  }
+};
 
 export const createBattle = (setup: BattleSetup): Battle => {
   if (setup.sides.length !== setup.scenario.starts.length) {
     throw new Error('A scenario needs one start for each side');
   }
-  const ships: ShipState[] = setup.sides.map((side, i) => {
+  const combatants: Combatant[] = setup.sides.map((side, i) => {
     const start = setup.scenario.starts[i];
     if (!start) throw new Error(`No start for side ${side.id}`);
-    return { side, position: start.position, velocity: start.velocity };
+    return {
+      side,
+      ship: createShip(side.design, start.position, start.velocity, start.orientation ?? IDENTITY),
+    };
   });
   let steps = 0;
 
-  const shipOf = (sideId: SideId): ShipState => {
-    const ship = ships.find((s) => s.side.id === sideId);
-    if (!ship) throw new Error(`Unknown side ${sideId}`);
-    return ship;
+  const combatantOf = (sideId: SideId): Combatant => {
+    const combatant = combatants.find((c) => c.side.id === sideId);
+    if (!combatant) throw new Error(`Unknown side ${sideId}`);
+    return combatant;
+  };
+  const enemyOf = (combatant: Combatant): Combatant | undefined =>
+    combatants.find((c) => c !== combatant);
+
+  const attitudeTarget = (combatant: Combatant): Vec3 | null => {
+    const { ship } = combatant;
+    const order = ship.attitude;
+    if (!order) return null;
+    if (order.mode === 'direction') return order.direction;
+    const enemy = enemyOf(combatant);
+    if (!enemy) return null;
+    const towards = normalize(sub(enemy.ship.position, ship.position));
+    return order.mode === 'enemy' ? towards : scale(towards, -1);
   };
 
   const step = (): void => {
-    for (const ship of ships) {
+    // Every ship steers from the same snapshot of positions, so the order of sides never matters.
+    const targets = combatants.map(attitudeTarget);
+    combatants.forEach(({ ship }, i) => {
+      steer(ship, targets[i] ?? null, TIME_STEP);
+      burn(ship, TIME_STEP);
       ship.position = add(ship.position, scale(ship.velocity, TIME_STEP));
-    }
+    });
     steps += 1;
   };
 
@@ -99,24 +169,52 @@ export const createBattle = (setup: BattleSetup): Battle => {
     get time() {
       return steps * TIME_STEP;
     },
+    giveOrder(sideId, order) {
+      const { ship } = combatantOf(sideId);
+      const checked = checkOrder(order);
+      if (checked.type === 'attitude') {
+        ship.attitude = checked;
+      } else {
+        ship.burn =
+          checked.throttle > 0 && checked.duration > 0
+            ? { throttle: checked.throttle, remaining: checked.duration }
+            : null;
+      }
+    },
     step,
     advance(seconds) {
       const count = Math.round(seconds / TIME_STEP);
       for (let i = 0; i < count; i++) step();
     },
     observe(sideId) {
-      const own = shipOf(sideId);
+      const own = combatantOf(sideId);
+      const { ship } = own;
       return {
         time: steps * TIME_STEP,
         ownShip: {
           sideId,
           designName: own.side.design.name,
-          position: own.position,
-          velocity: own.velocity,
+          position: ship.position,
+          velocity: ship.velocity,
+          orientation: ship.orientation,
+          nose: noseOf(ship),
+          angularVelocity: rotate(ship.orientation, ship.angularVelocity),
+          mass: massProperties(ship.design, ship.propellantMass).mass,
+          propellantMass: ship.propellantMass,
+          deltaV: deltaVOf(ship),
+          thrust: ship.thrust,
+          torque: ship.torque,
+          attitude: ship.attitude,
+          burn: ship.burn,
         },
-        contacts: ships
-          .filter((s) => s !== own)
-          .map((s) => ({ sideId: s.side.id, position: s.position, velocity: s.velocity })),
+        contacts: combatants
+          .filter((c) => c !== own)
+          .map(({ side, ship: s }) => ({
+            sideId: side.id,
+            position: s.position,
+            velocity: s.velocity,
+            orientation: s.orientation,
+          })),
       };
     },
   };

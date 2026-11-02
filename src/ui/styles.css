@@ -205,3 +205,60 @@ button {
   color: var(--muted);
   font-size: 0.8rem;
 }
+
+h3 {
+  margin: 1rem 0 0.4rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.order-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.order-button {
+  padding: 0.3rem 0.9rem;
+  background: #16223a;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.order-button:hover {
+  border-color: var(--accent);
+}
+
+.order-button.active {
+  border-color: var(--accent);
+  background: #1c3358;
+}
+
+.order-state {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.field input {
+  width: 7em;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--text);
+  background: #0a1120;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+}

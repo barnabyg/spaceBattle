@@ -1,5 +1,19 @@
 {
   "id": "bastion",
   "name": "Bastion",
-  "hullSize": "cruiser"
+  "hullSize": "cruiser",
+  "propellantMass": 1100000,
+  "sections": [
+    { "kind": "forward", "components": [] },
+    {
+      "kind": "middle",
+      "components": [{ "type": "thrusters", "mass": 80000, "torque": 60000000 }]
+    },
+    {
+      "kind": "engine",
+      "components": [
+        { "type": "drive", "mass": 300000, "thrust": 6000000, "exhaustVelocity": 130000 }
+      ]
+    }
+  ]
 }
