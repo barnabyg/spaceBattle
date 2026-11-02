@@ -107,8 +107,29 @@ export interface KineticWarheadDesign {
   /** Destroys by hitting the target directly, with the whole missile's kinetic energy. */
   readonly type: 'kinetic';
 }
-export type WarheadDesign = KineticWarheadDesign;
-export const WARHEAD_TYPES = ['kinetic'] as const;
+
+/** The energy of a kiloton of TNT, J. */
+export const KILOTON = 4.184e12;
+/** The largest yield a nuclear warhead may have for now, J: 10 kt. */
+export const MAX_NUCLEAR_YIELD = 10 * KILOTON;
+
+/**
+ * A low-yield nuclear warhead. Its proximity fuse sets it off near the target, which it damages
+ * with radiation and heat that fall with the square of distance; or it goes off on striking it.
+ */
+export interface NuclearWarheadDesign {
+  readonly type: 'nuclear';
+  /** Energy released, J; at most `MAX_NUCLEAR_YIELD`. */
+  readonly yield: number;
+  /**
+   * How close to the target's centre of mass the proximity fuse sets it off, m; at 0 it goes off
+   * only on striking the target.
+   */
+  readonly detonationDistance: number;
+}
+
+export type WarheadDesign = KineticWarheadDesign | NuclearWarheadDesign;
+export const WARHEAD_TYPES = ['kinetic', 'nuclear'] as const;
 export type WarheadType = WarheadDesign['type'];
 
 /**
@@ -375,17 +396,35 @@ const requireCount = (data: Record<string, unknown>, key: string, where: string)
   return count;
 };
 
+const parseWarhead = (data: unknown, where: string): WarheadDesign => {
+  if (!isRecord(data)) throw new Error(`${where}: "warhead" must be an object`);
+  const type = requireOneOf(data, 'type', WARHEAD_TYPES, where);
+  switch (type) {
+    case 'kinetic':
+      return { type };
+    case 'nuclear': {
+      const energy = requireNumber(data, 'yield', where);
+      if (energy > MAX_NUCLEAR_YIELD) {
+        throw new Error(`${where}: "yield" must be at most 10 kt (${MAX_NUCLEAR_YIELD} J)`);
+      }
+      return {
+        type,
+        yield: energy,
+        detonationDistance: requireNumber(data, 'detonationDistance', where, { positive: false }),
+      };
+    }
+  }
+};
+
 const parseMissile = (data: unknown, where: string): MissileDesign => {
   if (!isRecord(data)) throw new Error(`${where}: "missile" must be an object`);
-  const { warhead } = data;
-  if (!isRecord(warhead)) throw new Error(`${where}: "warhead" must be an object`);
   return {
     name: requireString(data, 'name', where),
     dryMass: requireNumber(data, 'dryMass', where),
     propellantMass: requireNumber(data, 'propellantMass', where, { positive: false }),
     thrust: requireNumber(data, 'thrust', where),
     exhaustVelocity: requireNumber(data, 'exhaustVelocity', where),
-    warhead: { type: requireOneOf(warhead, 'type', WARHEAD_TYPES, `${where} warhead`) },
+    warhead: parseWarhead(data.warhead, `${where} warhead`),
   };
 };
 

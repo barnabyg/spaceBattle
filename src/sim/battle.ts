@@ -1,14 +1,28 @@
 import { componentSlots } from './components';
-import { impactKinetic, intactShape, overheat, strike, type DamageContext } from './damage';
+import {
+  impactKinetic,
+  intactShape,
+  irradiate,
+  overheat,
+  strike,
+  type DamageContext,
+} from './damage';
 import {
   designComponentsOfType,
   type ArmourType,
   type ComponentType,
   type Design,
+  type NuclearWarheadDesign,
   type SectionKind,
   type WarheadType,
 } from './design';
-import { involves, type BattleEvent, type HitEvent, type MunitionKind } from './events';
+import {
+  involves,
+  type BattleEvent,
+  type HitEvent,
+  type MunitionKind,
+  type NuclearExposure,
+} from './events';
 import {
   manoeuvreCommand,
   manoeuvreThrottle,
@@ -28,7 +42,14 @@ import {
   type Slug,
   type Target,
 } from './kinetic';
-import { guideMissile, missileDeltaV, missileMassNow, missileReach, type Missile } from './missile';
+import {
+  fuseTrigger,
+  guideMissile,
+  missileDeltaV,
+  missileMassNow,
+  missileReach,
+  type Missile,
+} from './missile';
 import type { AttitudeOrder, FireMode, Order } from './orders';
 import {
   POWER_SYSTEMS,
@@ -795,6 +816,79 @@ export const createBattle = (setup: BattleSetup): Battle => {
     return false;
   };
 
+  /**
+   * A missile with a nuclear warhead that moved from `from` to where it is now, while each ship
+   * moved from where it was at `shipsBefore`. It goes off at the first point of its path where it
+   * strikes a ship other than the one that launched it, or where its proximity fuse finds such a
+   * ship within its detonation distance; its burst reaches every ship as each was at that moment
+   * (see `irradiate`). Returns whether it went off.
+   */
+  const detonateNear = (
+    missile: Missile,
+    warhead: NuclearWarheadDesign,
+    from: Vec3,
+    shipsBefore: ReadonlyMap<SideId, Vec3>,
+    shapes: ReturnType<typeof createShapes>,
+    ctx: Omit<DamageContext, 'side'>,
+  ): boolean => {
+    /** Where a ship was part-way through the step, as a fraction of it. */
+    const shipAt = (c: Combatant, along: number) => {
+      const start = shipsBefore.get(c.side.id) ?? c.ship.position;
+      return add(start, scale(sub(c.ship.position, start), along));
+    };
+    let trigger: { along: number; contact: boolean; ship: Combatant } | null = null;
+    for (const c of combatants) {
+      if (c.side.id === missile.attacker) continue;
+      const start = sub(from, shipAt(c, 0));
+      const end = sub(missile.position, c.ship.position);
+      const hit = sweepSlug(shapes.of(c), start, end);
+      const fuse =
+        warhead.detonationDistance > 0 ? fuseTrigger(start, end, warhead.detonationDistance) : null;
+      const options = [
+        ...(hit ? [{ along: hit.along, contact: true }] : []),
+        ...(fuse === null ? [] : [{ along: fuse, contact: false }]),
+      ];
+      for (const option of options) {
+        if (!trigger || option.along < trigger.along) trigger = { ...option, ship: c };
+      }
+    }
+    if (!trigger) return false;
+    const { along, contact, ship: target } = trigger;
+    const position = add(from, scale(sub(missile.position, from), along));
+    const offset = sub(position, shipAt(target, along));
+    // What the burst does to each ship follows the detonation in the events.
+    const at = ctx.events.length;
+    const exposures: NuclearExposure[] = combatants.flatMap((c) => {
+      const taken = irradiate(c.ship, sub(position, shipAt(c, along)), warhead.yield, {
+        ...ctx,
+        side: c.side.id,
+      });
+      if (taken.length > 0) shapes.struck(c);
+      return taken.map(({ part, distance, fluence, energy }) => ({
+        side: c.side.id,
+        section: part.section,
+        mount: part.mount,
+        distance,
+        fluence,
+        energy,
+      }));
+    });
+    ctx.events.splice(at, 0, {
+      type: 'detonation',
+      time: ctx.time,
+      attacker: missile.attacker,
+      target: target.side.id,
+      munition: missile.id,
+      yield: warhead.yield,
+      contact,
+      position,
+      offset,
+      distance: length(offset),
+      exposures,
+    });
+    return true;
+  };
+
   /** Whether a munition has passed its target for good, so it can be forgotten. */
   const passedTarget = (
     munition: { readonly target: SideId; readonly position: Vec3; readonly velocity: Vec3 },
@@ -813,8 +907,10 @@ export const createBattle = (setup: BattleSetup): Battle => {
 
   /**
    * Slugs and missiles moving from `before` to their positions now: each strikes the first ship
-   * its path crosses (see `strikeDirectly`). A slug that has passed its target for good flies on
-   * out of the battle; so does a missile that has, once it has no propellant left to turn back.
+   * its path crosses (see `strikeDirectly`), except that a missile with a nuclear warhead goes off
+   * near it (see `detonateNear`). A munition that strikes or goes off leaves the battle. A slug
+   * that has passed its target for good flies on out of the battle; so does a missile that has,
+   * once it has no propellant left to turn back.
    */
   const resolveMunitions = (
     before: ReadonlyMap<number, Vec3>,
@@ -829,10 +925,17 @@ export const createBattle = (setup: BattleSetup): Battle => {
     });
     missiles = missiles.filter((missile) => {
       const from = before.get(missile.id) ?? missile.position;
-      const munition = { ...missile, kind: 'missile' as const, mass: missileMassNow(missile) };
-      // A kinetic warhead destroys by hitting directly. Warheads that detonate near their target
-      // will go off here too, by `missile.design.warhead.type`.
-      if (strikeDirectly(munition, from, shipsBefore, shapes, ctx)) return false;
+      const { warhead } = missile.design;
+      switch (warhead.type) {
+        case 'kinetic': {
+          const munition = { ...missile, kind: 'missile' as const, mass: missileMassNow(missile) };
+          if (strikeDirectly(munition, from, shipsBefore, shapes, ctx)) return false;
+          break;
+        }
+        case 'nuclear':
+          if (detonateNear(missile, warhead, from, shipsBefore, shapes, ctx)) return false;
+          break;
+      }
       return !(missile.propellantMass <= 0 && passedTarget(missile, shapes));
     });
   };

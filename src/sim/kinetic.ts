@@ -95,6 +95,8 @@ export interface Slug {
 export interface SlugHit {
   readonly part: ShapePart;
   readonly point: Vec3;
+  /** How far along the step's path it meets the ship, as a fraction of the path (0–1). */
+  readonly along: number;
 }
 
 /** The furthest any part of a ship reaches from its centre of mass, m. */
@@ -138,7 +140,11 @@ export const sweepSlug = (target: Target, from: Vec3, to: Vec3): SlugHit | null 
   const heading = rotate(toBody, direction);
   const hit = firstHit(parts, start, heading);
   if (!hit || hit.distance > span) return null;
-  return { part: hit.part, point: add(start, scale(heading, hit.distance)) };
+  return {
+    part: hit.part,
+    point: add(start, scale(heading, hit.distance)),
+    along: hit.distance / span,
+  };
 };
 
 /** Whether a slug, at `relative` position and velocity to its target, has passed it for good. */

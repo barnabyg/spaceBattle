@@ -7,6 +7,7 @@ import {
   duelSetup,
   gunnedTestDesign,
   launchingTestDesign,
+  TEST_NUCLEAR_MISSILE,
   testDesign,
   testSetup,
   testSides,
@@ -114,6 +115,24 @@ describe('battle runner', () => {
     expect(events.map((e) => e.type)).toEqual(['launch']);
     expect(r.timeCompression).toBe(1);
     expect(r.battle.time).toBeCloseTo(0.1, 9);
+  });
+
+  it('drops to real time when a nuclear warhead goes off', () => {
+    const battle = createBattle(
+      duelSetup(launchingTestDesign(1, { missile: TEST_NUCLEAR_MISSILE }), testDesign(), 1_000e3),
+    );
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    const r = createBattleRunner(battle);
+    r.update(0.1);
+    r.setTimeCompression(1000);
+    const events: BattleEvent[] = [];
+    for (let i = 0; i < 100 && !events.some((e) => e.type === 'detonation'); i++) {
+      events.push(...r.update(0.25));
+    }
+    const detonation = events.find((e) => e.type === 'detonation');
+    expect(detonation).toBeDefined();
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeCloseTo(detonation?.time ?? NaN, 9);
   });
 
   it('drops to real time when a component is lost', () => {

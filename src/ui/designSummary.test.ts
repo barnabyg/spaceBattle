@@ -27,6 +27,9 @@ describe('design summary', () => {
     expect(summaryOf('quiver').get('Missiles')).toMatch(
       /^2 launchers · 12 Spike · [\d.]+ km\/s · reach [\d,]+ km$/,
     );
+    expect(summaryOf('pyre').get('Missiles')).toMatch(
+      /^2 launchers · 8 Ember \(10 kt nuclear\) · [\d.]+ km\/s · reach [\d,]+ km$/,
+    );
   });
 
   it('tells the nimble frigate from the heavier cruiser', () => {

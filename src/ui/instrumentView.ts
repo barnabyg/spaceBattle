@@ -9,6 +9,7 @@ import type {
 import { HULLS, hullLength } from '../sim/hull';
 import type { Quat } from '../sim/quaternion';
 import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vector';
+import { createBurstFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { formatKm } from './format';
@@ -28,6 +29,10 @@ const STAR_COUNT = 3_500;
 /** Beam landings and slug impacts shown on each ship at once. */
 const MAX_SPOTS = 4;
 const HIT_COLOUR = '#fff1c8';
+/** A nuclear burst near a ship lights it from that side, and glows beside it. */
+const BURST_COLOUR = '#fffbe8';
+/** Brightest a burst lights its ship, against the sun's 3. */
+const BURST_LIGHT = 40;
 /** Slugs or missiles in flight the telescope shows at once, of each. */
 const MAX_GLINTS = 512;
 const OUTGOING_COLOUR = new THREE.Color('#a8d8ff');
@@ -112,6 +117,10 @@ interface ShipView {
   model: THREE.Group;
   readonly spots: readonly THREE.Sprite[];
   readonly hitLight: THREE.PointLight;
+  /** A nuclear burst's light, from the burst's direction in the world frame. */
+  readonly burstLight: THREE.DirectionalLight;
+  /** Its glow, out beyond the ship in that direction. */
+  readonly burstGlow: THREE.Sprite;
 }
 
 const setLayer = (object: THREE.Object3D, layer: number) => {
@@ -139,7 +148,20 @@ const createShipView = (scene: THREE.Scene, side: SideSetup, layer: number): Shi
   const hitLight = new THREE.PointLight('#ffcf8a', 0, 0, 2);
   anchor.add(model, ...spots, hitLight);
   setLayer(anchor, layer);
-  scene.add(anchor);
+  // The burst is placed in world axes, so it sits outside the anchor, which turns with the ship.
+  const burstLight = new THREE.DirectionalLight(BURST_COLOUR, 0);
+  const burstGlow = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: softGlowTexture(),
+      color: BURST_COLOUR,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  burstGlow.visible = false;
+  burstLight.layers.set(layer);
+  burstGlow.layers.set(layer);
+  scene.add(anchor, burstLight, burstGlow);
   return {
     side,
     layer,
@@ -148,6 +170,8 @@ const createShipView = (scene: THREE.Scene, side: SideSetup, layer: number): Shi
     model,
     spots,
     hitLight,
+    burstLight,
+    burstGlow,
   };
 };
 
@@ -216,6 +240,22 @@ const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance)
     }
   });
   view.hitLight.intensity = 600 * brightest;
+};
+
+/**
+ * Lights a ship from a nuclear burst `offset` from it (world axes, m), `strength` from 1 fading to
+ * 0, or puts the light out when there is none. Bursts go off kilometres away, far outside the
+ * view, so the glow stands in for it a ship's length or so out in its direction.
+ */
+const showBurst = (view: ShipView, burst: { offset: Vec3; strength: number } | null) => {
+  view.burstGlow.visible = burst !== null;
+  view.burstLight.intensity = burst ? BURST_LIGHT * burst.strength : 0;
+  if (!burst) return;
+  const towards = normalize(burst.offset);
+  view.burstLight.position.set(towards.x, towards.y, towards.z).multiplyScalar(1_000);
+  view.burstGlow.position.set(towards.x, towards.y, towards.z).multiplyScalar(1.5 * view.length);
+  view.burstGlow.scale.setScalar(view.length * (1 + 2 * burst.strength));
+  view.burstGlow.material.opacity = burst.strength;
 };
 
 const lineOfSight = new THREE.Vector3();
@@ -338,6 +378,7 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
   const slugGlints = glintsOf(SLUG_GLINT_SIZE);
   const missileGlints = glintsOf(MISSILE_GLINT_SIZE);
   const glintColour = new THREE.Color();
+  const burstFlash = createBurstFlash();
 
   const camera = (view: ShipView) => {
     const c = new THREE.PerspectiveCamera(FOV, 1, 0.5, SKY_RADIUS * 2);
@@ -416,6 +457,11 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       }
       slugGlints.show();
       missileGlints.show();
+      const flash = burstFlash(observation);
+      for (const view of [own, contact]) {
+        const near = flash?.detonation.target === view.side.id ? flash : null;
+        showBurst(view, near && { offset: near.detonation.offset, strength: near.strength });
+      }
     },
     render() {
       if (width === 0 || height === 0) return;

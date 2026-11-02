@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { startFreeBattle } from './freeBattle';
+import { chooseSide, startFreeBattle } from './freeBattle';
 
 /** Raises time compression as far as it goes. */
 const fastest = async (page: Page) => {
@@ -85,6 +85,39 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
   await page.getByRole('button', { name: 'Free battle' }).click();
   await expect(page.getByRole('button', { name: 'Start battle' })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Test mode' })).toHaveCount(0);
+});
+
+test('a nuclear warhead going off near the enemy strips its radiators and mounts', async ({
+  page,
+}) => {
+  await setUpInTestMode(page);
+  await page.getByLabel('Seed').fill('1');
+  await chooseSide(page, 'Blue', { design: 'Pyre' });
+  await chooseSide(page, 'Red', { design: 'Lance' });
+  await page.getByRole('button', { name: 'Start battle' }).click();
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Ammunition')).toHaveText('8 of 8 missiles');
+  await page.getByLabel('Missiles', { exact: true }).fill('1');
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page.getByLabel('Missiles in flight')).toHaveText('1 ours · 0 incoming');
+  await fastest(page);
+
+  // A near miss: the warhead goes off by its proximity fuse 1 km from the Lance, and its X-rays
+  // wreck the radiator and laser facing the burst while the armour holds.
+  const testLog = page.getByRole('region', { name: 'Test log' });
+  await expect(testLog).toContainText(/Blue missile \d+ detonated 10 kt 1\.00 km from Red/, {
+    timeout: 30_000,
+  });
+  await expect(testLog).toContainText('Red radiator lost (middle mount');
+  await expect(testLog).toContainText('Red laser lost (middle mount');
+  await expect(testLog).not.toContainText('armour breached');
+  await expect(page.getByRole('list', { name: 'Battle log' })).toContainText(
+    'Nuclear warhead hit enemy · 10 kt at 1.0 km',
+  );
+  // With its only weapon gone, the Lance is disabled.
+  const result = page.getByRole('dialog', { name: 'Battle result' });
+  await expect(result.getByRole('heading')).toHaveText('Blue wins');
 });
 
 test('a batch run reports an outcome for every battle and sums them up', async ({ page }) => {

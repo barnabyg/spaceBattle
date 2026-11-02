@@ -1,3 +1,5 @@
+import { KILOTON } from '../sim/design';
+
 const grouped = (value: number, fractionDigits: number): string =>
   value.toLocaleString('en-GB', {
     minimumFractionDigits: fractionDigits,
@@ -40,6 +42,10 @@ export const formatMW = (watts: number): string => `${grouped(watts / 1e6, 0)} M
 
 /** An energy given in J, shown in GJ. */
 export const formatGJ = (joules: number): string => `${grouped(joules / 1e9, 1)} GJ`;
+
+/** An energy given in J, shown in kilotons of TNT, as nuclear yields are. */
+export const formatKilotons = (joules: number): string =>
+  `${(joules / KILOTON).toLocaleString('en-GB', { maximumFractionDigits: 2 })} kt`;
 
 /** A temperature in kelvin. */
 export const formatKelvin = (kelvin: number): string => `${grouped(kelvin, 0)} K`;

@@ -1,11 +1,22 @@
-import { designComponent, designComponentsOfType, type Design } from '../sim/design';
+import {
+  designComponent,
+  designComponentsOfType,
+  type Design,
+  type MissileDesign,
+} from '../sim/design';
 import { deltaVWith, massProperties } from '../sim/ship';
 import { kineticGunRange } from '../sim/kinetic';
 import { missileDeltaV, missileReach } from '../sim/missile';
 import { designMissiles, effectiveRange } from '../sim/weapons';
-import { formatKm, formatKmPerS, formatMm, formatMW, formatTonnes } from './format';
+import { formatKilotons, formatKm, formatKmPerS, formatMm, formatMW, formatTonnes } from './format';
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** A missile design's name, with its yield if its warhead is nuclear. */
+const missileName = (missile: MissileDesign): string =>
+  missile.warhead.type === 'nuclear'
+    ? `${missile.name} (${formatKilotons(missile.warhead.yield)} nuclear)`
+    : missile.name;
 
 /** A design's key numbers at the start of a battle, as label and value, for choosing between designs. */
 export const designSummary = (design: Design): readonly (readonly [string, string])[] => {
@@ -44,7 +55,7 @@ export const designSummary = (design: Design): readonly (readonly [string, strin
       'Missiles',
       launchers.length === 0
         ? 'None'
-        : `${launchers.length} launchers · ${missiles.toLocaleString('en-GB')} ${missileDesigns.map((m) => m.name).join(', ')} · ${formatKmPerS(Math.max(...missileDesigns.map((m) => missileDeltaV(m))))} · reach ${formatKm(Math.max(...missileDesigns.map(missileReach)))}`,
+        : `${launchers.length} launchers · ${missiles.toLocaleString('en-GB')} ${missileDesigns.map(missileName).join(', ')} · ${formatKmPerS(Math.max(...missileDesigns.map((m) => missileDeltaV(m))))} · reach ${formatKm(Math.max(...missileDesigns.map(missileReach)))}`,
     ],
     ...design.sections.map((s): readonly [string, string] => [
       `${capitalise(s.kind)} armour`,

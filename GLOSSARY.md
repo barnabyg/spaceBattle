@@ -168,7 +168,7 @@ _Avoid_: Munitions, ordnance, ammo
 A missile warhead that destroys its target by hitting it directly at speed.
 
 **Nuclear warhead**:
-A low-yield nuclear missile warhead that detonates near its target, damaging it with radiation and heat that weaken sharply with distance.
+A low-yield nuclear missile warhead that detonates near its target, damaging it with radiation and heat that weaken sharply with distance. A near miss strips the mounts and radiators facing it but barely marks armour. A magazine of them that is wrecked may set some off, destroying the section around it.
 _Avoid_: Nuke
 
 **Fragmentation warhead**:

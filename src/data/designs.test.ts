@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseDesign } from '../sim/design';
+import { KILOTON, parseDesign } from '../sim/design';
 import { HAND_MADE_DESIGNS } from './designs';
 
 describe('hand-made designs', () => {
@@ -36,6 +36,18 @@ describe('hand-made designs', () => {
       .flatMap((s) => s.components)
       .flatMap((c) => (c.type === 'magazine' && c.missile ? [c.missile] : []));
     expect(magazines?.map((missile) => missile.warhead.type)).toContain('kinetic');
+  });
+
+  it('include one carrying missiles with nuclear warheads, kept out of its middle section', () => {
+    const nuclear = HAND_MADE_DESIGNS.find((d) =>
+      d.sections.some((s) =>
+        s.components.some((c) => c.type === 'magazine' && c.missile?.warhead.type === 'nuclear'),
+      ),
+    );
+    expect(nuclear).toBeDefined();
+    // A magazine of nuclear missiles that blows up takes its section with it.
+    const middle = nuclear?.sections.find((s) => s.kind === 'middle');
+    expect(middle?.components.some((c) => c.type === 'magazine')).toBe(false);
   });
 });
 
@@ -221,6 +233,41 @@ describe('parseDesign', () => {
     ).toThrow(/type/);
     expect(() => launching({ type: 'magazine', mass: 100 })).toThrow(/slugs or missiles/);
     expect(() => parseDesign(withMiddle([thrusters, reactor, launcher]))).toThrow(/mount/);
+  });
+
+  it('reads nuclear warheads of up to 10 kt, with a detonation distance', () => {
+    const launcher = { type: 'launcher', mass: 1, reloadTime: 10 };
+    const warhead = { type: 'nuclear', yield: 10 * KILOTON, detonationDistance: 2_000 };
+    const armed = (nuclear: unknown) =>
+      parseDesign(
+        withMiddle(
+          [
+            thrusters,
+            reactor,
+            {
+              type: 'magazine',
+              mass: 10e3,
+              missiles: 4,
+              missile: {
+                name: 'Ember',
+                dryMass: 1_000,
+                propellantMass: 1_000,
+                thrust: 50e3,
+                exhaustVelocity: 20e3,
+                warhead: nuclear,
+              },
+            },
+          ],
+          [launcher],
+        ),
+      );
+    const magazine = armed(warhead).sections[1]?.components[2];
+    expect(magazine?.type === 'magazine' && magazine.missile?.warhead).toEqual(warhead);
+    expect(() => armed({ ...warhead, yield: 10.01 * KILOTON })).toThrow(/yield.*10 kt/);
+    expect(() => armed({ ...warhead, yield: 0 })).toThrow(/yield/);
+    expect(() => armed({ ...warhead, yield: undefined })).toThrow(/yield/);
+    expect(armed({ ...warhead, detonationDistance: 0 })).toBeDefined();
+    expect(() => armed({ ...warhead, detonationDistance: -1 })).toThrow(/detonationDistance/);
   });
 
   it('rejects power and heat numbers outside their range', () => {

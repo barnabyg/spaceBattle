@@ -1,5 +1,6 @@
 import type { BattleSetup, Scenario, SideSetup } from './battle';
 import {
+  KILOTON,
   parseDesign,
   type ComponentDesign,
   type ComponentType,
@@ -149,6 +150,16 @@ export const TEST_MISSILE: MissileDesign = {
   thrust: 50e3,
   exhaustVelocity: 20e3,
   warhead: { type: 'kinetic' },
+};
+
+/**
+ * The test missile with a 10 kt nuclear warhead, whose proximity fuse sets it off 2 km from its
+ * target's centre of mass.
+ */
+export const TEST_NUCLEAR_MISSILE: MissileDesign = {
+  ...TEST_MISSILE,
+  name: 'Test nuclear missile',
+  warhead: { type: 'nuclear', yield: 10 * KILOTON, detonationDistance: 2_000 },
 };
 
 /** A launcher for test designs that takes 10 s to reload. */

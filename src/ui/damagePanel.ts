@@ -1,7 +1,7 @@
 import type { BattleEvent, SectionObservation, SideId, SideObservation } from '../sim/battle';
 import type { ComponentType, SectionKind } from '../sim/design';
 import { el } from './el';
-import { formatBattleTime, formatGJ, formatMm, formatMW } from './format';
+import { formatBattleTime, formatGJ, formatKilotons, formatKm, formatMm, formatMW } from './format';
 
 export const SECTION_TEXT: Readonly<Record<SectionKind, string>> = {
   forward: 'Forward',
@@ -64,6 +64,14 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
       return event.attacker === viewer
         ? `${time} Missile launched`
         : `${time} Enemy missile launched at us`;
+    case 'detonation': {
+      const burst = `${formatKilotons(event.yield)} ${event.contact ? 'on contact' : `at ${formatKm(event.distance, 1)}`}`;
+      return event.attacker === viewer
+        ? `${time} Nuclear warhead hit enemy · ${burst}`
+        : `${time} Nuclear warhead hit us · ${burst}`;
+    }
+    case 'magazine-explosion':
+      return `${time} ${SECTION_TEXT[event.section]} magazine exploded · ${formatGJ(event.energy)}`;
     case 'armour-breached':
       return `${time} ${SECTION_TEXT[event.section]} armour breached`;
     case 'component-lost':

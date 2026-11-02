@@ -6,9 +6,11 @@ import type { MunitionObservation, SideId, SideObservation, SideSetup } from '..
 import { designComponent } from '../sim/design';
 import { rotate, type Quat } from '../sim/quaternion';
 import { length, vec3, type Vec3 } from '../sim/vector';
+import { createBurstFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { formatDuration, formatKm, formatKmPerS } from './format';
+import { softGlowTexture } from './shipModel';
 
 /** Scene units are kilometres; the simulation works in metres. */
 const KM = 1000;
@@ -34,6 +36,10 @@ const HEADING_SCALE = 0.06;
 const MUNITION_SIZE = 5;
 /** Missiles are drawn larger than slugs, px. */
 const MISSILE_SIZE = 9;
+
+/** A nuclear burst's flash, at its brightest this share of the map's height across. */
+const BURST_FLASH_SIZE = 0.12;
+const BURST_COLOUR = '#fffbe8';
 
 export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
 
@@ -242,6 +248,30 @@ export const createTacticalMap = (
       geometry.setDrawRange(0, shown.length);
     };
   };
+  // A nuclear burst flashes where it went off, fading in a second or two.
+  const burst = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: softGlowTexture(),
+      color: BURST_COLOUR,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+      sizeAttenuation: false,
+    }),
+  );
+  burst.renderOrder = 2;
+  burst.visible = false;
+  scene.add(burst);
+  const burstFlash = createBurstFlash();
+  const showBurst = (observation: SideObservation) => {
+    const flash = burstFlash(observation);
+    burst.visible = flash !== null;
+    if (!flash) return;
+    burst.position.copy(toScene(flash.detonation.position));
+    burst.scale.setScalar(BURST_FLASH_SIZE * (0.4 + 0.6 * flash.strength));
+    burst.material.opacity = flash.strength;
+  };
+
   const showSlugs = munitionDots(MUNITION_SIZE);
   const showMissiles = munitionDots(MISSILE_SIZE);
   const showMunitions = (observation: SideObservation) => {
@@ -358,6 +388,7 @@ export const createTacticalMap = (
         beam.geometry.setFromPoints([centre, toScene(target.position)]);
       }
       showMunitions(observation);
+      showBurst(observation);
 
       if (ownDrive) {
         const lastBurnEnd = Math.max(

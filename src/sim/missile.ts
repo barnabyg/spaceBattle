@@ -127,3 +127,21 @@ export const guideMissile = (missile: Missile, target: Motion | null, dt: number
     thrust: (force * used) / burn,
   };
 };
+
+/**
+ * How far along a step's path a proximity fuse set to `distance` metres first finds itself that
+ * close to a ship, as a fraction of the path (0–1), or null if it never does in the step. `from`
+ * and `to` are the missile's positions relative to the ship's centre of mass at the start and end
+ * of the step; both move in straight lines through a step, so the path between them is swept.
+ */
+export const fuseTrigger = (from: Vec3, to: Vec3, distance: number): number | null => {
+  const offset = dot(from, from) - distance ** 2;
+  if (offset <= 0) return 0;
+  const path = sub(to, from);
+  const a = dot(path, path);
+  const b = 2 * dot(from, path);
+  const discriminant = b ** 2 - 4 * a * offset;
+  if (a === 0 || discriminant < 0) return null;
+  const along = (-b - Math.sqrt(discriminant)) / (2 * a);
+  return along >= 0 && along <= 1 ? along : null;
+};

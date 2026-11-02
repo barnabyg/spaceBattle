@@ -1,11 +1,22 @@
 import type { BattleEvent, SideSetup } from '../sim/battle';
 import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
-import { formatBattleTime, formatGJ, formatKm, formatKmPerS, formatMW } from './format';
+import {
+  formatBattleTime,
+  formatGJ,
+  formatKilotons,
+  formatKm,
+  formatKmPerS,
+  formatMW,
+} from './format';
 import { outcomeDetails, outcomeHeadline } from './resultScreen';
 
 /** How many events the test log keeps on screen, newest first. */
 const TEST_LOG_LENGTH = 500;
+
+/** A number to a few significant figures, grouped. */
+const grouped = (value: number): string =>
+  value.toLocaleString('en-GB', { maximumSignificantDigits: 3 });
 
 /** A section, or one of its mounts, in words. */
 const partText = (section: keyof typeof SECTION_TEXT, mount: number | null): string =>
@@ -29,6 +40,20 @@ export const describeTestEvent = (event: BattleEvent, sides: readonly SideSetup[
       return `${time} ${nameOf(event.attacker)} ${event.munition} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatGJ(event.energy)} · ${formatKmPerS(event.speed)}`;
     case 'launch':
       return `${time} ${nameOf(event.attacker)} launched missile ${event.munition} at ${nameOf(event.target)} from ${partText(event.section, event.mount)}`;
+    case 'detonation': {
+      const burst = event.contact
+        ? 'on contact'
+        : `${formatKm(event.distance, 2)} from ${nameOf(event.target)}`;
+      const exposed = event.exposures
+        .map(
+          (e) =>
+            `${nameOf(e.side)} ${partText(e.section, e.mount)} ${formatKm(e.distance, 2)} ${grouped(e.fluence / 1e4)} J/cm² ${formatGJ(e.energy)}`,
+        )
+        .join('; ');
+      return `${time} ${nameOf(event.attacker)} missile ${event.munition} detonated ${formatKilotons(event.yield)} ${burst} · ${exposed || 'nothing exposed'}`;
+    }
+    case 'magazine-explosion':
+      return `${time} ${nameOf(event.side)} ${SECTION_TEXT[event.section].toLowerCase()} magazine ${event.index + 1} exploded · ${event.warheads} ${event.warheads === 1 ? 'warhead' : 'warheads'} · ${formatGJ(event.energy)}`;
     case 'armour-breached':
       return `${time} ${nameOf(event.side)} ${SECTION_TEXT[event.section].toLowerCase()} armour breached`;
     case 'component-lost': {
