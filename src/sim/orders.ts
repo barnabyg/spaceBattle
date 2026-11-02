@@ -1,0 +1,67 @@
+import type { SideId } from './battle';
+import type { PowerSystem } from './power';
+import type { Vec3 } from './vector';
+
+/** Turn the ship so its nose points at the enemy, away from it, or along a world direction. */
+export type AttitudeOrder =
+  | { readonly type: 'attitude'; readonly mode: 'enemy' }
+  | { readonly type: 'attitude'; readonly mode: 'away' }
+  | { readonly type: 'attitude'; readonly mode: 'direction'; readonly direction: Vec3 };
+
+/** Fire the drive along the nose at a throttle (0–1) for a duration (s); throttle 0 cuts it. */
+export interface BurnOrder {
+  readonly type: 'burn';
+  readonly throttle: number;
+  readonly duration: number;
+}
+
+/** What a manoeuvre order has the autopilot work towards. */
+export type ManoeuvreGoal = 'close' | 'hold' | 'open' | 'match-velocity';
+
+/**
+ * A standing order: the autopilot plans turns and burns towards a goal relative to the enemy
+ * until another manoeuvre, an attitude or burn order, or the goal 'none' replaces it. Close,
+ * hold and open work towards a separation (`range`, m); match velocity towards zero relative
+ * velocity.
+ */
+export type ManoeuvreOrder =
+  | { readonly type: 'manoeuvre'; readonly goal: 'close' | 'hold' | 'open'; readonly range: number }
+  | { readonly type: 'manoeuvre'; readonly goal: 'match-velocity' }
+  | { readonly type: 'manoeuvre'; readonly goal: 'none' };
+
+/**
+ * Rank the power systems, highest priority first; every one of them must appear once. When
+ * demand exceeds supply the lowest are starved first. 'capacitors' is the priority of charging
+ * them, and only systems ranked above it may draw on stored energy.
+ */
+export interface PowerOrder {
+  readonly type: 'power';
+  readonly priorities: readonly PowerSystem[];
+}
+
+/**
+ * Deploy the radiators to shed more heat, at the cost of exposing them, or retract them. The
+ * autopilot never moves them itself.
+ */
+export interface RadiatorsOrder {
+  readonly type: 'radiators';
+  readonly deployed: boolean;
+}
+
+/** Fire at the target whenever the weapons can, or hold fire. */
+export type FireMode = 'fire-freely' | 'hold-fire';
+
+/**
+ * Choose the contact the weapons aim at (a side, or null for none) and whether they fire at it.
+ * Firing freely, each laser fires while the target is within its effective range, drawing power
+ * under the 'weapons' priority. Every ship starts with no target, holding fire.
+ */
+export interface WeaponsOrder {
+  readonly type: 'weapons';
+  readonly target: SideId | null;
+  readonly mode: FireMode;
+}
+
+/** An instruction from a side's captain to its ship. */
+export type Order =
+  AttitudeOrder | BurnOrder | ManoeuvreOrder | PowerOrder | RadiatorsOrder | WeaponsOrder;

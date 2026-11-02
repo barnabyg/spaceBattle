@@ -1,0 +1,291 @@
+import * as THREE from 'three';
+import type { ShipAppearance } from '../sim/battle';
+import { designComponent, type Design, type SectionKind } from '../sim/design';
+import { shipShape, type ShapePart } from '../sim/shape';
+import { massProperties } from '../sim/ship';
+
+/** What a mesh of a ship model stands for. */
+export type ShipModelPartKind = 'section' | 'mount' | 'nozzle' | 'exhaust';
+
+/** The `userData` of every mesh in a ship model. */
+export interface ShipModelPartData {
+  readonly kind: ShipModelPartKind;
+  readonly section?: SectionKind;
+  readonly mount?: number;
+}
+
+/** The state a model is drawn in; anything left out is taken as the ship at the start of a battle. */
+export type ShipLook = Pick<
+  ShipAppearance,
+  'propellantMass' | 'radiatorsDeployed' | 'temperature' | 'thrust'
+> & {
+  /** The parts still there; the rest are hidden. All of them if left out. */
+  readonly parts?: readonly ShapePart[];
+};
+
+/** Nozzle exit radius per √N of drive thrust: a 2 MN drive gets a 3 m nozzle, m/√N. */
+const NOZZLE_RADIUS_PER_ROOT_NEWTON = 3 / Math.sqrt(2e6);
+/** A nozzle is this many times longer than its exit radius. */
+const NOZZLE_LENGTH = 1.6;
+/** The exhaust plume at full thrust is this many nozzle radii long. */
+const PLUME_LENGTH = 14;
+const EXHAUST_COLOUR = '#a9c8ff';
+const SRGB = THREE.SRGBColorSpace;
+
+/**
+ * Blackbody-ish glow by temperature (K → sRGB): dark below ~400 K, dull red at 800 K,
+ * orange at 1000 K, yellow at 1200 K and white at 1500 K. Real metal only starts to glow visibly
+ * near 800 K; the faint red from 600 K lets the captain see heat building earlier.
+ */
+const GLOW_STOPS: readonly (readonly [number, number, number, number])[] = [
+  [400, 0, 0, 0],
+  [600, 0.18, 0.01, 0],
+  [800, 0.75, 0.08, 0.01],
+  [1000, 1, 0.38, 0.06],
+  [1200, 1, 0.72, 0.36],
+  [1500, 1, 0.97, 0.9],
+];
+
+/** The colour a radiator glows at a temperature, written into `target`. */
+export const heatGlow = (temperature: number, target = new THREE.Color()): THREE.Color => {
+  const first = GLOW_STOPS[0] ?? [0, 0, 0, 0];
+  const last = GLOW_STOPS.at(-1) ?? first;
+  if (temperature <= first[0]) return target.setRGB(first[1], first[2], first[3], SRGB);
+  if (temperature >= last[0]) return target.setRGB(last[1], last[2], last[3], SRGB);
+  const upper = GLOW_STOPS.findIndex((stop) => stop[0] > temperature);
+  const a = GLOW_STOPS[upper - 1] ?? first;
+  const b = GLOW_STOPS[upper] ?? last;
+  const f = (temperature - a[0]) / (b[0] - a[0]);
+  const mix = (i: 1 | 2 | 3) => a[i] + f * (b[i] - a[i]);
+  return target.setRGB(mix(1), mix(2), mix(3), SRGB);
+};
+
+let glowTexture: THREE.DataTexture | undefined;
+
+/** A soft round glow for additive sprites, built once from data so it needs no canvas. */
+export const softGlowTexture = (): THREE.DataTexture => {
+  if (glowTexture) return glowTexture;
+  const size = 64;
+  const data = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const r = Math.hypot(x + 0.5 - size / 2, y + 0.5 - size / 2) / (size / 2);
+      const a = Math.max(0, 1 - r) ** 2;
+      data.set([255, 255, 255, Math.round(a * 255)], (y * size + x) * 4);
+    }
+  }
+  glowTexture = new THREE.DataTexture(data, size, size);
+  glowTexture.magFilter = THREE.LinearFilter;
+  glowTexture.minFilter = THREE.LinearFilter;
+  glowTexture.needsUpdate = true;
+  return glowTexture;
+};
+
+/** The meshes and materials a model updates as the ship changes, kept per model. */
+interface ModelParts {
+  readonly design: Design;
+  /** The body-frame shift the model was built at: the centre of mass behind the nose, m. */
+  readonly builtCentreOfMass: number;
+  readonly radiatorsDeployed: boolean;
+  readonly hull: THREE.Group;
+  readonly radiator: THREE.MeshStandardMaterial;
+  readonly plume: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
+  readonly glow: THREE.Sprite;
+  readonly fullThrust: number;
+  readonly nozzleRadius: number;
+}
+
+const models = new WeakMap<THREE.Group, ModelParts>();
+
+const boxMesh = (part: ShapePart, material: THREE.Material, data: ShipModelPartData) => {
+  const size = new THREE.Vector3(
+    part.max.x - part.min.x,
+    part.max.y - part.min.y,
+    part.max.z - part.min.z,
+  );
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
+  mesh.position.set(
+    (part.max.x + part.min.x) / 2,
+    (part.max.y + part.min.y) / 2,
+    (part.max.z + part.min.z) / 2,
+  );
+  mesh.userData = data;
+  return mesh;
+};
+
+/**
+ * A ship model built from its design, in the ship's body frame (centre of mass at the origin, nose
+ * along +x), from the same shape the simulation's beams hit: one box mesh per section and one per
+ * mount, a drive nozzle at the tail sized by the drive's thrust, and an exhaust plume behind it.
+ * Rebuild it when the radiators deploy or retract; `updateShipModel` handles everything else.
+ */
+export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): THREE.Group => {
+  const propellantMass = look.propellantMass ?? design.propellantMass;
+  const radiatorsDeployed = look.radiatorsDeployed ?? false;
+  const shape = shipShape(design, propellantMass, radiatorsDeployed);
+
+  const armourMaterial = {
+    heavy: new THREE.MeshStandardMaterial({ color: '#8b929c', metalness: 0.6, roughness: 0.45 }),
+    ablative: new THREE.MeshStandardMaterial({ color: '#5d564e', metalness: 0.1, roughness: 0.9 }),
+  };
+  const bare = new THREE.MeshStandardMaterial({ color: '#9aa0a8', metalness: 0.7, roughness: 0.4 });
+  const turret = new THREE.MeshStandardMaterial({
+    color: '#3a4250',
+    metalness: 0.5,
+    roughness: 0.5,
+  });
+  const radiator = new THREE.MeshStandardMaterial({
+    color: '#202226',
+    metalness: 0.3,
+    roughness: 0.7,
+    emissive: '#000000',
+  });
+
+  const model = new THREE.Group();
+  model.name = design.name;
+  const hull = new THREE.Group();
+  model.add(hull);
+
+  for (const part of shape) {
+    const section = design.sections.find((s) => s.kind === part.section);
+    if (part.mount === null) {
+      const armour = section?.armour;
+      const material = armour && armour.thickness > 0 ? armourMaterial[armour.type] : bare;
+      hull.add(boxMesh(part, material, { kind: 'section', section: part.section }));
+    } else {
+      const component = section?.mounts[part.mount];
+      const material = component?.type === 'radiator' ? radiator : turret;
+      hull.add(
+        boxMesh(part, material, { kind: 'mount', section: part.section, mount: part.mount }),
+      );
+    }
+  }
+
+  // The drive nozzle: a bell opening aft from the engine section's tail, its exit area in
+  // proportion to thrust.
+  const drive = designComponent(design, 'drive');
+  const engine = shape.find((p) => p.section === 'engine' && p.mount === null);
+  const tail = engine?.min.x ?? 0;
+  const across = engine ? Math.min(engine.max.y - engine.min.y, engine.max.z - engine.min.z) : 10;
+  const nozzleRadius = Math.min(
+    0.45 * across,
+    NOZZLE_RADIUS_PER_ROOT_NEWTON * Math.sqrt(drive.thrust),
+  );
+  const nozzleLength = NOZZLE_LENGTH * nozzleRadius;
+  const nozzle = new THREE.Mesh(
+    new THREE.CylinderGeometry(nozzleRadius, nozzleRadius * 0.35, nozzleLength, 32, 1, true),
+    new THREE.MeshStandardMaterial({
+      color: '#6b5f55',
+      metalness: 0.8,
+      roughness: 0.35,
+      side: THREE.DoubleSide,
+    }),
+  );
+  // A cylinder's axis is +y; turning it a quarter about z puts its wide top towards −x, aft.
+  nozzle.rotation.z = Math.PI / 2;
+  nozzle.position.x = tail - nozzleLength / 2;
+  nozzle.userData = { kind: 'nozzle' } satisfies ShipModelPartData;
+  hull.add(nozzle);
+
+  // The exhaust: an additive plume whose length follows the thrust, and a glow at the exit.
+  const plumeGeometry = new THREE.ConeGeometry(nozzleRadius * 0.9, 1, 24, 1, true);
+  // Base at the origin and tip 1 m aft (its +y turned to −x), so scaling x stretches it aft.
+  plumeGeometry.translate(0, 0.5, 0);
+  plumeGeometry.rotateZ(Math.PI / 2);
+  const plume = new THREE.Mesh(
+    plumeGeometry,
+    new THREE.MeshBasicMaterial({
+      color: EXHAUST_COLOUR,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  plume.position.x = tail - nozzleLength;
+  plume.userData = { kind: 'exhaust' } satisfies ShipModelPartData;
+  const glow = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: softGlowTexture(),
+      color: EXHAUST_COLOUR,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  glow.position.x = tail - nozzleLength;
+  glow.scale.setScalar(nozzleRadius * 5);
+  hull.add(plume, glow);
+
+  models.set(model, {
+    design,
+    builtCentreOfMass: massProperties(design, propellantMass).centreOfMass,
+    radiatorsDeployed,
+    hull,
+    radiator,
+    plume,
+    glow,
+    fullThrust: drive.thrust,
+    nozzleRadius,
+  });
+  updateShipModel(model, {
+    propellantMass,
+    radiatorsDeployed,
+    temperature: look.temperature ?? 300,
+    thrust: look.thrust ?? 0,
+    parts: look.parts,
+  });
+  return model;
+};
+
+/** Whether a model needs rebuilding to show this look: the radiators moved. */
+export const shipModelNeedsRebuild = (model: THREE.Group, look: ShipLook): boolean =>
+  models.get(model)?.radiatorsDeployed !== look.radiatorsDeployed;
+
+const scratch = new THREE.Color();
+
+/**
+ * Brings a model up to date without building anything: radiator glow from temperature, exhaust
+ * from thrust, lost parts hidden, and the hull shifted as burning propellant moves the centre of
+ * mass.
+ */
+export const updateShipModel = (model: THREE.Group, look: ShipLook): void => {
+  const parts = models.get(model);
+  if (!parts) return;
+  const centreOfMass = massProperties(parts.design, look.propellantMass).centreOfMass;
+  parts.hull.position.x = centreOfMass - parts.builtCentreOfMass;
+
+  parts.radiator.emissive.copy(heatGlow(look.temperature, scratch));
+
+  const throttle = Math.min(1, Math.max(0, look.thrust / parts.fullThrust));
+  parts.plume.visible = throttle > 0;
+  parts.glow.visible = throttle > 0;
+  parts.plume.scale.x = Math.max(1e-3, throttle * PLUME_LENGTH * parts.nozzleRadius);
+  parts.plume.material.opacity = 0.25 + 0.45 * throttle;
+  parts.glow.material.opacity = 0.5 + 0.5 * throttle;
+
+  const intact = look.parts;
+  for (const child of parts.hull.children) {
+    const data = child.userData as Partial<ShipModelPartData>;
+    // The nozzle goes with the engine section.
+    const section = data.kind === 'nozzle' ? 'engine' : data.section;
+    if (!section) continue;
+    child.visible =
+      !intact || intact.some((p) => p.section === section && p.mount === (data.mount ?? null));
+  }
+};
+
+/** Frees a model's geometry and materials; the glow texture and sprite geometry are shared. */
+export const disposeShipModel = (model: THREE.Group): void => {
+  model.traverse((object) => {
+    if (object instanceof THREE.Mesh) {
+      (object.geometry as THREE.BufferGeometry).dispose();
+      (object.material as THREE.Material).dispose();
+    } else if (object instanceof THREE.Sprite) {
+      object.material.dispose();
+    }
+  });
+  models.delete(model);
+};

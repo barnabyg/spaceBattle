@@ -1,0 +1,109 @@
+import type { BattleRunner } from '../game/battleRunner';
+import { el } from './el';
+import { createDamagePanel } from './damagePanel';
+import { createEndBattle } from './endBattle';
+import { createInstrumentView } from './instrumentView';
+import { createOrdersPanel } from './ordersPanel';
+import { createResultScreen } from './resultScreen';
+import { createStatusPanel } from './statusPanel';
+import { createTacticalMap, SIDE_COLOURS } from './tacticalMap';
+import { createTimeControls } from './timeControls';
+
+export interface BattleScreenOptions {
+  /** Called when the captain goes on from the result screen; by default, reloads the page. */
+  readonly onContinue?: () => void;
+  /** What the result screen's button says. */
+  readonly continueLabel?: string;
+}
+
+/** The battle as one side's captain sees it, running in real time. */
+export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOptions = {}) => {
+  const { battle } = runner;
+  const viewer = battle.sides.find((s) => s.commander === 'player') ?? battle.sides[0];
+  if (!viewer) throw new Error('A battle needs at least one side');
+  // The viewer's side comes first so it gets the own-ship colour.
+  const ordered = [viewer, ...battle.sides.filter((s) => s !== viewer)];
+
+  const timeControls = createTimeControls(runner);
+  // Each side keeps its own colour, whichever side the viewer is.
+  const map = createTacticalMap(
+    ordered,
+    ordered.map((s) => SIDE_COLOURS[battle.sides.indexOf(s) % SIDE_COLOURS.length] ?? '#ffffff'),
+  );
+  const instruments = createInstrumentView(ordered);
+  const status = createStatusPanel();
+  const damage = createDamagePanel(viewer.id);
+  const orders = createOrdersPanel((order) => {
+    battle.giveOrder(viewer.id, order);
+  });
+  const endBattle = createEndBattle(runner, viewer, () => battle.endBattle(viewer.id));
+  const result = createResultScreen(
+    battle.sides,
+    options.onContinue ??
+      (() => {
+        location.reload();
+      }),
+    options.continueLabel,
+  );
+
+  const element = el(
+    'div',
+    { className: 'battle-screen' },
+    el(
+      'header',
+      { className: 'top-bar' },
+      el('h1', { text: 'Space Battle' }),
+      timeControls.element,
+      endBattle.button,
+    ),
+    map.element,
+    instruments.element,
+    el(
+      'aside',
+      { className: 'side-panel' },
+      status.element,
+      damage.element,
+      // Only a player side takes orders from the screen; a computer side's captain gives its own.
+      viewer.commander === 'player'
+        ? orders.element
+        : el('p', {
+            className: 'order-state',
+            text: `${viewer.name} is commanded by the computer.`,
+          }),
+    ),
+    endBattle.dialog,
+    result.element,
+  );
+
+  let last = performance.now();
+  let frame = 0;
+  const tick = (now: number) => {
+    runner.update((now - last) / 1000);
+    last = now;
+    const observation = battle.observe(viewer.id);
+    timeControls.update();
+    status.update(observation);
+    damage.update(observation);
+    orders.update(observation);
+    map.update(observation);
+    map.render();
+    endBattle.update(observation.outcome !== null);
+    if (observation.outcome) result.show(observation.outcome);
+    instruments.update(observation);
+    instruments.render();
+    frame = requestAnimationFrame(tick);
+  };
+  frame = requestAnimationFrame(tick);
+
+  return {
+    element,
+    /** Stops the battle's loop and frees its views, listeners and GPU resources. */
+    dispose() {
+      cancelAnimationFrame(frame);
+      timeControls.dispose();
+      map.dispose();
+      instruments.dispose();
+      element.remove();
+    },
+  };
+};
