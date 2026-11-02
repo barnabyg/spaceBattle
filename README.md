@@ -2,7 +2,7 @@
 
 A real-time tactical game of long-range combat between large warships under known physics. See `GLOSSARY.md` for the game's vocabulary and `docs/adr/` for the decisions behind it.
 
-Supported platform: desktop Firefox on a 4K monitor (ADR-0003).
+Supported platform: desktop Firefox on a 16:9 monitor of 1920×1080 or larger; the UI scales with the window (ADR-0003).
 
 ## Commands
 

@@ -16,10 +16,10 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'firefox-4k',
+      name: 'firefox-1080p',
       use: {
         ...devices['Desktop Firefox'],
-        viewport: { width: 3840, height: 2160 },
+        viewport: { width: 1920, height: 1080 },
         deviceScaleFactor: 1,
         launchOptions: {
           // CI runners have no GPU, so Firefox blocklists WebGL there; force its software path.
