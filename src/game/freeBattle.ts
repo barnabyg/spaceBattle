@@ -3,6 +3,7 @@ import { OPENING_PASS } from '../data/scenarios';
 import { createBattle, type Commander, type SideSetup } from '../sim/battle';
 import type { BatchSetup } from './batch';
 import { createBattleRunner, type BattleRunner } from './battleRunner';
+import type { RecordedAction } from './orderLog';
 
 /** One side of a free battle as chosen on the setup screen. */
 export interface FreeBattleSide {
@@ -41,6 +42,8 @@ export const freeBattleSides = (setup: FreeBattleSetup): readonly SideSetup[] =>
 export interface FreeBattleTestMode {
   /** The battle ends with no result once this much simulated time has passed, s. */
   readonly timeLimit: number;
+  /** The actions recorded in an earlier battle from the same choices and seed, to replay it. */
+  readonly replay?: readonly RecordedAction[];
 }
 
 /** A new seed for a battle, different each time. */
@@ -48,8 +51,8 @@ export const newSeed = (): number => Math.floor(Math.random() * 2 ** 32);
 
 /**
  * Sets up a free battle in the opening pass and returns it ready to run. The same choices and
- * seed fight the same battle, given the same orders. Test mode adds a time limit and time
- * compression above 1000×.
+ * seed fight the same battle, given the same orders. Test mode adds a time limit, time
+ * compression above 1000× and replay: the orders another battle recorded, given again.
  */
 export const startFreeBattle = (
   setup: FreeBattleSetup,
@@ -63,7 +66,7 @@ export const startFreeBattle = (
       sides: freeBattleSides(setup),
       ...(testMode && { timeLimit: testMode.timeLimit }),
     }),
-    { testMode: testMode !== undefined },
+    { testMode: testMode !== undefined, ...(testMode?.replay && { replay: testMode.replay }) },
   );
 
 /**

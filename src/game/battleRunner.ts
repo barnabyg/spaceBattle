@@ -1,5 +1,6 @@
 import { TIME_STEP, type Battle, type BattleEvent } from '../sim/battle';
 import { withComputerCaptains } from '../sim/command';
+import { withOrderLog, type RecordedAction } from './orderLog';
 
 /** The time compression settings the captain can choose between. */
 export const TIME_COMPRESSIONS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000] as const;
@@ -36,6 +37,11 @@ const MAX_STEPS_PER_UPDATE = 2_500;
 export interface BattleRunnerOptions {
   /** Test mode offers time compression above 1000×. */
   readonly testMode?: boolean;
+  /**
+   * Test mode's replay: the actions another runner of the same battle recorded, given again
+   * before the same steps (see `withOrderLog`).
+   */
+  readonly replay?: readonly RecordedAction[];
 }
 
 /**
@@ -43,8 +49,13 @@ export interface BattleRunnerOptions {
  * sides are commanded by their captains as the battle runs; player sides wait for orders.
  */
 export interface BattleRunner {
-  /** The battle, with its computer sides commanded (see `withComputerCaptains`). */
+  /**
+   * The battle, with its computer sides commanded (see `withComputerCaptains`) and the orders
+   * given to it recorded.
+   */
   readonly battle: Battle;
+  /** The orders and "End battle" given to `battle`, oldest first, for replaying it. */
+  readonly orders: readonly RecordedAction[];
   readonly paused: boolean;
   readonly timeCompression: TimeCompression;
   setPaused(paused: boolean): void;
@@ -62,9 +73,9 @@ export interface BattleRunner {
 
 export const createBattleRunner = (
   uncommanded: Battle,
-  { testMode = false }: BattleRunnerOptions = {},
+  { testMode = false, replay = [] }: BattleRunnerOptions = {},
 ): BattleRunner => {
-  const battle = withComputerCaptains(uncommanded);
+  const { battle, log } = withOrderLog(withComputerCaptains(uncommanded), replay);
   const compressions: readonly TimeCompression[] = testMode
     ? TEST_TIME_COMPRESSIONS
     : TIME_COMPRESSIONS;
@@ -76,6 +87,7 @@ export const createBattleRunner = (
 
   return {
     battle,
+    orders: log,
     get paused() {
       return paused;
     },

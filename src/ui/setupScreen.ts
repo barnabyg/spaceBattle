@@ -94,7 +94,7 @@ const createTestChoices = (settings: TestSettings) => {
     ),
     el('p', {
       className: 'menu-note',
-      text: 'The same seed fights the same battle again, given the same orders. A batch run fights the chosen designs against each other with the computer commanding both sides and no graphics, each battle from its own seed.',
+      text: 'The same seed fights the same battle again, and Replay gives the same orders again at the same moments. A batch run fights the chosen designs against each other with the computer commanding both sides and no graphics, each battle from its own seed.',
     }),
   );
 

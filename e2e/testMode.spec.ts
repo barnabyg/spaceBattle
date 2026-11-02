@@ -58,6 +58,11 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
   await expect(enemy).toContainText('Red · Bastion');
   await expect(enemy).toContainText('Hull size');
   await expect(enemy.getByLabel('Middle section')).toContainText('armour');
+  const radiators = page.getByLabel('Radiators', { exact: true });
+  await expect(radiators).toContainText('Retracted');
+  await page.getByRole('button', { name: 'Deploy radiators' }).click();
+  await page.clock.runFor(1_000);
+  await expect(radiators).toContainText('Deployed');
 
   await fastest(page);
   await page.clock.runFor(20);
@@ -75,6 +80,8 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
   await result.getByRole('button', { name: 'Replay' }).click();
   await expect(page.getByLabel('Battle time')).toHaveText(/T\+00:00:0\d/);
   await expect(page.getByLabel('Test mode')).toContainText('Seed 42');
+  // The replay gives the player's orders again, at the same moments.
+  await expect(radiators).toContainText('Deployed');
 
   // Switched off again on the main menu, test mode is gone from setup.
   await page.getByRole('button', { name: 'End battle' }).click();

@@ -5,6 +5,7 @@ import {
   startFreeBattle,
   type FreeBattleSetup,
 } from '../game/freeBattle';
+import type { RecordedAction } from '../game/orderLog';
 import { createBatchScreen } from './batchScreen';
 import { createBattleScreen } from './battleScreen';
 import { createMainMenu } from './mainMenu';
@@ -79,9 +80,13 @@ export const createApp = (root: HTMLElement) => {
     );
   };
 
-  const showBattle = (seed: number) => {
+  /** Starts a battle; in test mode `replay` gives the orders of an earlier one again. */
+  const showBattle = (seed: number, replay?: readonly RecordedAction[]) => {
     const runner = testMode
-      ? startFreeBattle(setup, seed, { timeLimit: testSettings.timeLimit })
+      ? startFreeBattle(setup, seed, {
+          timeLimit: testSettings.timeLimit,
+          ...(replay && { replay }),
+        })
       : startFreeBattle(setup, seed);
     show(
       createBattleScreen(runner, {
@@ -92,7 +97,7 @@ export const createApp = (root: HTMLElement) => {
             seed,
             timeLimit: testSettings.timeLimit,
             onReplay: () => {
-              showBattle(seed);
+              showBattle(seed, runner.orders);
             },
           },
         }),
