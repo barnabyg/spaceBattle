@@ -3,7 +3,7 @@ import type { ManoeuvreGoal, ManoeuvreOrder } from './orders';
 import {
   availableThrust,
   deltaVOf,
-  massProperties,
+  shipMassProperties,
   noseOf,
   turnTime,
   type ShipState,
@@ -84,7 +84,7 @@ interface Guidance {
 }
 
 const accelerationOf = (ship: ShipState): number =>
-  availableThrust(ship) / massProperties(ship.design, ship.propellantMass).mass;
+  availableThrust(ship) / shipMassProperties(ship).mass;
 
 /** The throttle (a fraction of full thrust) that gives all the thrust power and heat allow. */
 const fullAvailableThrottle = (ship: ShipState): number =>
@@ -166,7 +166,7 @@ export const manoeuvreThrottle = (ship: ShipState, command: ManoeuvreCommand, dt
   if (!command.correcting) return 0;
   const along = dot(command.velocityError, noseOf(ship));
   if (along <= length(command.velocityError) * Math.cos(BURN_ANGLE)) return 0;
-  const { mass } = massProperties(ship.design, ship.propellantMass);
+  const { mass } = shipMassProperties(ship);
   const wanted = (along * mass) / Math.max(THROTTLE_TIME, dt);
   return Math.min(availableThrust(ship), wanted) / designComponent(ship.design, 'drive').thrust;
 };

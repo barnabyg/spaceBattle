@@ -62,6 +62,24 @@ export interface WeaponsOrder {
   readonly mode: FireMode;
 }
 
+/**
+ * Launch a salvo of `missiles` missiles at a target, each launcher firing as soon as it is
+ * loaded, until the salvo is done or the magazines are empty. It stands apart from the weapons
+ * order and its fire mode: missiles are launched only by this order. A new launch order replaces
+ * the salvo still to go; zero missiles calls it off.
+ */
+export interface LaunchOrder {
+  readonly type: 'launch';
+  readonly target: SideId;
+  readonly missiles: number;
+}
+
 /** An instruction from a side's captain to its ship. */
 export type Order =
-  AttitudeOrder | BurnOrder | ManoeuvreOrder | PowerOrder | RadiatorsOrder | WeaponsOrder;
+  | AttitudeOrder
+  | BurnOrder
+  | ManoeuvreOrder
+  | PowerOrder
+  | RadiatorsOrder
+  | WeaponsOrder
+  | LaunchOrder;

@@ -1,4 +1,5 @@
 import type { SideObservation } from '../sim/battle';
+import type { MunitionKind } from '../sim/events';
 import { OVERHEAT_TEMPERATURE } from '../sim/heat';
 import { POWER_SYSTEMS } from '../sim/power';
 import { distance, length } from '../sim/vector';
@@ -14,6 +15,15 @@ import {
 } from './format';
 const formatMN = (newtons: number) =>
   `${(newtons / 1e6).toLocaleString('en-GB', { maximumFractionDigits: 2 })} MN`;
+
+const count = (n: number) => n.toLocaleString('en-GB');
+
+/** How many munitions of a kind are in flight, ours and the enemy's. */
+const inFlight = ({ munitions, ownShip }: SideObservation, kind: MunitionKind): string => {
+  const flying = munitions.filter((m) => m.kind === kind);
+  const ours = flying.filter((m) => m.attacker === ownShip.sideId).length;
+  return `${ours} ours · ${flying.length - ours} incoming`;
+};
 
 /** Each readout: its label and how to show it from the captain's observation. */
 const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] = [
@@ -54,18 +64,19 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   ['Heat radiated', (o) => formatMW(o.ownShip.heat.radiated)],
   [
     'Ammunition',
-    ({ ownShip: { weapons } }) =>
-      weapons.ammunition.capacity > 0
-        ? `${weapons.ammunition.slugs.toLocaleString('en-GB')} of ${weapons.ammunition.capacity.toLocaleString('en-GB')} slugs`
-        : '—',
-  ],
-  [
-    'Slugs in flight',
-    ({ munitions, ownShip }) => {
-      const ours = munitions.filter((m) => m.attacker === ownShip.sideId).length;
-      return `${ours} ours · ${munitions.length - ours} incoming`;
+    ({ ownShip: { weapons } }) => {
+      const { slugs, slugCapacity, missiles, missileCapacity } = weapons.ammunition;
+      const held = [
+        ...(slugCapacity > 0 ? [`${count(slugs)} of ${count(slugCapacity)} slugs`] : []),
+        ...(missileCapacity > 0
+          ? [`${count(missiles)} of ${count(missileCapacity)} missiles`]
+          : []),
+      ];
+      return held.length > 0 ? held.join(' · ') : '—';
     },
   ],
+  ['Slugs in flight', (o) => inFlight(o, 'slug')],
+  ['Missiles in flight', (o) => inFlight(o, 'missile')],
   [
     'Radiators',
     ({ ownShip: { heat } }) =>

@@ -22,19 +22,39 @@ export interface HitEvent {
   readonly range: number;
 }
 
-/** A slug struck a part of its target: a section, or one of its mounts. */
+/** What kind of munition is in flight: a slug from a kinetic gun, or a missile. */
+export type MunitionKind = 'slug' | 'missile';
+
+/**
+ * A munition struck a part of a ship directly: a slug, or a missile with a kinetic warhead. It
+ * struck a section, or one of its mounts.
+ */
 export interface ImpactEvent {
   readonly type: 'impact';
   readonly time: number;
   readonly attacker: SideId;
   readonly target: SideId;
+  readonly munition: MunitionKind;
   readonly section: SectionKind;
   /** The mount struck on that section, or null for the section itself. */
   readonly mount: number | null;
-  /** The slug's kinetic energy relative to the target, J. */
+  /** The munition's kinetic energy relative to the target, J. */
   readonly energy: number;
-  /** The slug's speed relative to the target, m/s. */
+  /** The munition's speed relative to the target, m/s. */
   readonly speed: number;
+}
+
+/** A launcher launched a missile at a target. */
+export interface LaunchEvent {
+  readonly type: 'launch';
+  readonly time: number;
+  readonly attacker: SideId;
+  readonly target: SideId;
+  /** The missile's id among the munitions in flight. */
+  readonly munition: number;
+  /** Where the launcher is: its section, and its place in the section's mounts. */
+  readonly section: SectionKind;
+  readonly mount: number;
 }
 
 /** A section's armour has been broken through; hits now reach its structure and components. */
@@ -77,6 +97,7 @@ export interface BattleEndedEvent {
 export type BattleEvent =
   | HitEvent
   | ImpactEvent
+  | LaunchEvent
   | ArmourBreachedEvent
   | ComponentLostEvent
   | StructuralFailureEvent
@@ -87,6 +108,7 @@ export const involves = (event: BattleEvent, side: SideId): boolean => {
   switch (event.type) {
     case 'hit':
     case 'impact':
+    case 'launch':
       return event.attacker === side || event.target === side;
     case 'battle-ended':
       return true;

@@ -28,10 +28,15 @@ const STAR_COUNT = 3_500;
 /** Beam landings and slug impacts shown on each ship at once. */
 const MAX_SPOTS = 4;
 const HIT_COLOUR = '#fff1c8';
-/** Slugs in flight the telescope shows at once. */
+/** Slugs or missiles in flight the telescope shows at once, of each. */
 const MAX_GLINTS = 512;
 const OUTGOING_COLOUR = new THREE.Color('#a8d8ff');
 const INCOMING_COLOUR = new THREE.Color('#ff9a7a');
+/** A missile's drive flame, which its glint takes on while it burns. */
+const DRIVE_FLAME_COLOUR = new THREE.Color('#ffffff');
+/** Pixels across: a slug's glint, and a missile's, which is larger and burns bright. */
+const SLUG_GLINT_SIZE = 3;
+const MISSILE_GLINT_SIZE = 7;
 /** The contact's telescope view frames it at this many ship lengths, unless zoomed. */
 const TELESCOPE_DISTANCE = 1.8;
 const FOV = 35;
@@ -232,7 +237,8 @@ const telescopePosition = (munition: MunitionObservation, own: Vec3, contact: Ve
  * The instrument view: the battle as the ship's telescopes see it, beside the tactical map. Ships
  * tens of metres long, tens of thousands of kilometres apart, cannot share one frame, so it is
  * split: the own ship above, orbited freely, and the contact below as the telescope sees it,
- * along the line of sight from the own ship, with any slugs in flight seen against it. Both ships
+ * along the line of sight from the own ship, with any slugs and missiles in flight seen against
+ * it, missiles larger and flaring white while their drives burn. Both ships
  * are drawn in full until sensors limit what can be made out of the contact (a later phase). One
  * renderer draws both halves.
  */
@@ -289,27 +295,49 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
   const own = createShipView(scene, ownSide, 1);
   const contact = createShipView(scene, contactSide, 2);
 
-  // Slugs in flight as the telescope sees them against the contact, drawn over it.
-  const glintPositions = new THREE.BufferAttribute(new Float32Array(MAX_GLINTS * 3), 3);
-  const glintColours = new THREE.BufferAttribute(new Float32Array(MAX_GLINTS * 3), 3);
-  const glintGeometry = new THREE.BufferGeometry();
-  glintGeometry.setAttribute('position', glintPositions);
-  glintGeometry.setAttribute('color', glintColours);
-  glintGeometry.setDrawRange(0, 0);
-  const glints = new THREE.Points(
-    glintGeometry,
-    new THREE.PointsMaterial({
-      size: 3,
-      sizeAttenuation: false,
-      vertexColors: true,
-      depthTest: false,
-      depthWrite: false,
-    }),
-  );
-  glints.frustumCulled = false;
-  glints.renderOrder = 1;
-  glints.layers.set(contact.layer);
-  scene.add(glints);
+  // Slugs and missiles in flight as the telescope sees them against the contact, drawn over it.
+  const glintsOf = (size: number) => {
+    const positions = new THREE.BufferAttribute(new Float32Array(MAX_GLINTS * 3), 3);
+    const colours = new THREE.BufferAttribute(new Float32Array(MAX_GLINTS * 3), 3);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', positions);
+    geometry.setAttribute('color', colours);
+    geometry.setDrawRange(0, 0);
+    const points = new THREE.Points(
+      geometry,
+      new THREE.PointsMaterial({
+        size,
+        sizeAttenuation: false,
+        vertexColors: true,
+        depthTest: false,
+        depthWrite: false,
+      }),
+    );
+    points.frustumCulled = false;
+    points.renderOrder = 1;
+    points.layers.set(contact.layer);
+    scene.add(points);
+    let shown = 0;
+    return {
+      clear() {
+        shown = 0;
+      },
+      add(at: Vec3, colour: THREE.Color) {
+        if (shown === MAX_GLINTS) return;
+        positions.setXYZ(shown, at.x, at.y, at.z);
+        colours.setXYZ(shown, colour.r, colour.g, colour.b);
+        shown += 1;
+      },
+      show() {
+        positions.needsUpdate = true;
+        colours.needsUpdate = true;
+        geometry.setDrawRange(0, shown);
+      },
+    };
+  };
+  const slugGlints = glintsOf(SLUG_GLINT_SIZE);
+  const missileGlints = glintsOf(MISSILE_GLINT_SIZE);
+  const glintColour = new THREE.Color();
 
   const camera = (view: ShipView) => {
     const c = new THREE.PerspectiveCamera(FOV, 1, 0.5, SKY_RADIUS * 2);
@@ -369,22 +397,25 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       const seen = observation.contacts.find((c) => c.sideId === contactSide.id);
       contact.anchor.visible = seen !== undefined;
       contactPosition = seen?.position ?? null;
-      let shown = 0;
+      slugGlints.clear();
+      missileGlints.clear();
       if (seen) {
         updateShipView(contact, seen.orientation, seen.appearance);
         contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${formatKm(distance(seen.position, ship.position))}`;
         for (const munition of observation.munitions) {
           const at = telescopePosition(munition, ship.position, seen.position);
-          if (!at || shown === MAX_GLINTS) continue;
-          glintPositions.setXYZ(shown, at.x, at.y, at.z);
-          const colour = munition.attacker === ship.sideId ? OUTGOING_COLOUR : INCOMING_COLOUR;
-          glintColours.setXYZ(shown, colour.r, colour.g, colour.b);
-          shown += 1;
+          if (!at) continue;
+          glintColour.copy(munition.attacker === ship.sideId ? OUTGOING_COLOUR : INCOMING_COLOUR);
+          if (munition.kind === 'slug') {
+            slugGlints.add(at, glintColour);
+          } else {
+            if (munition.thrust > 0) glintColour.lerp(DRIVE_FLAME_COLOUR, 0.6);
+            missileGlints.add(at, glintColour);
+          }
         }
       }
-      glintPositions.needsUpdate = true;
-      glintColours.needsUpdate = true;
-      glintGeometry.setDrawRange(0, shown);
+      slugGlints.show();
+      missileGlints.show();
     },
     render() {
       if (width === 0 || height === 0) return;

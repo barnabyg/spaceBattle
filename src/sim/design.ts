@@ -102,28 +102,76 @@ export interface KineticGunDesign {
   readonly rateOfFire: number;
 }
 
-/** Stores ammunition inside a section: slugs for the ship's kinetic guns. */
+/** A missile warhead: what it does on reaching its target. */
+export interface KineticWarheadDesign {
+  /** Destroys by hitting the target directly, with the whole missile's kinetic energy. */
+  readonly type: 'kinetic';
+}
+export type WarheadDesign = KineticWarheadDesign;
+export const WARHEAD_TYPES = ['kinetic'] as const;
+export type WarheadType = WarheadDesign['type'];
+
+/**
+ * A guided missile: a point mass with its own drive, which can point its thrust any way, and its
+ * own propellant, so its own delta-v by the rocket equation. It is ammunition, held in a
+ * magazine and fired from a launcher.
+ */
+export interface MissileDesign {
+  readonly name: string;
+  /** Everything but its propellant: body, drive, guidance and warhead, kg. */
+  readonly dryMass: number;
+  /** kg */
+  readonly propellantMass: number;
+  /** Its drive's thrust at full throttle, N. */
+  readonly thrust: number;
+  /** m/s */
+  readonly exhaustVelocity: number;
+  readonly warhead: WarheadDesign;
+}
+
+/** A missile's mass as launched, with all its propellant, kg. */
+export const missileMass = (missile: MissileDesign): number =>
+  missile.dryMass + missile.propellantMass;
+
+/** A mounted component that fires missiles from the ship's magazines, one at a time. */
+export interface LauncherDesign {
+  readonly type: 'launcher';
+  /** kg */
+  readonly mass: number;
+  /** Time to load the next missile after a launch, s. */
+  readonly reloadTime: number;
+}
+
+/**
+ * Stores ammunition inside a section: slugs for the ship's kinetic guns, or missiles of one
+ * design for its launchers, never both. It starts every battle full.
+ */
 export interface MagazineDesign {
   readonly type: 'magazine';
   /**
-   * kg, with its slugs. The slugs are a small part of a ship's mass, so it is taken as constant
-   * as they are fired.
+   * kg, with its ammunition. The ship gets lighter by each slug fired or missile launched from
+   * it.
    */
   readonly mass: number;
-  /** How many slugs it holds; it starts every battle full. */
+  /** How many slugs it holds. */
   readonly slugs: number;
+  /** How many missiles it holds. */
+  readonly missiles: number;
+  /** The missiles it holds; null when it holds none. */
+  readonly missile: MissileDesign | null;
 }
 
 /** Components that sit inside a section's armour. */
 export type InternalComponentDesign =
   DriveDesign | ThrustersDesign | ReactorDesign | CapacitorDesign | MagazineDesign;
 /** Components that must be exposed, on a section's mounts. */
-export type MountedComponentDesign = RadiatorDesign | LaserDesign | KineticGunDesign;
+export type MountedComponentDesign =
+  RadiatorDesign | LaserDesign | KineticGunDesign | LauncherDesign;
 export type ComponentDesign = InternalComponentDesign | MountedComponentDesign;
 export type ComponentType = ComponentDesign['type'];
 
 const INTERNAL_TYPES = ['drive', 'thrusters', 'reactor', 'capacitor', 'magazine'] as const;
-const MOUNTED_TYPES = ['radiator', 'laser', 'kinetic-gun'] as const;
+const MOUNTED_TYPES = ['radiator', 'laser', 'kinetic-gun', 'launcher'] as const;
 
 export const ARMOUR_TYPES = ['heavy', 'ablative'] as const;
 export type ArmourType = (typeof ARMOUR_TYPES)[number];
@@ -313,12 +361,50 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
         efficiency: requireFraction(data, 'efficiency', where),
         rateOfFire: requireNumber(data, 'rateOfFire', where),
       };
-    case 'magazine': {
-      const slugs = requireNumber(data, 'slugs', where);
-      if (!Number.isInteger(slugs)) throw new Error(`${where}: "slugs" must be a whole number`);
-      return { type, mass, slugs };
-    }
+    case 'launcher':
+      return { type, mass, reloadTime: requireNumber(data, 'reloadTime', where) };
+    case 'magazine':
+      return parseMagazine(data, mass, where);
   }
+};
+
+const requireCount = (data: Record<string, unknown>, key: string, where: string): number => {
+  if (data[key] === undefined) return 0;
+  const count = requireNumber(data, key, where, { positive: false });
+  if (!Number.isInteger(count)) throw new Error(`${where}: "${key}" must be a whole number`);
+  return count;
+};
+
+const parseMissile = (data: unknown, where: string): MissileDesign => {
+  if (!isRecord(data)) throw new Error(`${where}: "missile" must be an object`);
+  const { warhead } = data;
+  if (!isRecord(warhead)) throw new Error(`${where}: "warhead" must be an object`);
+  return {
+    name: requireString(data, 'name', where),
+    dryMass: requireNumber(data, 'dryMass', where),
+    propellantMass: requireNumber(data, 'propellantMass', where, { positive: false }),
+    thrust: requireNumber(data, 'thrust', where),
+    exhaustVelocity: requireNumber(data, 'exhaustVelocity', where),
+    warhead: { type: requireOneOf(warhead, 'type', WARHEAD_TYPES, `${where} warhead`) },
+  };
+};
+
+const parseMagazine = (data: Record<string, unknown>, mass: number, where: string) => {
+  const slugs = requireCount(data, 'slugs', where);
+  const missiles = requireCount(data, 'missiles', where);
+  if (slugs > 0 && missiles > 0) {
+    throw new Error(`${where}: a magazine holds slugs or missiles, not both`);
+  }
+  if (slugs + missiles === 0) throw new Error(`${where}: a magazine needs slugs or missiles`);
+  if (missiles === 0) {
+    if (data.missile !== undefined) throw new Error(`${where}: "missile" needs "missiles"`);
+    return { type: 'magazine', mass, slugs, missiles, missile: null } as const;
+  }
+  const missile = parseMissile(data.missile, `${where} missile`);
+  if (missiles * missileMass(missile) >= mass) {
+    throw new Error(`${where}: "mass" must be more than the missiles it holds`);
+  }
+  return { type: 'magazine', mass, slugs, missiles, missile } as const;
 };
 
 const parseArmour = (data: unknown, where: string): ArmourDesign => {
@@ -379,11 +465,21 @@ export const parseDesign = (data: unknown): Design => {
   ) {
     throw new Error(`${where}: the drive must be in the engine section`);
   }
-  if (
-    designComponentsOfType(design, 'kinetic-gun').length > 0 &&
-    designComponentsOfType(design, 'magazine').length === 0
-  ) {
+  const magazines = designComponentsOfType(design, 'magazine');
+  const guns = designComponentsOfType(design, 'kinetic-gun');
+  if (guns.length > 0 && !magazines.some((m) => m.slugs > 0)) {
     throw new Error(`${where}: kinetic guns need a magazine for their slugs`);
+  }
+  // Any gun may fire a magazine's slugs, so it must weigh more than its slugs for the heaviest.
+  const heaviestSlug = Math.max(0, ...guns.map((gun) => gun.slugMass));
+  if (magazines.some((m) => m.slugs * heaviestSlug >= m.mass)) {
+    throw new Error(`${where}: a magazine's "mass" must be more than the slugs it holds`);
+  }
+  if (
+    designComponentsOfType(design, 'launcher').length > 0 &&
+    !magazines.some((m) => m.missiles > 0)
+  ) {
+    throw new Error(`${where}: launchers need a magazine of missiles`);
   }
   return design;
 };

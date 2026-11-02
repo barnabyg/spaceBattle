@@ -6,7 +6,9 @@ import {
   type Design,
   type KineticGunDesign,
   type LaserDesign,
+  type LauncherDesign,
   type MagazineDesign,
+  type MissileDesign,
   type SectionDesign,
   type SectionKind,
 } from './design';
@@ -125,6 +127,8 @@ export const testMagazine = (slugs: number): MagazineDesign => ({
   type: 'magazine',
   mass: 5e3,
   slugs,
+  missiles: 0,
+  missile: null,
 });
 
 /** The test design with the test kinetic gun on a forward mount and a magazine of `slugs`. */
@@ -132,6 +136,47 @@ export const gunnedTestDesign = (slugs: number): Design =>
   withSection(testDesign(), 'forward', {
     components: [testMagazine(slugs)],
     mounts: [TEST_KINETIC_GUN],
+  });
+
+/**
+ * A missile for test designs: 2 t at launch, half of it propellant, with a 50 kN drive at 20 km/s
+ * exhaust velocity, so 25–50 m/s² and a delta-v of 20 km/s × ln 2 ≈ 13.9 km/s over a 400 s burn.
+ */
+export const TEST_MISSILE: MissileDesign = {
+  name: 'Test missile',
+  dryMass: 1e3,
+  propellantMass: 1e3,
+  thrust: 50e3,
+  exhaustVelocity: 20e3,
+  warhead: { type: 'kinetic' },
+};
+
+/** A launcher for test designs that takes 10 s to reload. */
+export const TEST_LAUNCHER: LauncherDesign = { type: 'launcher', mass: 5e3, reloadTime: 10 };
+
+/** A magazine for test designs holding `missiles` missiles of a design. */
+export const missileMagazine = (
+  missiles: number,
+  missile: MissileDesign = TEST_MISSILE,
+): MagazineDesign => ({
+  type: 'magazine',
+  mass: 5e3 + missiles * (missile.dryMass + missile.propellantMass),
+  slugs: 0,
+  missiles,
+  missile,
+});
+
+/**
+ * The test design with `launchers` test launchers on forward mounts and a magazine of `missiles`
+ * missiles of a design.
+ */
+export const launchingTestDesign = (
+  missiles: number,
+  { missile = TEST_MISSILE, launchers = 1 }: { missile?: MissileDesign; launchers?: number } = {},
+): Design =>
+  withSection(testDesign(), 'forward', {
+    components: [missileMagazine(missiles, missile)],
+    mounts: Array.from({ length: launchers }, () => TEST_LAUNCHER),
   });
 
 /** Turns red's nose (+x) to point back along −x, at blue. */

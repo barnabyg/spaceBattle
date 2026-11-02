@@ -6,6 +6,7 @@ import {
   armedTestDesign,
   duelSetup,
   gunnedTestDesign,
+  launchingTestDesign,
   testDesign,
   testSetup,
   testSides,
@@ -74,6 +75,17 @@ describe('battle runner', () => {
     expect(events.map((e) => e.type)).toEqual(['impact']);
     expect(r.timeCompression).toBe(1);
     expect(r.battle.time).toBeLessThan(100);
+  });
+
+  it('drops to real time when a missile is launched', () => {
+    const battle = createBattle(duelSetup(launchingTestDesign(1), testDesign(), 10_000e3));
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    const r = createBattleRunner(battle);
+    r.setTimeCompression(1000);
+    const events = r.update(0.1);
+    expect(events.map((e) => e.type)).toEqual(['launch']);
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeCloseTo(0.1, 9);
   });
 
   it('drops to real time when a component is lost', () => {

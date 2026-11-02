@@ -22,6 +22,13 @@ describe('design summary', () => {
     );
   });
 
+  it("shows a design's launchers and the missiles it carries", () => {
+    expect(summaryOf('lance').get('Missiles')).toBe('None');
+    expect(summaryOf('quiver').get('Missiles')).toMatch(
+      /^2 launchers · 12 Spike · [\d.]+ km\/s · reach [\d,]+ km$/,
+    );
+  });
+
   it('tells the nimble frigate from the heavier cruiser', () => {
     const lance = summaryOf('lance');
     const bastion = summaryOf('bastion');

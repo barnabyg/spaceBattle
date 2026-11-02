@@ -39,7 +39,7 @@ export interface BattleOutcome {
   readonly sides: readonly SideOutcome[];
 }
 
-const WEAPON_TYPES: ReadonlySet<ComponentType> = new Set(['laser', 'kinetic-gun']);
+const WEAPON_TYPES: ReadonlySet<ComponentType> = new Set(['laser', 'kinetic-gun', 'launcher']);
 
 /**
  * Whether a ship has lost the battle, and how. A reactor breach or structural failure of the

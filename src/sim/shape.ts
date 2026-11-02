@@ -1,6 +1,6 @@
 import type { Design, MountedComponentDesign, SectionKind } from './design';
 import { HULLS } from './hull';
-import { massProperties } from './ship';
+import { massProperties, NO_AMMUNITION_SPENT, type AmmunitionSpent } from './ship';
 import { vec3, type Vec3 } from './vector';
 
 /** Thickness of a radiator panel, m. */
@@ -11,6 +11,10 @@ const TURRET_MARGIN = 1;
 const GUN_GIRTH = 3;
 /** ...and at most this long, its barrel along the ship, m. */
 const GUN_LENGTH = 16;
+/** A launcher is a box this wide and high round its rail... */
+const LAUNCHER_GIRTH = 2.5;
+/** ...and at most this long, along the ship, m. */
+const LAUNCHER_LENGTH = 8;
 
 /**
  * One box of a ship's outline, in its body frame with the centre of mass at the origin and the
@@ -64,14 +68,15 @@ const mountBox = (
     hi = centre + side / 2;
     outward = side;
     width = side;
-  } else if (component.type === 'kinetic-gun') {
-    // A long gun lying along the ship, centred in its slot.
-    const half = Math.min(GUN_LENGTH, length) / 2;
+  } else if (component.type === 'kinetic-gun' || component.type === 'launcher') {
+    // A gun or launch rail lying along the ship, centred in its slot.
+    const gun = component.type === 'kinetic-gun';
+    const half = Math.min(gun ? GUN_LENGTH : LAUNCHER_LENGTH, length) / 2;
     const centre = (slot[0] + slot[1]) / 2;
     lo = centre - half;
     hi = centre + half;
-    outward = GUN_GIRTH;
-    width = GUN_GIRTH;
+    outward = gun ? GUN_GIRTH : LAUNCHER_GIRTH;
+    width = outward;
   } else if (deployed) {
     // A fin standing straight out from the face, edge-on to the nose; both faces radiate.
     lo = slot[0];
@@ -103,9 +108,10 @@ export const shipShape = (
   design: Design,
   propellantMass: number,
   radiatorsDeployed: boolean,
+  ammunitionSpent: AmmunitionSpent = NO_AMMUNITION_SPENT,
 ): readonly ShapePart[] => {
   const hull = HULLS[design.hullSize];
-  const { centreOfMass } = massProperties(design, propellantMass);
+  const { centreOfMass } = massProperties(design, propellantMass, ammunitionSpent);
   const parts: ShapePart[] = [];
   let front = centreOfMass;
   hull.sections.forEach((shape) => {

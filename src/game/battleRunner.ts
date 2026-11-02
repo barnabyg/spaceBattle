@@ -9,6 +9,7 @@ export type TimeCompression = (typeof TIME_COMPRESSIONS)[number];
 const SIGNIFICANT_EVENTS: ReadonlySet<BattleEvent['type']> = new Set([
   'hit',
   'impact',
+  'launch',
   'armour-breached',
   'component-lost',
   'structural-failure',

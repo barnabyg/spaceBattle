@@ -78,7 +78,9 @@ const damageComponent = (ship: ShipState, slot: number, loss: number, ctx: Damag
   const place = componentSlots(ship.design)[slot];
   if (after === 0 && place) {
     if (place.component.type === 'magazine') {
-      ship.ammunition = ship.ammunition.map((m) => (m.slot === slot ? { ...m, slugs: 0 } : m));
+      ship.ammunition = ship.ammunition.map((m) =>
+        m.slot === slot ? { ...m, slugs: 0, missiles: 0 } : m,
+      );
     }
     ctx.events.push({
       type: 'component-lost',
@@ -169,7 +171,7 @@ const damageSection = (
 
 /** The parts of a ship still there: sections not yet failed and mounts not yet wrecked. */
 export const intactShape = (ship: ShipState): readonly ShapePart[] =>
-  shipShape(ship.design, ship.propellantMass, ship.radiatorsDeployed).filter(
+  shipShape(ship.design, ship.propellantMass, ship.radiatorsDeployed, ship.ammunitionSpent).filter(
     (part) =>
       ship.sections[part.section].structure > 0 &&
       (part.mount === null ||
@@ -211,11 +213,12 @@ export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike 
 };
 
 /**
- * A slug striking a ship with its kinetic energy, `energy` J, on the part its path meets first.
+ * A slug or a missile with a kinetic warhead striking a ship with its kinetic energy, `energy` J,
+ * on the part its path meets first, as a penetrator of `slugMass` kg.
  * On a section it punches as deep into the armour as its energy allows; a mounted component
  * takes all of it.
  */
-export const impactSlug = (
+export const impactKinetic = (
   ship: ShipState,
   hit: SlugHit,
   energy: number,

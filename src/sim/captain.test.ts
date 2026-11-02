@@ -157,8 +157,32 @@ describe('computer captain', () => {
     // It counts its guns' reach: unanswered, it stands off just inside it.
     expect(red.manoeuvre?.goal).toBe('hold');
     expect(red.manoeuvre?.range).toBeLessThan(red.weapons.kineticGuns[0]?.effectiveRange ?? 0);
-    expect(red.weapons.ammunition.slugs).toBeLessThan(red.weapons.ammunition.capacity);
+    expect(red.weapons.ammunition.slugs).toBeLessThan(red.weapons.ammunition.slugCapacity);
     expect(events.some((e) => e.type === 'impact' && e.attacker === 'red')).toBe(true);
+  });
+
+  it('launches a salvo of missiles once the enemy is within their reach, and another once it lands', () => {
+    const quiver = handMadeDesign('quiver');
+    const far = againstIdlePlayer(testDesign(), quiver, 200_000 * KM);
+    expect(far.advance(60).some((e) => e.type === 'launch')).toBe(false);
+
+    const battle = againstIdlePlayer(testDesign(), quiver, 30_000 * KM);
+    const reach = battle.observe('red').ownShip.weapons.ammunition.missileDesigns[0]?.reach ?? 0;
+    expect(reach).toBeGreaterThan(30_000 * KM);
+    const first = battle.advance(10).filter((e) => e.type === 'launch');
+    const launchers = quiver.sections.flatMap((s) => s.mounts).filter((m) => m.type === 'launcher');
+    expect(first).toHaveLength(launchers.length);
+    expect(first.every((e) => e.attacker === 'red' && e.target === 'blue')).toBe(true);
+    // One salvo at a time: no more while the first is on its way.
+    const events: BattleEvent[] = [];
+    while (battle.observe('red').munitions.length > 0) {
+      if (battle.time > 2 * HOUR) throw new Error('Missiles still in flight');
+      events.push(...battle.step());
+    }
+    expect(events.some((e) => e.type === 'launch')).toBe(false);
+    expect(events.some((e) => e.type === 'impact' && e.munition === 'missile')).toBe(true);
+    expect(battle.outcome).toBeNull();
+    expect(battle.advance(10).filter((e) => e.type === 'launch')).toHaveLength(launchers.length);
   });
 
   it('deploys its radiators when it runs hot, and retracts them once cool', () => {
@@ -215,7 +239,7 @@ describe('two computer captains', () => {
     expectDecided(battle);
   }, 30_000); // Simulates most of a day of battle; takes a few seconds.
 
-  it.each(['lance', 'bastion'])(
+  it.each(['lance', 'bastion', 'quiver'])(
     'fight %s against its own design to a result',
     (design) => {
       const battle = runBattle(computerDuel(design, design, 200_000 * KM), { maxTime: 24 * HOUR });

@@ -128,3 +128,27 @@ test('a ship with kinetic guns shows its guns, magazine and ammunition', async (
   // The opening pass starts beyond the guns' reach.
   await expect(page.getByLabel('Weapons state')).toHaveText('Out of range · reach 30,000 km');
 });
+
+test('a ship with launchers launches missiles by order, dropping to real time', async ({
+  page,
+}) => {
+  await startFreeBattle(page, { blue: { design: 'Quiver' } });
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Ammunition')).toHaveText('12 of 12 missiles');
+  await expect(page.getByLabel('Missiles in flight')).toHaveText('0 ours · 0 incoming');
+  await expect(
+    page.getByRole('region', { name: 'Damage' }).getByText('Launcher (mount)'),
+  ).toHaveCount(2);
+  const launch = page.getByLabel('Launch state');
+  await expect(launch).toContainText('12 missiles ready · reach');
+
+  await page.getByLabel('Missiles', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  await expect(launch).toHaveText('Launching · 2 to go · 12 missiles left');
+  for (let i = 0; i < 9; i++) await page.keyboard.press('+');
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page.getByLabel('Missiles in flight')).toHaveText('2 ours · 0 incoming');
+  await expect(page.getByLabel('Time compression')).toHaveText('1×');
+  await expect(page.getByLabel('Ammunition')).toHaveText('10 of 12 missiles');
+  await expect(page.getByRole('list', { name: 'Battle log' })).toContainText('Missile launched');
+});

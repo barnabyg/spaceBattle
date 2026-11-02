@@ -1,6 +1,13 @@
 import type { OwnShipObservation, SideId, SideObservation, SideSetup } from './battle';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE } from './heat';
-import type { ManoeuvreOrder, Order, PowerOrder, RadiatorsOrder, WeaponsOrder } from './orders';
+import type {
+  LaunchOrder,
+  ManoeuvreOrder,
+  Order,
+  PowerOrder,
+  RadiatorsOrder,
+  WeaponsOrder,
+} from './orders';
 import type { PowerSystem } from './power';
 import { distance } from './vector';
 import { designReach } from './weapons';
@@ -38,17 +45,25 @@ const RANGE_TOLERANCE = 0.01;
 const COMBAT_PRIORITIES: readonly PowerSystem[] = ['weapons', 'shields', 'drive', 'capacitors'];
 const MANOEUVRE_PRIORITIES: readonly PowerSystem[] = ['drive', 'shields', 'weapons', 'capacitors'];
 
+/** How far the ship's missiles reach while it has a working launcher and missiles left, m. */
+const missileReach = ({ weapons }: OwnShipObservation): number =>
+  weapons.ammunition.missiles > 0 && weapons.launchers.some((l) => l.integrity > 0)
+    ? Math.max(0, ...weapons.ammunition.missileDesigns.map((missile) => missile.reach))
+    : 0;
+
 /**
- * The furthest the ship's working weapons fire, m: its lasers, and its kinetic guns while it has
- * slugs left. Zero once none is left.
+ * The furthest the ship's working weapons fire, m: its lasers, its kinetic guns while it has
+ * slugs left, and its missiles while it has missiles and a launcher. Zero once none is left.
  */
-const ownReach = ({ weapons }: OwnShipObservation): number =>
-  Math.max(
-    0,
+const ownReach = (ship: OwnShipObservation): number => {
+  const { weapons } = ship;
+  return Math.max(
+    missileReach(ship),
     ...[...weapons.lasers, ...(weapons.ammunition.slugs > 0 ? weapons.kineticGuns : [])]
       .filter((weapon) => weapon.integrity > 0)
       .map((weapon) => weapon.effectiveRange),
   );
+};
 
 /** Whether an order is already standing, so giving it again would change nothing. */
 const inForce = (ship: OwnShipObservation, order: Order): boolean => {
@@ -57,6 +72,11 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
       return ship.weapons.target === order.target && ship.weapons.mode === order.mode;
     case 'radiators':
       return ship.heat.radiatorsDeployed === order.deployed;
+    case 'launch':
+      return (
+        ship.weapons.salvo?.target === order.target &&
+        ship.weapons.salvo.remaining === order.missiles
+      );
     case 'power':
       return order.priorities.every((system, i) => ship.power.priorities[i] === system);
     case 'manoeuvre': {
@@ -76,7 +96,9 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
  * the enemy's weapons reach (contacts show every detail until sensors arrive), and otherwise
  * decides only from its side's observations.
  *
- * It targets the enemy and fires freely throughout. If it outranges the enemy it holds just
+ * It targets the enemy and fires freely throughout, and launches a salvo of missiles, one from
+ * each working launcher, whenever the enemy is within their reach and none of its missiles is
+ * still in flight. If it outranges the enemy it holds just
  * inside its own reach, out of the enemy's; otherwise it closes to where its beams bite hard.
  * If neither side fires and the range stops shrinking for a while, it gives up on standing off
  * and closes in for good. It ranks weapons first in a fight and the drive first otherwise, and
@@ -95,6 +117,8 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
     const { weapons, appearance } = ownShip;
     const engaged =
       [...weapons.lasers, ...weapons.kineticGuns].some((weapon) => weapon.firing) ||
+      weapons.salvo !== null ||
+      observation.munitions.length > 0 ||
       appearance.beamsLanding.length > 0 ||
       appearance.impacts.length > 0;
     if (!progress || engaged || range < progress.range * (1 - PROGRESS_FRACTION)) {
@@ -140,6 +164,14 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
       };
       const course = manoeuvre(reach);
       const orders: Order[] = [weapons, ...(course ? [course] : []), radiators, power];
+      const inFlight = observation.munitions.some(
+        (m) => m.kind === 'missile' && m.attacker === side,
+      );
+      if (range <= missileReach(ship) && !inFlight && ship.weapons.salvo === null) {
+        const launchers = ship.weapons.launchers.filter((l) => l.integrity > 0).length;
+        const salvo: LaunchOrder = { type: 'launch', target: enemy.sideId, missiles: launchers };
+        orders.push(salvo);
+      }
       return orders.filter((order) => !inForce(ship, order));
     },
   };

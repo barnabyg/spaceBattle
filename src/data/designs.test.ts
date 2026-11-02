@@ -14,7 +14,7 @@ describe('hand-made designs', () => {
       expect(
         design.sections
           .flatMap((s) => s.mounts)
-          .some((m) => m.type === 'laser' || m.type === 'kinetic-gun'),
+          .some((m) => m.type === 'laser' || m.type === 'kinetic-gun' || m.type === 'launcher'),
       ).toBe(true);
     }
   });
@@ -26,6 +26,16 @@ describe('hand-made designs', () => {
     expect(gunned?.sections.flatMap((s) => s.components).some((c) => c.type === 'magazine')).toBe(
       true,
     );
+  });
+
+  it('include one carrying launchers and a magazine of missiles with kinetic warheads', () => {
+    const launching = HAND_MADE_DESIGNS.find((d) =>
+      d.sections.some((s) => s.mounts.some((m) => m.type === 'launcher')),
+    );
+    const magazines = launching?.sections
+      .flatMap((s) => s.components)
+      .flatMap((c) => (c.type === 'magazine' && c.missile ? [c.missile] : []));
+    expect(magazines?.map((missile) => missile.warhead.type)).toContain('kinetic');
   });
 });
 
@@ -158,9 +168,9 @@ describe('parseDesign', () => {
       efficiency: 0.5,
       rateOfFire: 1,
     };
-    const magazine = { type: 'magazine', mass: 1, slugs: 10 };
+    const magazine = { type: 'magazine', mass: 100, slugs: 10 };
     const design = parseDesign(withMiddle([thrusters, reactor, magazine], [gun]));
-    expect(design.sections[1]?.components[2]).toEqual(magazine);
+    expect(design.sections[1]?.components[2]).toEqual({ ...magazine, missiles: 0, missile: null });
     expect(design.sections[1]?.mounts).toEqual([gun]);
     expect(() => parseDesign(withMiddle([thrusters, reactor], [gun]))).toThrow(/magazine/);
     expect(() => parseDesign(withMiddle([thrusters, reactor, magazine, gun]))).toThrow(/mount/);
@@ -176,6 +186,41 @@ describe('parseDesign', () => {
     expect(() =>
       parseDesign(withMiddle([thrusters, reactor, { ...magazine, slugs: 2.5 }], [gun])),
     ).toThrow(/slugs/);
+    // A magazine weighs more than the slugs it holds.
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, magazine], [{ ...gun, slugMass: 10 }])),
+    ).toThrow(/mass/);
+  });
+
+  it('reads launchers on mounts and magazines of missiles, and needs missiles for the launchers', () => {
+    const launcher = { type: 'launcher', mass: 1, reloadTime: 10 };
+    const missile = {
+      name: 'Dart',
+      dryMass: 1_000,
+      propellantMass: 1_000,
+      thrust: 50e3,
+      exhaustVelocity: 20e3,
+      warhead: { type: 'kinetic' },
+    };
+    const magazine = { type: 'magazine', mass: 10e3, missiles: 4, missile };
+    const design = parseDesign(withMiddle([thrusters, reactor, magazine], [launcher]));
+    expect(design.sections[1]?.components[2]).toEqual({ ...magazine, slugs: 0 });
+    expect(design.sections[1]?.mounts).toEqual([launcher]);
+    const slugs = { type: 'magazine', mass: 100, slugs: 10 };
+    const launching = (...components: unknown[]) =>
+      parseDesign(withMiddle([thrusters, reactor, ...components], [launcher]));
+    expect(() => launching()).toThrow(/launchers need a magazine of missiles/);
+    expect(() => launching(slugs)).toThrow(/launchers need a magazine of missiles/);
+    expect(() => launching({ ...magazine, slugs: 10 })).toThrow(/not both/);
+    expect(() => launching({ ...magazine, missile: undefined })).toThrow(/missile/);
+    expect(() => launching({ ...magazine, mass: 8_000 })).toThrow(/mass/);
+    expect(() => launching({ ...magazine, missiles: 1.5 })).toThrow(/missiles/);
+    expect(() => launching({ ...magazine, missile: { ...missile, thrust: 0 } })).toThrow(/thrust/);
+    expect(() =>
+      launching({ ...magazine, missile: { ...missile, warhead: { type: 'antimatter' } } }),
+    ).toThrow(/type/);
+    expect(() => launching({ type: 'magazine', mass: 100 })).toThrow(/slugs or missiles/);
+    expect(() => parseDesign(withMiddle([thrusters, reactor, launcher]))).toThrow(/mount/);
   });
 
   it('rejects power and heat numbers outside their range', () => {

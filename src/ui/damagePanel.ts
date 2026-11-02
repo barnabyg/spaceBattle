@@ -18,7 +18,10 @@ const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
   radiator: 'Radiator',
   laser: 'Laser',
   'kinetic-gun': 'Kinetic gun',
+  launcher: 'Launcher',
 };
+
+const MUNITION_TEXT = { slug: 'Slug', missile: 'Missile' } as const;
 
 /** How many of the latest events the log shows. */
 const LOG_LENGTH = 6;
@@ -52,10 +55,15 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
     }
     case 'impact': {
       const part = `${SECTION_TEXT[event.section].toLowerCase()} ${event.mount === null ? 'section' : 'mount'}`;
+      const munition = MUNITION_TEXT[event.munition];
       return event.attacker === viewer
-        ? `${time} Slug hit enemy ${part} · ${formatGJ(event.energy)}`
-        : `${time} Slug hit on our ${part} · ${formatGJ(event.energy)}`;
+        ? `${time} ${munition} hit enemy ${part} · ${formatGJ(event.energy)}`
+        : `${time} ${munition} hit on our ${part} · ${formatGJ(event.energy)}`;
     }
+    case 'launch':
+      return event.attacker === viewer
+        ? `${time} Missile launched`
+        : `${time} Enemy missile launched at us`;
     case 'armour-breached':
       return `${time} ${SECTION_TEXT[event.section]} armour breached`;
     case 'component-lost':

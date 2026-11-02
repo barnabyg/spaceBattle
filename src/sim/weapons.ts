@@ -2,9 +2,12 @@ import type { SideId } from './battle';
 import { componentSlots } from './components';
 import {
   designComponentsOfType,
+  missileMass,
   type Design,
   type KineticGunDesign,
   type LaserDesign,
+  type LauncherDesign,
+  type MissileDesign,
 } from './design';
 import type { HitEvent } from './events';
 import { thermalLimit, thermalProperties } from './heat';
@@ -16,8 +19,9 @@ import {
   type Motion,
   type Slug,
 } from './kinetic';
+import { launchMissile, missileReach, type Missile } from './missile';
 import type { FireMode } from './orders';
-import { massProperties, type ShipState } from './ship';
+import { shipMassProperties, type ShipState } from './ship';
 import { TIME_STEP } from './time';
 import { add, scale, sub, type Vec3 } from './vector';
 
@@ -50,12 +54,19 @@ export const effectiveRange = (laser: LaserDesign): number => {
   return (radius * laser.aperture) / (1.22 * laser.wavelength);
 };
 
+/** The missiles a design's magazines hold, by design. */
+export const designMissiles = (design: Design): readonly MissileDesign[] =>
+  designComponentsOfType(design, 'magazine').flatMap((m) => (m.missile ? [m.missile] : []));
+
 /** The furthest any of a design's weapons fires, m; zero if it has none. */
 export const designReach = (design: Design): number =>
   Math.max(
     0,
     ...designComponentsOfType(design, 'laser').map(effectiveRange),
     ...designComponentsOfType(design, 'kinetic-gun').map(kineticGunRange),
+    ...(designComponentsOfType(design, 'launcher').length > 0
+      ? designMissiles(design).map(missileReach)
+      : []),
   );
 
 /** Electrical power a laser draws at full integrity while firing, W. */
@@ -91,12 +102,30 @@ export interface KineticGunState {
   readonly charge: number;
 }
 
-/** A ship's weapons: the captain's order and each weapon's state. */
+/** One launcher's state. */
+export interface LauncherState {
+  /** Its place in the ship's component slots. */
+  readonly slot: number;
+  readonly launcher: LauncherDesign;
+  /** Time until it has loaded its next missile, s; zero when loaded. */
+  readonly reload: number;
+}
+
+/** Missiles still to launch at a target under the captain's launch order. */
+export interface Salvo {
+  readonly target: SideId;
+  readonly remaining: number;
+}
+
+/** A ship's weapons: the captain's orders and each weapon's state. */
 export interface WeaponsState {
   readonly target: SideId | null;
   readonly mode: FireMode;
   readonly lasers: readonly LaserState[];
   readonly kineticGuns: readonly KineticGunState[];
+  readonly launchers: readonly LauncherState[];
+  /** The launch order still being carried out, if any. */
+  readonly salvo: Salvo | null;
   /** Electrical power the weapons ask for this step, W. */
   readonly demand: number;
   /** The fraction of the power the weapons draw that leaves in laser beams. */
@@ -107,22 +136,61 @@ export interface WeaponsState {
   readonly lastHit: HitEvent | null;
 }
 
-/** The slugs held in one magazine. */
+/** The ammunition held in one magazine. */
 export interface MagazineState {
   /** Its place in the ship's component slots. */
   readonly slot: number;
   readonly slugs: number;
+  readonly missiles: number;
+  /** The missiles it holds, if any. */
+  readonly missile: MissileDesign | null;
 }
 
 /** Every magazine of a design, full. */
 export const initialAmmunition = (design: Design): MagazineState[] =>
-  componentSlots(design).flatMap((slot, i) =>
-    slot.component.type === 'magazine' ? [{ slot: i, slugs: slot.component.slugs }] : [],
+  componentSlots(design).flatMap(({ component }, i) =>
+    component.type === 'magazine'
+      ? [
+          {
+            slot: i,
+            slugs: component.slugs,
+            missiles: component.missiles,
+            missile: component.missile,
+          },
+        ]
+      : [],
   );
 
 /** Slugs left in the ship's magazines. */
 export const slugsLeft = (ship: ShipState): number =>
   ship.ammunition.reduce((total, magazine) => total + magazine.slugs, 0);
+
+/** Missiles left in the ship's magazines. */
+export const missilesLeft = (ship: ShipState): number =>
+  ship.ammunition.reduce((total, magazine) => total + magazine.missiles, 0);
+
+/**
+ * Takes rounds out of the magazine at `magazine` in the ship's ammunition list: `slugs` and
+ * `missiles` say how many of each, and `mass` how much lighter that leaves the ship, kg.
+ */
+const takeAmmunition = (
+  ship: ShipState,
+  magazine: number,
+  taken: { readonly slugs: number; readonly missiles: number; readonly mass: number },
+): void => {
+  const slot = ship.ammunition[magazine]?.slot ?? -1;
+  const section = componentSlots(ship.design)[slot]?.section;
+  if (!section) return;
+  ship.ammunition = ship.ammunition.map((m, i) =>
+    i === magazine
+      ? { ...m, slugs: m.slugs - taken.slugs, missiles: m.missiles - taken.missiles }
+      : m,
+  );
+  ship.ammunitionSpent = {
+    ...ship.ammunitionSpent,
+    [section]: ship.ammunitionSpent[section] + taken.mass,
+  };
+};
 
 /** A step's worth of beam on its way to the target at light speed. */
 export interface Beam {
@@ -168,6 +236,10 @@ export const initialWeapons = (design: Design): WeaponsState => ({
       ? [{ slot: i, gun: slot.component, firing: false, demand: 0, charge: 0 }]
       : [],
   ),
+  launchers: componentSlots(design).flatMap((slot, i) =>
+    slot.component.type === 'launcher' ? [{ slot: i, launcher: slot.component, reload: 0 }] : [],
+  ),
+  salvo: null,
   demand: 0,
   beamFraction: 0,
   slugFraction: 0,
@@ -260,12 +332,10 @@ export const emitBeams = (
   return beams;
 };
 
-/** Takes one slug from the first magazine that has any. */
-const takeSlug = (ship: ShipState): void => {
+/** Takes one slug of `slugMass` kg from the first magazine that has any. */
+const takeSlug = (ship: ShipState, slugMass: number): void => {
   const from = ship.ammunition.findIndex((magazine) => magazine.slugs > 0);
-  ship.ammunition = ship.ammunition.map((magazine, i) =>
-    i === from ? { ...magazine, slugs: magazine.slugs - 1 } : magazine,
-  );
+  takeAmmunition(ship, from, { slugs: 1, missiles: 0, mass: slugMass });
 };
 
 /**
@@ -282,7 +352,7 @@ export const fireKineticGuns = (
   nextId: () => number,
 ): Slug[] => {
   const share = weaponsShare(ship);
-  const { mass } = massProperties(ship.design, ship.propellantMass);
+  const { mass } = shipMassProperties(ship);
   const slugs: Slug[] = [];
   const kineticGuns = ship.weapons.kineticGuns.map((state) => {
     const needed = shotEnergy(state.gun);
@@ -294,7 +364,7 @@ export const fireKineticGuns = (
     const { muzzleVelocity, slugMass } = state.gun;
     const solution = firingSolution(ship, target.motion, muzzleVelocity, dt);
     if (!solution) return { ...state, charge };
-    takeSlug(ship);
+    takeSlug(ship, slugMass);
     const launch = scale(solution.direction, muzzleVelocity);
     slugs.push({
       id: nextId(),
@@ -309,4 +379,52 @@ export const fireKineticGuns = (
   });
   ship.weapons = { ...ship.weapons, kineticGuns };
   return slugs;
+};
+
+/** A missile just launched, and the launcher in the ship's list that launched it. */
+export interface Launch {
+  readonly missile: Missile;
+  readonly launcher: number;
+}
+
+/**
+ * Carries out the salvo, if any: each working, loaded launcher fires one missile from the first
+ * magazine holding any, until the salvo is done or the magazines are empty, and then reloads,
+ * taking longer the more it is damaged; reloading counts down over each step, launching ends it. Missiles leave from the ship's centre of mass, moving with it,
+ * and steer themselves from there; the ship gets lighter by each. `target` is the salvo's target
+ * while it is still in the battle, or null.
+ */
+export const launchMissiles = (
+  ship: ShipState,
+  attacker: SideId,
+  target: SideId | null,
+  dt: number,
+  nextId: () => number,
+): Launch[] => {
+  const { salvo } = ship.weapons;
+  let remaining = salvo?.target === target ? salvo.remaining : 0;
+  const launched: Launch[] = [];
+  const launchers = ship.weapons.launchers.map((state, i) => {
+    const integrity = ship.integrity[state.slot] ?? 0;
+    if (integrity <= 0) return state;
+    const from = ship.ammunition.findIndex((magazine) => magazine.missiles > 0);
+    const design = ship.ammunition[from]?.missile;
+    // The allowance stops rounding error in the countdown from holding a launch back a step.
+    const reload = state.reload - dt > 1e-9 ? state.reload - dt : 0;
+    if (reload > 0 || remaining === 0 || !target || !design) return { ...state, reload };
+    takeAmmunition(ship, from, { slugs: 0, missiles: 1, mass: missileMass(design) });
+    remaining -= 1;
+    launched.push({
+      missile: launchMissile(nextId(), attacker, target, design, ship),
+      launcher: i,
+    });
+    return { ...state, reload: state.launcher.reloadTime / integrity };
+  });
+  const done = remaining === 0 || missilesLeft(ship) === 0;
+  ship.weapons = {
+    ...ship.weapons,
+    launchers,
+    salvo: salvo && !done ? { ...salvo, remaining } : null,
+  };
+  return launched;
 };

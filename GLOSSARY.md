@@ -152,6 +152,10 @@ _Avoid_: Torpedo
 A mounted component that fires missiles.
 _Avoid_: Tube, missile bay
 
+**Salvo**:
+The missiles a captain orders launched together at one target; each launcher fires as soon as it is loaded until the salvo is done.
+_Avoid_: Volley, wave
+
 **Magazine**:
 A component inside a section that stores ammunition; how much it holds is a design choice, and a hit on a full magazine can be catastrophic.
 _Avoid_: Ammo store, munitions bay

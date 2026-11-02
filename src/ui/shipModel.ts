@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { ShipAppearance } from '../sim/battle';
 import { designComponent, type Design, type SectionKind } from '../sim/design';
 import { shipShape, type ShapePart } from '../sim/shape';
-import { massProperties } from '../sim/ship';
+import { massProperties, NO_AMMUNITION_SPENT } from '../sim/ship';
 
 /** What a mesh of a ship model stands for. */
 export type ShipModelPartKind = 'section' | 'mount' | 'nozzle' | 'exhaust';
@@ -18,10 +18,11 @@ export interface ShipModelPartData {
 export type ShipLook = Pick<
   ShipAppearance,
   'propellantMass' | 'radiatorsDeployed' | 'temperature' | 'thrust'
-> & {
-  /** The parts still there; the rest are hidden. All of them if left out. */
-  readonly parts?: readonly ShapePart[];
-};
+> &
+  Partial<Pick<ShipAppearance, 'ammunitionSpent'>> & {
+    /** The parts still there; the rest are hidden. All of them if left out. */
+    readonly parts?: readonly ShapePart[];
+  };
 
 /** Nozzle exit radius per √N of drive thrust: a 2 MN drive gets a 3 m nozzle, m/√N. */
 const NOZZLE_RADIUS_PER_ROOT_NEWTON = 3 / Math.sqrt(2e6);
@@ -121,8 +122,9 @@ const boxMesh = (part: ShapePart, material: THREE.Material, data: ShipModelPartD
  */
 export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): THREE.Group => {
   const propellantMass = look.propellantMass ?? design.propellantMass;
+  const ammunitionSpent = look.ammunitionSpent ?? NO_AMMUNITION_SPENT;
   const radiatorsDeployed = look.radiatorsDeployed ?? false;
-  const shape = shipShape(design, propellantMass, radiatorsDeployed);
+  const shape = shipShape(design, propellantMass, radiatorsDeployed, ammunitionSpent);
 
   const armourMaterial = {
     heavy: new THREE.MeshStandardMaterial({ color: '#8b929c', metalness: 0.6, roughness: 0.45 }),
@@ -221,7 +223,7 @@ export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): T
 
   models.set(model, {
     design,
-    builtCentreOfMass: massProperties(design, propellantMass).centreOfMass,
+    builtCentreOfMass: massProperties(design, propellantMass, ammunitionSpent).centreOfMass,
     radiatorsDeployed,
     hull,
     radiator,
@@ -232,6 +234,7 @@ export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): T
   });
   updateShipModel(model, {
     propellantMass,
+    ammunitionSpent,
     radiatorsDeployed,
     temperature: look.temperature ?? 300,
     thrust: look.thrust ?? 0,
@@ -248,13 +251,17 @@ const scratch = new THREE.Color();
 
 /**
  * Brings a model up to date without building anything: radiator glow from temperature, exhaust
- * from thrust, lost parts hidden, and the hull shifted as burning propellant moves the centre of
- * mass.
+ * from thrust, lost parts hidden, and the hull shifted as burning propellant and spending
+ * ammunition move the centre of mass.
  */
 export const updateShipModel = (model: THREE.Group, look: ShipLook): void => {
   const parts = models.get(model);
   if (!parts) return;
-  const centreOfMass = massProperties(parts.design, look.propellantMass).centreOfMass;
+  const centreOfMass = massProperties(
+    parts.design,
+    look.propellantMass,
+    look.ammunitionSpent ?? NO_AMMUNITION_SPENT,
+  ).centreOfMass;
   parts.hull.position.x = centreOfMass - parts.builtCentreOfMass;
 
   parts.radiator.emissive.copy(heatGlow(look.temperature, scratch));

@@ -1,7 +1,8 @@
 import { designComponent, designComponentsOfType, type Design } from '../sim/design';
 import { deltaVWith, massProperties } from '../sim/ship';
 import { kineticGunRange } from '../sim/kinetic';
-import { effectiveRange } from '../sim/weapons';
+import { missileDeltaV, missileReach } from '../sim/missile';
+import { designMissiles, effectiveRange } from '../sim/weapons';
 import { formatKm, formatKmPerS, formatMm, formatMW, formatTonnes } from './format';
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -13,7 +14,11 @@ export const designSummary = (design: Design): readonly (readonly [string, strin
   const lasers = designComponentsOfType(design, 'laser');
   const beamPower = lasers.reduce((total, l) => total + l.beamPower, 0);
   const guns = designComponentsOfType(design, 'kinetic-gun');
-  const slugs = designComponentsOfType(design, 'magazine').reduce((n, m) => n + m.slugs, 0);
+  const magazines = designComponentsOfType(design, 'magazine');
+  const slugs = magazines.reduce((n, m) => n + m.slugs, 0);
+  const launchers = designComponentsOfType(design, 'launcher');
+  const missiles = magazines.reduce((n, m) => n + m.missiles, 0);
+  const missileDesigns = designMissiles(design);
   return [
     ['Hull size', capitalise(design.hullSize)],
     ['Mass', formatTonnes(mass)],
@@ -34,6 +39,12 @@ export const designSummary = (design: Design): readonly (readonly [string, strin
       guns.length === 0
         ? 'None'
         : `${guns.length} · ${formatKmPerS(Math.max(...guns.map((g) => g.muzzleVelocity)))} · ${slugs.toLocaleString('en-GB')} slugs · reach ${formatKm(Math.max(...guns.map(kineticGunRange)))}`,
+    ],
+    [
+      'Missiles',
+      launchers.length === 0
+        ? 'None'
+        : `${launchers.length} launchers · ${missiles.toLocaleString('en-GB')} ${missileDesigns.map((m) => m.name).join(', ')} · ${formatKmPerS(Math.max(...missileDesigns.map((m) => missileDeltaV(m))))} · reach ${formatKm(Math.max(...missileDesigns.map(missileReach)))}`,
     ],
     ...design.sections.map((s): readonly [string, string] => [
       `${capitalise(s.kind)} armour`,

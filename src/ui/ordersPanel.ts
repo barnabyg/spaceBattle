@@ -57,10 +57,11 @@ const describePlan = (m: ManoeuvreObservation): string => {
  * "Out of range · reach 165,000 km".
  */
 const describeWeapons = (weapons: WeaponsObservation): string => {
-  const { lasers, kineticGuns, ammunition, target, mode } = weapons;
+  const { lasers, kineticGuns, launchers, ammunition, target, mode } = weapons;
   const all = [...lasers, ...kineticGuns];
-  if (all.length === 0) return 'No weapons';
-  if (all.every((w) => w.integrity === 0)) return 'All weapons lost';
+  if (all.length + launchers.length === 0) return 'No weapons';
+  if ([...all, ...launchers].every((w) => w.integrity === 0)) return 'All weapons lost';
+  if (all.length === 0) return 'Missiles only · launch by order';
   if (mode === 'hold-fire') return target ? 'Holding fire · enemy targeted' : 'Holding fire';
   if (!target) return 'No target';
   const working = [
@@ -80,6 +81,21 @@ const describeWeapons = (weapons: WeaponsObservation): string => {
   }
   const reach = Math.max(...working.map((w) => w.effectiveRange));
   return `Out of range · reach ${formatKm(reach)}`;
+};
+
+/**
+ * What the launchers are doing, e.g. "Launching · 2 to go · 10 missiles left" or
+ * "12 missiles ready · reach 52,960 km".
+ */
+const describeLaunch = (weapons: WeaponsObservation): string => {
+  const { launchers, ammunition, salvo } = weapons;
+  if (launchers.length === 0) return 'No launchers';
+  if (launchers.every((l) => l.integrity === 0)) return 'Launchers lost';
+  const left = `${ammunition.missiles.toLocaleString('en-GB')} missiles`;
+  if (salvo) return `Launching · ${salvo.remaining.toLocaleString('en-GB')} to go · ${left} left`;
+  if (ammunition.missiles === 0) return 'Out of missiles';
+  const reach = Math.max(0, ...ammunition.missileDesigns.map((m) => m.reach));
+  return `${left} ready · reach ${formatKm(reach)}`;
 };
 
 /** The captain's orders to their own ship. Orders can be given while running or paused. */
@@ -191,6 +207,13 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     className: 'order-state',
     attrs: { 'aria-label': 'Weapons state' },
   });
+  const salvoSize = numberInput('Missiles', 2, { min: '1', step: '1' });
+  const launch = button('Launch');
+  const callOff = button('Call off');
+  const launchState = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Launch state' },
+  });
   // The latest weapons order and contact, so each button changes only its own part.
   let weapons: { target: string | null; mode: FireMode } = { target: null, mode: 'hold-fire' };
   let enemy: string | null = null;
@@ -205,6 +228,15 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   });
   holdFire.addEventListener('click', () => {
     giveOrder({ type: 'weapons', target: weapons.target, mode: 'hold-fire' });
+  });
+  launch.addEventListener('click', () => {
+    const missiles = salvoSize.input.valueAsNumber;
+    if (!enemy || !(Number.isInteger(missiles) && missiles > 0)) return;
+    giveOrder({ type: 'launch', target: enemy, missiles });
+  });
+  callOff.addEventListener('click', () => {
+    if (!enemy) return;
+    giveOrder({ type: 'launch', target: enemy, missiles: 0 });
   });
 
   deployRadiators.addEventListener('click', () => {
@@ -285,6 +317,8 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     el('div', { className: 'order-row' }, targetEnemy, noTarget),
     el('div', { className: 'order-row' }, fireFreely, holdFire),
     weaponsState,
+    el('div', { className: 'order-row' }, salvoSize.element, launch, callOff),
+    launchState,
   );
 
   return {
@@ -333,6 +367,11 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       fireFreely.classList.toggle('active', weapons.mode === 'fire-freely');
       holdFire.classList.toggle('active', weapons.mode === 'hold-fire');
       weaponsState.textContent = describeWeapons(ship.weapons);
+      const canLaunch = ship.weapons.launchers.some((l) => l.integrity > 0);
+      launch.disabled = !canLaunch || ship.weapons.ammunition.missiles === 0;
+      callOff.disabled = ship.weapons.salvo === null;
+      launch.classList.toggle('active', ship.weapons.salvo !== null);
+      launchState.textContent = describeLaunch(ship.weapons);
     },
   };
 };

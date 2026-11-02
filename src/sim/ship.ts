@@ -91,9 +91,19 @@ export interface ShipState {
   integrity: readonly number[];
   sections: Record<SectionKind, SectionState>;
   weapons: WeaponsState;
-  /** The slugs left in each magazine. */
+  /** The ammunition left in each magazine. */
   ammunition: readonly MagazineState[];
+  /** Mass of the ammunition fired or launched from each section's magazines so far, kg. */
+  ammunitionSpent: AmmunitionSpent;
 }
+
+/**
+ * Mass of ammunition gone from each section's magazines, kg. A design's mass counts its
+ * magazines full, so the ship is lighter by this; with its propellant it sets the centre of mass.
+ */
+export type AmmunitionSpent = Readonly<Record<SectionKind, number>>;
+
+export const NO_AMMUNITION_SPENT: AmmunitionSpent = { forward: 0, middle: 0, engine: 0 };
 
 /** Mass, centre of mass and principal moments of inertia (body axes), from hull and contents. */
 export interface MassProperties {
@@ -104,21 +114,44 @@ export interface MassProperties {
   readonly inertia: Vec3;
 }
 
-/** The last result for each design: a ship asks many times per step at the same propellant. */
+/** The last result for each design: a ship asks many times per step at the same load. */
 const lastMassProperties = new WeakMap<
   Design,
-  { readonly propellantMass: number; readonly result: MassProperties }
+  {
+    readonly propellantMass: number;
+    readonly spent: AmmunitionSpent;
+    readonly result: MassProperties;
+  }
 >();
 
-export const massProperties = (design: Design, propellantMass: number): MassProperties => {
+const sameSpent = (a: AmmunitionSpent, b: AmmunitionSpent): boolean =>
+  a === b || SECTION_KINDS.every((kind) => a[kind] === b[kind]);
+
+/**
+ * A design's mass properties carrying `propellantMass` and its magazines less `spent`. The dry
+ * mass includes whatever ammunition is left.
+ */
+export const massProperties = (
+  design: Design,
+  propellantMass: number,
+  spent: AmmunitionSpent = NO_AMMUNITION_SPENT,
+): MassProperties => {
   const last = lastMassProperties.get(design);
-  if (last?.propellantMass === propellantMass) return last.result;
-  const result = computeMassProperties(design, propellantMass);
-  lastMassProperties.set(design, { propellantMass, result });
+  if (last?.propellantMass === propellantMass && sameSpent(last.spent, spent)) return last.result;
+  const result = computeMassProperties(design, propellantMass, spent);
+  lastMassProperties.set(design, { propellantMass, spent, result });
   return result;
 };
 
-const computeMassProperties = (design: Design, propellantMass: number): MassProperties => {
+/** A ship's mass properties now, with the propellant and ammunition it has left. */
+export const shipMassProperties = (ship: ShipState): MassProperties =>
+  massProperties(ship.design, ship.propellantMass, ship.ammunitionSpent);
+
+const computeMassProperties = (
+  design: Design,
+  propellantMass: number,
+  spent: AmmunitionSpent,
+): MassProperties => {
   const hull = HULLS[design.hullSize];
   const volumes = hull.sections.map((s) => s.length * s.width * s.height);
   const totalVolume = volumes.reduce((a, b) => a + b, 0);
@@ -127,7 +160,10 @@ const computeMassProperties = (design: Design, propellantMass: number): MassProp
     contents.set(section, (contents.get(section) ?? 0) + component.mass);
   }
   for (const section of design.sections) {
-    contents.set(section.kind, (contents.get(section.kind) ?? 0) + armourMass(design, section));
+    contents.set(
+      section.kind,
+      (contents.get(section.kind) ?? 0) + armourMass(design, section) - spent[section.kind],
+    );
   }
   // Propellant tanks sit in the middle section.
   contents.set('middle', (contents.get('middle') ?? 0) + propellantMass);
@@ -198,6 +234,7 @@ export const createShip = (
   ) as Record<SectionKind, SectionState>,
   weapons: initialWeapons(design),
   ammunition: initialAmmunition(design),
+  ammunitionSpent: NO_AMMUNITION_SPENT,
 });
 
 /** K */
@@ -231,7 +268,10 @@ export const thrusterTorque = (ship: ShipState): number =>
 export const noseOf = (ship: ShipState): Vec3 => rotate(ship.orientation, NOSE);
 
 /** Delta-v the ship can still achieve with its remaining propellant, m/s. */
-export const deltaVOf = (ship: ShipState): number => deltaVWith(ship.design, ship.propellantMass);
+export const deltaVOf = (ship: ShipState): number => {
+  const { mass, dryMass } = shipMassProperties(ship);
+  return designComponent(ship.design, 'drive').exhaustVelocity * Math.log(mass / dryMass);
+};
 
 /** Delta-v of a design carrying `propellantMass` (its full load by default), m/s. */
 export const deltaVWith = (design: Design, propellantMass = design.propellantMass): number => {
@@ -246,7 +286,7 @@ export const availableThrust = (ship: ShipState): number =>
 
 /** Angular acceleration about the slowest pitch/yaw axis at full thruster torque, rad/s². */
 export const turnAcceleration = (ship: ShipState): number => {
-  const { inertia } = massProperties(ship.design, ship.propellantMass);
+  const { inertia } = shipMassProperties(ship);
   return thrusterTorque(ship) / Math.max(inertia.y, inertia.z);
 };
 
@@ -272,7 +312,7 @@ const desiredAngularVelocity = (ship: ShipState, target: Vec3, turnRate: number)
 
 /** Turns the ship's nose towards `target` (or holds it still) within the thrusters' torque. */
 export const steer = (ship: ShipState, target: Vec3 | null, dt: number): void => {
-  const { inertia } = massProperties(ship.design, ship.propellantMass);
+  const { inertia } = shipMassProperties(ship);
   const maxTorque = thrusterTorque(ship);
   // Plan with the slowest pitch/yaw axis so the turn can always be stopped in time.
   const turnRate = turnAcceleration(ship);
@@ -323,7 +363,7 @@ export const fireDrive = (ship: ShipState, throttle: number, burnTime: number): 
   if (force <= 0) return;
   const wanted = (force / drive.exhaustVelocity) * burnTime;
   const used = Math.min(wanted, ship.propellantMass);
-  const { mass } = massProperties(ship.design, ship.propellantMass);
+  const { mass } = shipMassProperties(ship);
   const deltaV = drive.exhaustVelocity * Math.log(mass / (mass - used));
   ship.propellantMass = used === ship.propellantMass ? 0 : ship.propellantMass - used;
   ship.velocity = add(ship.velocity, scale(noseOf(ship), deltaV));

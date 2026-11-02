@@ -42,8 +42,8 @@ const impactsOn = (events: readonly BattleEvent[], target: string) =>
   events.flatMap((e) => (e.type === 'impact' && e.target === target ? [e] : []));
 
 const slugsFired = (battle: Battle) => {
-  const { slugs, capacity } = own(battle, 'blue').weapons.ammunition;
-  return capacity - slugs;
+  const { slugs, slugCapacity } = own(battle, 'blue').weapons.ammunition;
+  return slugCapacity - slugs;
 };
 
 /** Steps the battle until no slug is in flight, returning what happened. */
@@ -88,11 +88,11 @@ describe('kinetic guns', () => {
 
   it('stop firing when the magazine is empty', () => {
     const battle = createBattle(duelSetup(gunnedTestDesign(5), testDesign(), 1_000 * KM));
-    expect(own(battle, 'blue').weapons.ammunition).toEqual({ slugs: 5, capacity: 5 });
+    expect(own(battle, 'blue').weapons.ammunition).toMatchObject({ slugs: 5, slugCapacity: 5 });
     fireAtRed(battle);
     const events = battle.advance(120);
     const blue = own(battle, 'blue');
-    expect(blue.weapons.ammunition).toEqual({ slugs: 0, capacity: 5 });
+    expect(blue.weapons.ammunition).toMatchObject({ slugs: 0, slugCapacity: 5 });
     expect(impactsOn(events, 'red')).toHaveLength(5);
     expect(battle.observe('blue').munitions).toEqual([]);
     // With nothing left to fire the gun draws no power, and no more slugs arrive.
@@ -226,6 +226,6 @@ describe('kinetic guns', () => {
         .some((e) => e.type === 'component-lost' && e.side === 'red' && e.component === 'magazine');
     }
     expect(lost).toBe(true);
-    expect(own(battle, 'red').weapons.ammunition).toEqual({ slugs: 0, capacity: 50 });
+    expect(own(battle, 'red').weapons.ammunition).toMatchObject({ slugs: 0, slugCapacity: 50 });
   });
 });

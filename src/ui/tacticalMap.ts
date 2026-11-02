@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { projectBurns, projectPath } from '../game/projection';
-import type { SideId, SideObservation, SideSetup } from '../sim/battle';
+import type { MunitionObservation, SideId, SideObservation, SideSetup } from '../sim/battle';
 import { designComponent } from '../sim/design';
 import { rotate, type Quat } from '../sim/quaternion';
 import { length, vec3, type Vec3 } from '../sim/vector';
@@ -32,6 +32,8 @@ const BEAM_COLOUR = '#7dffb0';
 const HEADING_SCALE = 0.06;
 /** Munitions in flight are drawn as dots this many pixels across. */
 const MUNITION_SIZE = 5;
+/** Missiles are drawn larger than slugs, px. */
+const MISSILE_SIZE = 9;
 
 export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
 
@@ -197,47 +199,54 @@ export const createTacticalMap = (
   beam.visible = false;
   scene.add(beam);
 
-  // Munitions in flight: a dot each, in the colour of the side that fired it.
+  // Munitions in flight: a dot each, in the colour of the side that fired it; missiles larger.
   const munitionColours = new Map(
     sides.map((side, index) => [side.id, new THREE.Color(colours[index] ?? '#ffffff')]),
   );
-  const munitionGeometry = new THREE.BufferGeometry();
-  let munitionCapacity = 0;
-  const munitions = new THREE.Points(
-    munitionGeometry,
-    new THREE.PointsMaterial({ size: MUNITION_SIZE, sizeAttenuation: false, vertexColors: true }),
-  );
-  munitions.frustumCulled = false;
-  scene.add(munitions);
+  const munitionDots = (size: number) => {
+    const geometry = new THREE.BufferGeometry();
+    let capacity = 0;
+    const points = new THREE.Points(
+      geometry,
+      new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true }),
+    );
+    points.frustumCulled = false;
+    scene.add(points);
+    return (shown: readonly MunitionObservation[]) => {
+      if (shown.length > capacity) {
+        capacity = Math.max(256, 2 * shown.length);
+        geometry.setAttribute(
+          'position',
+          new THREE.BufferAttribute(new Float32Array(capacity * 3), 3),
+        );
+        geometry.setAttribute(
+          'color',
+          new THREE.BufferAttribute(new Float32Array(capacity * 3), 3),
+        );
+      }
+      if (capacity === 0) return;
+      const positions = geometry.getAttribute('position');
+      const tints = geometry.getAttribute('color');
+      shown.forEach((munition, i) => {
+        positions.setXYZ(
+          i,
+          munition.position.x / KM,
+          munition.position.y / KM,
+          munition.position.z / KM,
+        );
+        const tint = munitionColours.get(munition.attacker);
+        tints.setXYZ(i, tint?.r ?? 1, tint?.g ?? 1, tint?.b ?? 1);
+      });
+      positions.needsUpdate = true;
+      tints.needsUpdate = true;
+      geometry.setDrawRange(0, shown.length);
+    };
+  };
+  const showSlugs = munitionDots(MUNITION_SIZE);
+  const showMissiles = munitionDots(MISSILE_SIZE);
   const showMunitions = (observation: SideObservation) => {
-    const shown = observation.munitions;
-    if (shown.length > munitionCapacity) {
-      munitionCapacity = Math.max(256, 2 * shown.length);
-      munitionGeometry.setAttribute(
-        'position',
-        new THREE.BufferAttribute(new Float32Array(munitionCapacity * 3), 3),
-      );
-      munitionGeometry.setAttribute(
-        'color',
-        new THREE.BufferAttribute(new Float32Array(munitionCapacity * 3), 3),
-      );
-    }
-    if (munitionCapacity === 0) return;
-    const positions = munitionGeometry.getAttribute('position');
-    const tints = munitionGeometry.getAttribute('color');
-    shown.forEach((munition, i) => {
-      positions.setXYZ(
-        i,
-        munition.position.x / KM,
-        munition.position.y / KM,
-        munition.position.z / KM,
-      );
-      const tint = munitionColours.get(munition.attacker);
-      tints.setXYZ(i, tint?.r ?? 1, tint?.g ?? 1, tint?.b ?? 1);
-    });
-    positions.needsUpdate = true;
-    tints.needsUpdate = true;
-    munitionGeometry.setDrawRange(0, shown.length);
+    showSlugs(observation.munitions.filter((m) => m.kind === 'slug'));
+    showMissiles(observation.munitions.filter((m) => m.kind === 'missile'));
   };
 
   const resize = () => {
