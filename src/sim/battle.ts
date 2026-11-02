@@ -1,109 +1,40 @@
-import { burstChance, incomingMissiles } from './antiMissile';
-import { effectiveRange } from './beams';
+import { incomingMissiles } from './antiMissile';
 import { componentSlots } from './components';
-import {
-  impactBurst,
-  impactKinetic,
-  intactShape,
-  irradiate,
-  overheat,
-  strike,
-  type DamageContext,
-} from './damage';
-import {
-  designComponentsOfType,
-  missileRole,
-  type ArmourType,
-  type ComponentType,
-  type Design,
-  type FragmentationWarheadDesign,
-  type MissileRole,
-  type NuclearWarheadDesign,
-  type SectionKind,
-  type ShieldType,
-  type WarheadType,
-} from './design';
-import {
-  involves,
-  type BattleEvent,
-  type BeamKind,
-  type HitEvent,
-  type MunitionKind,
-  type NuclearExposure,
-  type ParticleBeamKind,
-} from './events';
+import { overheat, strike, type DamageContext } from './damage';
+import { missileRole, type Design, type MissileRole, type SectionKind } from './design';
+import { involves, type BattleEvent, type HitEvent } from './events';
 import {
   manoeuvreCommand,
   manoeuvreThrottle,
-  observeManoeuvre,
   type ManoeuvreCommand,
-  type ManoeuvreObservation,
   type ContactMotion,
 } from './manoeuvre';
-import { thermalLimit, thermalProperties, workingRadiators } from './heat';
+import { motionOf, type Motion, type Slug } from './kinetic';
+import { guideMissile, targetsMissile, type Missile, type MissileTarget } from './missile';
+import { createMunitions, targetOfMunitions, type Departures } from './munitions';
 import {
-  kineticGunRange,
-  shapeRadius,
-  shotEnergy,
-  slugPassed,
-  sweepSlug,
-  type Motion,
-  type Slug,
-  type Target,
-} from './kinetic';
-import {
-  fuseTrigger,
-  guideMissile,
-  missileDeltaV,
-  missileMassNow,
-  missileReach,
-  targetsMissile,
-  type Missile,
-  type MissileTarget,
-} from './missile';
+  antiMissileEngagements,
+  observeContact,
+  observeMunitions,
+  observeOwnShip,
+  type BeamLanding,
+  type ImpactLanding,
+  type SideObservation,
+} from './observation';
 import {
   POINT_DEFENCE_PRIORITIES,
-  type AttitudeOrder,
-  type FireMode,
   type LaunchOrder,
   type Order,
   type PointDefencePriority,
 } from './orders';
-import {
-  burstEnergy,
-  pointDefenceRange,
-  type PointDefenceEngagement,
-  type Threat,
-} from './pointDefence';
-import {
-  POWER_SYSTEMS,
-  powerPlantOf,
-  settlePowerAndHeat,
-  type EnergyLedger,
-  type PowerShare,
-  type PowerSystem,
-} from './power';
+import type { PointDefenceEngagement, Threat } from './pointDefence';
+import { POWER_SYSTEMS, settlePowerAndHeat } from './power';
 import { endedBy, judge, lossOf, noResult, type BattleOutcome } from './outcome';
-import { IDENTITY, rotate, type Quat } from './quaternion';
+import { IDENTITY, type Quat } from './quaternion';
 import { createRandom } from './random';
-import type { ShapePart } from './shape';
-import { coolantCapacity, fullDeflection, shieldsPowered } from './shields';
-import {
-  burn,
-  createShip,
-  deltaVOf,
-  driveLimit,
-  fireDrive,
-  noseOf,
-  shipMassProperties,
-  steer,
-  temperatureOf,
-  type AmmunitionSpent,
-  type BurnState,
-  type ShipState,
-} from './ship';
+import { burn, createShip, fireDrive, steer, type ShipState } from './ship';
 import { TIME_STEP } from './time';
-import { add, distance, dot, length, normalize, scale, sub, type Vec3 } from './vector';
+import { add, distance, length, normalize, scale, sub, type Vec3 } from './vector';
 import {
   aimWeapons,
   designMissiles,
@@ -112,10 +43,7 @@ import {
   firePointDefence,
   launchMissiles,
   missilesLeft,
-  roundsLeft,
-  slugsLeft,
   type Beam,
-  type BeamWeaponState,
   type PointDefenceBurst,
   type PointDefenceTargets,
   type Salvo,
@@ -130,6 +58,34 @@ export type {
   PointDefenceEngagement,
   PointDefencePriority,
 };
+export type {
+  AmmunitionObservation,
+  AntiMissileEngagement,
+  AntiMissileObservation,
+  BeamLanding,
+  BeamWeaponObservation,
+  ComponentObservation,
+  ContactObservation,
+  HeatObservation,
+  ImpactLanding,
+  KineticGunObservation,
+  LaserObservation,
+  LauncherObservation,
+  MissileDesignObservation,
+  MissileObservation,
+  MunitionObservation,
+  OwnShipObservation,
+  ParticleBeamObservation,
+  PointDefenceObservation,
+  PowerObservation,
+  SectionObservation,
+  ShieldObservation,
+  ShieldsObservation,
+  ShipAppearance,
+  SideObservation,
+  SlugObservation,
+  WeaponsObservation,
+} from './observation';
 
 export type SideId = string;
 export type Commander = 'player' | 'computer';
@@ -163,409 +119,6 @@ export interface BattleSetup {
    * ends with no result, s. A battle normally has no time limit.
    */
   readonly timeLimit?: number;
-}
-
-/** A ship's power: its ranking, where power went in the last step, and what is stored. */
-export interface PowerObservation {
-  /** Highest priority first. */
-  readonly priorities: readonly PowerSystem[];
-  /** Electrical output in the last step, W. */
-  readonly reactorOutput: number;
-  /** The most the reactor can produce, W. */
-  readonly reactorCapacity: number;
-  /** What each system asked for and got in the last step, W; for capacitors, charging. */
-  readonly systems: Readonly<Record<PowerSystem, PowerShare>>;
-  /** Power drawn from the capacitors in the last step, W. */
-  readonly discharge: number;
-  /** Energy in the capacitors, J. */
-  readonly stored: number;
-  /** J */
-  readonly storageCapacity: number;
-  /** The fraction of the drive's full thrust that power and heat allow now. */
-  readonly driveLimit: number;
-}
-
-/** A ship's heat and how fast it is coming and going. */
-export interface HeatObservation {
-  /** Heat held in the ship, J: its heat capacity times its temperature. */
-  readonly heat: number;
-  /** J/K */
-  readonly heatCapacity: number;
-  /** K */
-  readonly temperature: number;
-  /** Heat generated in the last step, W. */
-  readonly generated: number;
-  /** Heat radiated into space in the last step, W. */
-  readonly radiated: number;
-  /** Laser heat the coolant shields carried into the ship in the last step, W. */
-  readonly absorbed: number;
-  readonly radiatorsDeployed: boolean;
-  /** Radiating area now exposed, m². */
-  readonly radiatorArea: number;
-  /** The fraction of their full power systems may use at this temperature. */
-  readonly thermalLimit: number;
-}
-
-/** One shield and where it sits. */
-export interface ShieldObservation {
-  readonly type: ShieldType;
-  readonly section: SectionKind;
-  /** Its place in the section's components. */
-  readonly index: number;
-  readonly integrity: number;
-}
-
-/**
- * The ship's shields and what they can do now. A magnetic shield's field covers the whole ship; a
- * coolant shield protects only the section it is in.
- */
-export interface ShieldsObservation {
-  /** Whether the captain has them raised; lowered, they draw no power and do nothing. */
-  readonly raised: boolean;
-  /** The share of their full power they were given in the last step (0–1). */
-  readonly powered: number;
-  /** Every shield the ship carries, from nose to tail. */
-  readonly shields: readonly ShieldObservation[];
-  /**
-   * Kinetic energy of the hardest protons the magnetic shields turn away entirely now, J; harder
-   * ones are turned away in part. Zero without a working, powered magnetic shield.
-   */
-  readonly fullDeflection: number;
-  /** Laser power the coolant shields in each section can carry away now, W. */
-  readonly coolantCapacity: Readonly<Record<SectionKind, number>>;
-}
-
-/** A component and how much more damage it can take. */
-export interface ComponentObservation {
-  readonly type: ComponentType;
-  /** 0–1; it works in proportion and stops at zero. */
-  readonly integrity: number;
-}
-
-/** A section's armour, structure and components. */
-export interface SectionObservation {
-  readonly kind: SectionKind;
-  readonly armour: {
-    readonly type: ArmourType;
-    /** As designed, m. */
-    readonly thickness: number;
-    /** Left at the point of fire, m. */
-    readonly remaining: number;
-  };
-  /** Integrity of the section's own structure (0–1); at zero it has failed and is lost. */
-  readonly structure: number;
-  /** Inside the armour. */
-  readonly components: readonly ComponentObservation[];
-  readonly mounts: readonly ComponentObservation[];
-}
-
-/** One beam weapon, a laser or a particle beam, and what it is doing. */
-export interface BeamWeaponObservation {
-  readonly section: SectionKind;
-  /** Its place in the section's mounts. */
-  readonly mount: number;
-  readonly integrity: number;
-  /** Whether it put power into its beam in the last step. */
-  readonly firing: boolean;
-  /** Power it put into its beam in the last step, W. */
-  readonly beamPower: number;
-  /** Beam power at full integrity, W. */
-  readonly fullBeamPower: number;
-  /** How far it fires: out to where its beam keeps a useful intensity, m. */
-  readonly effectiveRange: number;
-}
-
-/** One laser and what it is doing. */
-export type LaserObservation = BeamWeaponObservation;
-
-/** One particle beam, charged or neutral, and what it is doing. */
-export interface ParticleBeamObservation extends BeamWeaponObservation {
-  readonly kind: ParticleBeamKind;
-}
-
-/** One kinetic gun and what it is doing. */
-export interface KineticGunObservation {
-  readonly section: SectionKind;
-  /** Its place in the section's mounts. */
-  readonly mount: number;
-  readonly integrity: number;
-  /** Whether it is firing at the target: drawing power for its next shot, or loosing one. */
-  readonly firing: boolean;
-  /** How much of the energy for its next shot it has drawn (0–1). */
-  readonly charge: number;
-  /** Electrical energy each shot takes, J. */
-  readonly shotEnergy: number;
-  /** m/s */
-  readonly muzzleVelocity: number;
-  /** kg */
-  readonly slugMass: number;
-  /** Shots per second, given full power. */
-  readonly rateOfFire: number;
-  /** How far it fires: out to the longest flight fire control allows a slug, m. */
-  readonly effectiveRange: number;
-}
-
-/** One point defence gun and what it is doing. */
-export interface PointDefenceObservation {
-  readonly section: SectionKind;
-  /** Its place in the section's mounts. */
-  readonly mount: number;
-  readonly integrity: number;
-  /** What it fired on, or was drawing power to fire on, in the last step; null if nothing. */
-  readonly engaging: PointDefenceEngagement | null;
-  /** How much of the energy for its next burst it has drawn (0–1). */
-  readonly charge: number;
-  /** Electrical energy each burst takes, J. */
-  readonly burstEnergy: number;
-  /** Bursts per second, given full power. */
-  readonly burstRate: number;
-  readonly roundsPerBurst: number;
-  /** kg */
-  readonly roundMass: number;
-  /** m/s */
-  readonly muzzleVelocity: number;
-  /** Half-angle of the cone its rounds spread through, rad. */
-  readonly dispersion: number;
-  /** How far it fires: out to the longest flight fire control allows its rounds, m. */
-  readonly effectiveRange: number;
-  /** The chance its latest burst at a missile had of bringing it down, or null before any. */
-  readonly lastChance: number | null;
-}
-
-/** One launcher and what it is doing. */
-export interface LauncherObservation {
-  readonly section: SectionKind;
-  /** Its place in the section's mounts. */
-  readonly mount: number;
-  readonly integrity: number;
-  /** Whether it has a missile loaded, ready to launch. */
-  readonly loaded: boolean;
-  /** Time until its next missile is loaded, s. */
-  readonly reload: number;
-  /** Time to load a missile at full integrity, s. */
-  readonly reloadTime: number;
-}
-
-/** One missile design the ship carries, how many are left and how far it reaches. */
-export interface MissileDesignObservation {
-  readonly name: string;
-  readonly warhead: WarheadType;
-  /** Anti-ship, or anti-missile for a fragmentation warhead. */
-  readonly role: MissileRole;
-  /** Missiles of this design left in working magazines. */
-  readonly missiles: number;
-  /** Missiles of this design the magazines hold when full. */
-  readonly capacity: number;
-  /** kg, with its propellant. */
-  readonly mass: number;
-  /** m/s, with a full load of propellant. */
-  readonly deltaV: number;
-  /** m (see `missileReach`). */
-  readonly reach: number;
-}
-
-/** The ship's ammunition. */
-export interface AmmunitionObservation {
-  /** Slugs left in working magazines. */
-  readonly slugs: number;
-  /** Slugs the magazines hold when full. */
-  readonly slugCapacity: number;
-  /** Point defence rounds left in working magazines. */
-  readonly rounds: number;
-  /** Point defence rounds the magazines hold when full. */
-  readonly roundCapacity: number;
-  /** Missiles of every design left in working magazines, anti-missile missiles included. */
-  readonly missiles: number;
-  /** Missiles of every design the magazines hold when full. */
-  readonly missileCapacity: number;
-  /** The missiles the magazines hold, one entry per design. */
-  readonly missileDesigns: readonly MissileDesignObservation[];
-}
-
-/** One of the ship's anti-missile missiles in flight and the enemy missile it is after. */
-export interface AntiMissileEngagement {
-  /** The anti-missile missile's id among the munitions. */
-  readonly antiMissile: number;
-  /** The enemy missile's id. */
-  readonly target: number;
-}
-
-/** The ship's missile defence by anti-missile missiles. */
-export interface AntiMissileObservation {
-  /**
-   * Whether automatic defence is on: an anti-missile missile at each incoming missile none is
-   * already after, as launchers come free (see `AntiMissileOrder`).
-   */
-  readonly automatic: boolean;
-  /** Its anti-missile missiles in flight, each with its target. */
-  readonly engagements: readonly AntiMissileEngagement[];
-}
-
-/**
- * The ship's weapons: the captain's weapons, launch, missile defence and point defence orders,
- * each weapon, the latest beam hit scored and the missiles shot down.
- */
-export interface WeaponsObservation {
-  readonly target: SideId | null;
-  readonly mode: FireMode;
-  readonly lasers: readonly LaserObservation[];
-  /** Charged and neutral particle beams. */
-  readonly particleBeams: readonly ParticleBeamObservation[];
-  readonly kineticGuns: readonly KineticGunObservation[];
-  readonly pointDefence: readonly PointDefenceObservation[];
-  /** What the point defence fires on. */
-  readonly pointDefencePriority: PointDefencePriority;
-  /** Enemy missiles the ship has shot down, by point defence and anti-missile missiles. */
-  readonly intercepts: number;
-  readonly launchers: readonly LauncherObservation[];
-  /** Missiles still to launch under the latest launch order, or null when none are. */
-  readonly salvo: Salvo | null;
-  readonly antiMissile: AntiMissileObservation;
-  readonly ammunition: AmmunitionObservation;
-  readonly lastHit: HitEvent | null;
-}
-
-/** A beam landing on a ship. */
-export interface BeamLanding {
-  /** What kind of beam it is. */
-  readonly attack: BeamKind;
-  /** Where it lands, in the ship's body frame (centre of mass at the origin, nose along +x), m. */
-  readonly point: Vec3;
-  /** Beam power landing, W. */
-  readonly power: number;
-  /** m */
-  readonly spotRadius: number;
-}
-
-/** A slug or missile striking a ship. */
-export interface ImpactLanding {
-  /** Where it struck, in the ship's body frame, m. */
-  readonly point: Vec3;
-  /** Its kinetic energy relative to the ship, J. */
-  readonly energy: number;
-}
-
-/** How a ship looks from outside: what an instrument view needs to draw it. */
-export interface ShipAppearance {
-  /** kg; with the design it sets the centre of mass, the origin of the body frame. */
-  readonly propellantMass: number;
-  /** Ammunition gone from each section's magazines, kg; it too moves the centre of mass. */
-  readonly ammunitionSpent: AmmunitionSpent;
-  readonly radiatorsDeployed: boolean;
-  /** The ship's temperature, which its radiators glow with, K. */
-  readonly temperature: number;
-  /** Drive thrust applied in the last step, N. */
-  readonly thrust: number;
-  /** The parts still there, in the body frame: sections not failed, mounts not wrecked. */
-  readonly parts: readonly ShapePart[];
-  /** Where beams landed on the ship in the last step. */
-  readonly beamsLanding: readonly BeamLanding[];
-  /** Where slugs and missiles struck the ship in the last step. */
-  readonly impacts: readonly ImpactLanding[];
-}
-
-/** A side's own ship, which it knows in full. */
-export interface OwnShipObservation {
-  readonly sideId: SideId;
-  readonly designName: string;
-  readonly position: Vec3;
-  readonly velocity: Vec3;
-  /** The drive's acceleration over the last step, m/s². */
-  readonly acceleration: Vec3;
-  readonly orientation: Quat;
-  /** World unit vector along the ship's long axis. */
-  readonly nose: Vec3;
-  /** World frame, rad/s. */
-  readonly angularVelocity: Vec3;
-  /** kg */
-  readonly mass: number;
-  /** kg */
-  readonly propellantMass: number;
-  /** m/s */
-  readonly deltaV: number;
-  /** Drive thrust applied in the last step, N. */
-  readonly thrust: number;
-  /** Thruster torque applied in the last step (body frame), N·m. */
-  readonly torque: Vec3;
-  readonly attitude: AttitudeOrder | null;
-  readonly burn: BurnState | null;
-  /** The standing manoeuvre order and its plan; null under manual control. */
-  readonly manoeuvre: ManoeuvreObservation | null;
-  readonly power: PowerObservation;
-  readonly heat: HeatObservation;
-  readonly shields: ShieldsObservation;
-  /** Where the ship's energy has gone since the battle began. */
-  readonly energyLedger: EnergyLedger;
-  /** From nose to tail. */
-  readonly sections: readonly SectionObservation[];
-  readonly weapons: WeaponsObservation;
-  readonly appearance: ShipAppearance;
-}
-
-/** An enemy ship as a side perceives it; its position, motion and orientation are known. */
-export interface ContactObservation {
-  readonly sideId: SideId;
-  readonly position: Vec3;
-  readonly velocity: Vec3;
-  /** Its acceleration over the last step, m/s². */
-  readonly acceleration: Vec3;
-  readonly orientation: Quat;
-  /** Full detail until sensors limit what a side can make out (a later phase). */
-  readonly appearance: ShipAppearance;
-}
-
-/** What every munition in flight shows. */
-interface MunitionInFlight {
-  /** Unique within the battle. */
-  readonly id: number;
-  readonly kind: MunitionKind;
-  /** The side that fired it. */
-  readonly attacker: SideId;
-  /** kg */
-  readonly mass: number;
-  readonly position: Vec3;
-  readonly velocity: Vec3;
-}
-
-/** A slug from a kinetic gun, flying straight. */
-export interface SlugObservation extends MunitionInFlight {
-  readonly kind: 'slug';
-  readonly target: SideId;
-}
-
-/** A guided missile, steering itself onto its target with its own drive. */
-export interface MissileObservation extends MunitionInFlight {
-  readonly kind: 'missile';
-  /** An enemy ship, or for an anti-missile missile, the enemy missile it is after. */
-  readonly target: MissileTarget;
-  /** Its design's name. */
-  readonly name: string;
-  readonly warhead: WarheadType;
-  /** Anti-ship, or anti-missile for a fragmentation warhead. */
-  readonly role: MissileRole;
-  /** kg */
-  readonly propellantMass: number;
-  /** The delta-v its propellant still gives it, m/s. */
-  readonly deltaV: number;
-  /** Drive thrust applied in the last step, N. */
-  readonly thrust: number;
-  /** Its drive's acceleration over the last step, m/s². */
-  readonly acceleration: Vec3;
-}
-
-/** A munition in flight. */
-export type MunitionObservation = SlugObservation | MissileObservation;
-
-export interface SideObservation {
-  readonly time: number;
-  readonly ownShip: OwnShipObservation;
-  readonly contacts: readonly ContactObservation[];
-  /** Every munition in flight, whichever side fired it. */
-  readonly munitions: readonly MunitionObservation[];
-  /** The latest events about this side's ship or hits it scored, oldest first. */
-  readonly events: readonly BattleEvent[];
-  /** How the battle ended, or null while it goes on. */
-  readonly outcome: BattleOutcome | null;
 }
 
 export interface Battle {
@@ -603,6 +156,27 @@ interface Combatant {
   beamsLanding: BeamLanding[];
   /** Slugs and missiles that struck the ship in the last step. */
   impacts: ImpactLanding[];
+}
+
+/**
+ * The battle as it was at the start of a step, which fire control, missile guidance and missile
+ * defence work from.
+ */
+interface Snapshot {
+  /** Each ship's motion, by side. */
+  readonly motions: ReadonlyMap<SideId, Motion>;
+  /** Each missile's motion, by id. */
+  readonly missileMotions: ReadonlyMap<number, Motion>;
+  /** The ids of the incoming missiles each side's automatic defence launches at. */
+  readonly defence: ReadonlyMap<SideId, readonly number[]>;
+  /** What each side's point defence may fire on. */
+  readonly pointDefenceTargets: ReadonlyMap<SideId, PointDefenceTargets>;
+}
+
+/** Where a ship will point in a step, and what its autopilot commands if it has a manoeuvre. */
+interface Plan {
+  readonly heading: Vec3 | null;
+  readonly command: ManoeuvreCommand | null;
 }
 
 const checkOrder = (order: Order): Order => {
@@ -664,210 +238,6 @@ const checkOrder = (order: Order): Order => {
 /** How many recent events each side's observation keeps. */
 const EVENT_LOG_LENGTH = 20;
 
-const observePower = (ship: ShipState): PowerObservation => {
-  const plant = powerPlantOf(ship);
-  return {
-    priorities: ship.priorities,
-    reactorOutput: ship.powerFlow.reactorOutput,
-    reactorCapacity: plant.reactorOutput,
-    systems: ship.powerFlow.systems,
-    discharge: ship.powerFlow.discharge,
-    stored: ship.storedEnergy,
-    storageCapacity: plant.storageCapacity,
-    driveLimit: driveLimit(ship),
-  };
-};
-
-const observeHeat = (ship: ShipState): HeatObservation => {
-  const thermal = thermalProperties(ship.design);
-  const temperature = temperatureOf(ship);
-  const radiators = workingRadiators(ship.design, ship.integrity, ship.radiatorsDeployed);
-  return {
-    heat: ship.heat,
-    heatCapacity: thermal.heatCapacity,
-    temperature,
-    generated: ship.heatFlow.generated,
-    radiated: ship.heatFlow.radiated,
-    absorbed: ship.heatFlow.absorbed,
-    radiatorsDeployed: ship.radiatorsDeployed,
-    radiatorArea: radiators.area,
-    thermalLimit: thermalLimit(temperature),
-  };
-};
-
-const observeShields = (ship: ShipState): ShieldsObservation => ({
-  raised: ship.shieldsRaised,
-  powered: shieldsPowered(ship),
-  shields: componentSlots(ship.design).flatMap((slot, i) =>
-    slot.component.type === 'magnetic-shield' || slot.component.type === 'coolant-shield'
-      ? [
-          {
-            type: slot.component.type,
-            section: slot.section,
-            index: slot.index,
-            integrity: ship.integrity[i] ?? 0,
-          },
-        ]
-      : [],
-  ),
-  fullDeflection: fullDeflection(ship),
-  coolantCapacity: {
-    forward: coolantCapacity(ship, 'forward'),
-    middle: coolantCapacity(ship, 'middle'),
-    engine: coolantCapacity(ship, 'engine'),
-  },
-});
-
-const observeSections = (ship: ShipState): SectionObservation[] => {
-  const slots = componentSlots(ship.design);
-  const parts = (kind: SectionKind, mounted: boolean): ComponentObservation[] =>
-    slots.flatMap((slot, i) =>
-      slot.section === kind && slot.mounted === mounted
-        ? [{ type: slot.component.type, integrity: ship.integrity[i] ?? 0 }]
-        : [],
-    );
-  return ship.design.sections.map((section) => ({
-    kind: section.kind,
-    armour: {
-      type: section.armour.type,
-      thickness: section.armour.thickness,
-      remaining: ship.sections[section.kind].armour,
-    },
-    structure: ship.sections[section.kind].structure,
-    components: parts(section.kind, false),
-    mounts: parts(section.kind, true),
-  }));
-};
-
-const observeWeapons = (
-  ship: ShipState,
-  engagements: readonly AntiMissileEngagement[],
-): WeaponsObservation => {
-  const slots = componentSlots(ship.design);
-  const { weapons } = ship;
-  const observeBeamWeapon = (state: BeamWeaponState): BeamWeaponObservation => ({
-    section: slots[state.slot]?.section ?? 'forward',
-    mount: slots[state.slot]?.index ?? 0,
-    integrity: ship.integrity[state.slot] ?? 0,
-    firing: state.beamPower > 0,
-    beamPower: state.beamPower,
-    fullBeamPower: state.weapon.beamPower,
-    effectiveRange: effectiveRange(state.weapon),
-  });
-  return {
-    target: weapons.target,
-    mode: weapons.mode,
-    lasers: weapons.beamWeapons.filter((w) => w.attack === 'laser').map(observeBeamWeapon),
-    particleBeams: weapons.beamWeapons.flatMap((state) =>
-      state.attack === 'laser' ? [] : [{ ...observeBeamWeapon(state), kind: state.attack }],
-    ),
-    launchers: weapons.launchers.map((state) => ({
-      section: slots[state.slot]?.section ?? 'forward',
-      mount: slots[state.slot]?.index ?? 0,
-      integrity: ship.integrity[state.slot] ?? 0,
-      loaded: state.reload === 0,
-      reload: state.reload,
-      reloadTime: state.launcher.reloadTime,
-    })),
-    salvo: weapons.salvo,
-    antiMissile: { automatic: weapons.automaticDefence, engagements },
-    kineticGuns: weapons.kineticGuns.map((state) => ({
-      section: slots[state.slot]?.section ?? 'forward',
-      mount: slots[state.slot]?.index ?? 0,
-      integrity: ship.integrity[state.slot] ?? 0,
-      firing: state.firing,
-      charge: state.charge / shotEnergy(state.gun),
-      shotEnergy: shotEnergy(state.gun),
-      muzzleVelocity: state.gun.muzzleVelocity,
-      slugMass: state.gun.slugMass,
-      rateOfFire: state.gun.rateOfFire,
-      effectiveRange: kineticGunRange(state.gun),
-    })),
-    pointDefence: weapons.pointDefence.map((state) => ({
-      section: slots[state.slot]?.section ?? 'forward',
-      mount: slots[state.slot]?.index ?? 0,
-      integrity: ship.integrity[state.slot] ?? 0,
-      engaging: state.engaging,
-      charge: state.charge / burstEnergy(state.gun),
-      burstEnergy: burstEnergy(state.gun),
-      burstRate: state.gun.burstRate,
-      roundsPerBurst: state.gun.roundsPerBurst,
-      roundMass: state.gun.roundMass,
-      muzzleVelocity: state.gun.muzzleVelocity,
-      dispersion: state.gun.dispersion,
-      effectiveRange: pointDefenceRange(state.gun),
-      lastChance: state.lastChance,
-    })),
-    pointDefencePriority: weapons.pointDefencePriority,
-    intercepts: weapons.intercepts,
-    ammunition: observeAmmunition(ship),
-    lastHit: weapons.lastHit,
-  };
-};
-
-const observeAmmunition = (ship: ShipState): AmmunitionObservation => {
-  const magazines = designComponentsOfType(ship.design, 'magazine');
-  // One entry per design; a design's name stands for it (see `parseDesign`).
-  const missiles = designMissiles(ship.design).filter(
-    (missile, i, all) => all.findIndex((m) => m.name === missile.name) === i,
-  );
-  return {
-    slugs: slugsLeft(ship),
-    slugCapacity: magazines.reduce((n, m) => n + m.slugs, 0),
-    rounds: roundsLeft(ship),
-    roundCapacity: magazines.reduce((n, m) => n + m.rounds, 0),
-    missiles: missilesLeft(ship),
-    missileCapacity: magazines.reduce((n, m) => n + m.missiles, 0),
-    missileDesigns: missiles.map((missile) => ({
-      name: missile.name,
-      warhead: missile.warhead.type,
-      role: missileRole(missile),
-      missiles: missilesLeft(ship, missile.name),
-      capacity: magazines.reduce(
-        (n, m) => (m.missile?.name === missile.name ? n + m.missiles : n),
-        0,
-      ),
-      mass: missile.dryMass + missile.propellantMass,
-      deltaV: missileDeltaV(missile),
-      reach: missileReach(missile),
-    })),
-  };
-};
-
-const observeMissile = (missile: Missile): MissileObservation => ({
-  id: missile.id,
-  kind: 'missile',
-  attacker: missile.attacker,
-  target: missile.target,
-  mass: missileMassNow(missile),
-  position: missile.position,
-  velocity: missile.velocity,
-  name: missile.design.name,
-  warhead: missile.design.warhead.type,
-  role: missileRole(missile.design),
-  propellantMass: missile.propellantMass,
-  deltaV: missileDeltaV(missile.design, missile.propellantMass),
-  thrust: missile.thrust,
-  acceleration: missile.acceleration,
-});
-
-const observeAppearance = ({ ship, beamsLanding, impacts }: Combatant): ShipAppearance => ({
-  propellantMass: ship.propellantMass,
-  ammunitionSpent: ship.ammunitionSpent,
-  radiatorsDeployed: ship.radiatorsDeployed,
-  temperature: temperatureOf(ship),
-  thrust: ship.thrust,
-  parts: intactShape(ship),
-  beamsLanding,
-  impacts,
-});
-
-/** A ship's shape as slugs and missiles meet it now. */
-const targetOfMunitions = (ship: ShipState): Target => {
-  const parts = intactShape(ship);
-  return { parts, reach: shapeRadius(parts), orientation: ship.orientation };
-};
-
 export const createBattle = (setup: BattleSetup): Battle => {
   if (setup.sides.length !== setup.scenario.starts.length) {
     throw new Error('A scenario needs one start for each side');
@@ -900,6 +270,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
   const nextMunitionId = () => ++munitionsFired;
   /** Where the launcher that launched each missile is. */
   const launchedFrom = new Map<number, { section: SectionKind; mount: number }>();
+  const munitions = createMunitions(combatants, launchedFrom);
   const logs = new Map<SideId, BattleEvent[]>(setup.sides.map((side) => [side.id, []]));
   let outcome: BattleOutcome | null = null;
 
@@ -1026,390 +397,15 @@ export const createBattle = (setup: BattleSetup): Battle => {
     };
   };
 
-  /** Each ship's shape as munitions meet it, worked out once per step until it is struck. */
-  const createShapes = () => {
-    const shapes = new Map<SideId, Target>();
-    return {
-      of(c: Combatant): Target {
-        const known = shapes.get(c.side.id);
-        if (known) return known;
-        const shape = targetOfMunitions(c.ship);
-        shapes.set(c.side.id, shape);
-        return shape;
-      },
-      struck(c: Combatant) {
-        shapes.delete(c.side.id);
-      },
-    };
-  };
-
   /**
-   * A munition that moved from `from` to where it is now, while each ship moved from where it was
-   * at `shipsBefore`: if its path crosses a ship other than the one that fired it, it strikes the
-   * first such ship with its kinetic energy relative to the ship. Returns whether it struck.
+   * The battle as it was at the start of the step. Fire control, missile guidance and missile
+   * defence all work from it, so the order of sides never matters.
    */
-  const strikeDirectly = (
-    munition: {
-      readonly kind: MunitionKind;
-      readonly attacker: SideId;
-      readonly mass: number;
-      readonly position: Vec3;
-      readonly velocity: Vec3;
-    },
-    from: Vec3,
-    shipsBefore: ReadonlyMap<SideId, Vec3>,
-    shapes: ReturnType<typeof createShapes>,
-    ctx: Omit<DamageContext, 'side'>,
-  ): boolean => {
-    for (const c of combatants) {
-      if (c.side.id === munition.attacker) continue;
-      const hit = sweepSlug(
-        shapes.of(c),
-        sub(from, shipsBefore.get(c.side.id) ?? c.ship.position),
-        sub(munition.position, c.ship.position),
-      );
-      if (!hit) continue;
-      const relative = sub(munition.velocity, c.ship.velocity);
-      const energy = 0.5 * munition.mass * dot(relative, relative);
-      impactKinetic(c.ship, hit, energy, munition.mass, { ...ctx, side: c.side.id });
-      shapes.struck(c);
-      c.impacts.push({ point: hit.point, energy });
-      ctx.events.push({
-        type: 'impact',
-        time: ctx.time,
-        attacker: munition.attacker,
-        target: c.side.id,
-        munition: munition.kind,
-        section: hit.part.section,
-        mount: hit.part.mount,
-        energy,
-        speed: length(relative),
-      });
-      return true;
-    }
-    return false;
-  };
-
-  /**
-   * A missile with a nuclear warhead that moved from `from` to where it is now, while each ship
-   * moved from where it was at `shipsBefore`. It goes off at the first point of its path where it
-   * strikes a ship other than the one that launched it, or where its proximity fuse finds such a
-   * ship within its detonation distance; its burst reaches every ship as each was at that moment
-   * (see `irradiate`). Returns whether it went off.
-   */
-  const detonateNear = (
-    missile: Missile,
-    warhead: NuclearWarheadDesign,
-    from: Vec3,
-    shipsBefore: ReadonlyMap<SideId, Vec3>,
-    shapes: ReturnType<typeof createShapes>,
-    ctx: Omit<DamageContext, 'side'>,
-  ): boolean => {
-    /** Where a ship was part-way through the step, as a fraction of it. */
-    const shipAt = (c: Combatant, along: number) => {
-      const start = shipsBefore.get(c.side.id) ?? c.ship.position;
-      return add(start, scale(sub(c.ship.position, start), along));
-    };
-    let trigger: { along: number; contact: boolean; ship: Combatant } | null = null;
-    for (const c of combatants) {
-      if (c.side.id === missile.attacker) continue;
-      const start = sub(from, shipAt(c, 0));
-      const end = sub(missile.position, c.ship.position);
-      const hit = sweepSlug(shapes.of(c), start, end);
-      const fuse =
-        warhead.detonationDistance > 0 ? fuseTrigger(start, end, warhead.detonationDistance) : null;
-      const options = [
-        ...(hit ? [{ along: hit.along, contact: true }] : []),
-        ...(fuse === null ? [] : [{ along: fuse, contact: false }]),
-      ];
-      for (const option of options) {
-        if (!trigger || option.along < trigger.along) trigger = { ...option, ship: c };
-      }
-    }
-    if (!trigger) return false;
-    const { along, contact, ship: target } = trigger;
-    const position = add(from, scale(sub(missile.position, from), along));
-    const offset = sub(position, shipAt(target, along));
-    // What the burst does to each ship follows the detonation in the events.
-    const at = ctx.events.length;
-    const exposures: NuclearExposure[] = combatants.flatMap((c) => {
-      const taken = irradiate(c.ship, sub(position, shipAt(c, along)), warhead.yield, {
-        ...ctx,
-        side: c.side.id,
-      });
-      if (taken.length > 0) shapes.struck(c);
-      return taken.map(({ part, distance, fluence, energy }) => ({
-        side: c.side.id,
-        section: part.section,
-        mount: part.mount,
-        distance,
-        fluence,
-        energy,
-      }));
-    });
-    ctx.events.splice(at, 0, {
-      type: 'detonation',
-      time: ctx.time,
-      attacker: missile.attacker,
-      target: target.side.id,
-      munition: missile.id,
-      yield: warhead.yield,
-      contact,
-      position,
-      offset,
-      distance: length(offset),
-      exposures,
-    });
-    return true;
-  };
-
-  /**
-   * Point defence bursts meeting their targets, in the order fired. A burst at a missile still in
-   * flight brings it down with the chance it was fired with, and the missile leaves the battle; a
-   * burst at a ship strikes it (see `impactBurst`).
-   */
-  const resolveBursts = (
-    arriving: readonly PointDefenceBurst[],
-    ctx: Omit<DamageContext, 'side'>,
-  ) => {
-    for (const burst of arriving) {
-      const defender = combatantOf(burst.attacker);
-      const gun = defender.ship.weapons.pointDefence[burst.gun];
-      const place = componentSlots(defender.ship.design)[gun?.slot ?? -1];
-      const { engagement } = burst;
-      if (engagement.kind === 'missile') {
-        const missile = missiles.find((m) => m.id === engagement.munition);
-        if (!missile || !(ctx.random() < burst.chance)) continue;
-        missiles = missiles.filter((m) => m !== missile);
-        defender.ship.weapons = {
-          ...defender.ship.weapons,
-          intercepts: defender.ship.weapons.intercepts + 1,
-        };
-        ctx.events.push({
-          type: 'intercept',
-          time: ctx.time,
-          side: burst.attacker,
-          attacker: missile.attacker,
-          munition: missile.id,
-          warhead: missile.design.warhead.type,
-          weapon: 'point-defence',
-          section: place?.section ?? 'forward',
-          mount: place?.index ?? 0,
-          antiMissile: null,
-          position: missile.position,
-          distance: distance(missile.position, defender.ship.position),
-          chance: burst.chance,
-        });
-        continue;
-      }
-      const target = combatants.find((c) => c.side.id === engagement.side);
-      if (!target) continue;
-      const { rounds, roundMass, speed, spread } = burst;
-      const landed = impactBurst(
-        target.ship,
-        burst.direction,
-        { rounds, roundMass, roundEnergy: 0.5 * roundMass * speed ** 2, spread },
-        { ...ctx, side: target.side.id },
-      );
-      if (!landed) continue;
-      target.impacts.push({ point: landed.point, energy: landed.energy });
-      ctx.events.push({
-        type: 'impact',
-        time: ctx.time,
-        attacker: burst.attacker,
-        target: target.side.id,
-        munition: 'point-defence',
-        section: landed.part.section,
-        mount: landed.part.mount,
-        energy: landed.energy,
-        speed,
-      });
-    }
-  };
-
-  /**
-   * Anti-missile missiles that moved from `before` to their positions now, as did the missiles
-   * they are after: each bursts at the first point of its path where its proximity fuse finds its
-   * target within its burst distance, bringing it down with the chance its fragments have (see
-   * `burstChance`), and is spent either way. One whose target has left the battle destroys itself;
-   * one that has passed its target for good with no propellant left to turn back flies on out of
-   * the battle. Returns the ids of the missiles that leave: anti-missile missiles and the missiles
-   * they brought down.
-   */
-  const burstFragmentation = (
-    before: ReadonlyMap<number, Vec3>,
-    ctx: Omit<DamageContext, 'side'>,
-  ): Set<number> => {
-    const gone = new Set<number>();
-    for (const antiMissile of missiles) {
-      const { warhead } = antiMissile.design;
-      if (warhead.type !== 'fragmentation') continue;
-      const { target } = antiMissile;
-      const missile = targetsMissile(target)
-        ? missiles.find((m) => m.id === target.munition && !gone.has(m.id))
-        : undefined;
-      if (!missile) {
-        gone.add(antiMissile.id);
-        continue;
-      }
-      const from = sub(
-        before.get(antiMissile.id) ?? antiMissile.position,
-        before.get(missile.id) ?? missile.position,
-      );
-      const to = sub(antiMissile.position, missile.position);
-      const along = fuseTrigger(from, to, warhead.burstDistance);
-      if (along === null) {
-        const relative = { position: to, velocity: sub(antiMissile.velocity, missile.velocity) };
-        if (antiMissile.propellantMass <= 0 && slugPassed(relative, warhead.burstDistance)) {
-          gone.add(antiMissile.id);
-        }
-        continue;
-      }
-      gone.add(antiMissile.id);
-      burst(antiMissile, warhead, missile, along, before, ctx, gone);
-    }
-    return gone;
-  };
-
-  /**
-   * An anti-missile missile's fragmentation warhead bursting `along` the step's path near the
-   * missile it is after (see `burstFragmentation`): it brings the missile down, adding it to
-   * `gone`, or misses.
-   */
-  const burst = (
-    antiMissile: Missile,
-    warhead: FragmentationWarheadDesign,
-    missile: Missile,
-    along: number,
-    before: ReadonlyMap<number, Vec3>,
-    ctx: Omit<DamageContext, 'side'>,
-    gone: Set<number>,
-  ) => {
-    const at = (m: Missile) => {
-      const start = before.get(m.id) ?? m.position;
-      return add(start, scale(sub(m.position, start), along));
-    };
-    const position = at(antiMissile);
-    const missileAt = at(missile);
-    const defender = combatantOf(antiMissile.attacker);
-    const chance = burstChance(
-      warhead,
-      missile.design,
-      sub(position, missileAt),
-      sub(antiMissile.velocity, missile.velocity),
-      sub(missile.velocity, defender.ship.velocity),
-    );
-    if (!(ctx.random() < chance)) {
-      ctx.events.push({
-        type: 'miss',
-        time: ctx.time,
-        side: antiMissile.attacker,
-        attacker: missile.attacker,
-        munition: missile.id,
-        antiMissile: antiMissile.id,
-        position,
-        distance: distance(position, missileAt),
-        chance,
-      });
-      return;
-    }
-    gone.add(missile.id);
-    defender.ship.weapons = {
-      ...defender.ship.weapons,
-      intercepts: defender.ship.weapons.intercepts + 1,
-    };
-    const launcher = launchedFrom.get(antiMissile.id);
-    ctx.events.push({
-      type: 'intercept',
-      time: ctx.time,
-      side: antiMissile.attacker,
-      attacker: missile.attacker,
-      munition: missile.id,
-      warhead: missile.design.warhead.type,
-      weapon: 'anti-missile-missile',
-      section: launcher?.section ?? 'forward',
-      mount: launcher?.mount ?? 0,
-      antiMissile: antiMissile.id,
-      position: missileAt,
-      distance: distance(missileAt, defender.ship.position),
-      chance,
-    });
-  };
-
-  /** Whether a munition has passed its target ship for good, so it can be forgotten. */
-  const passedTarget = (
-    munition: { readonly target: MissileTarget; readonly position: Vec3; readonly velocity: Vec3 },
-    shapes: ReturnType<typeof createShapes>,
-  ): boolean => {
-    const target = combatants.find((c) => c.side.id === munition.target);
-    if (!target) return true;
-    return slugPassed(
-      {
-        position: sub(munition.position, target.ship.position),
-        velocity: sub(munition.velocity, target.ship.velocity),
-      },
-      shapes.of(target).reach,
-    );
-  };
-
-  /**
-   * Slugs and missiles moving from `before` to their positions now. Anti-missile missiles burst
-   * first (see `burstFragmentation`), so a missile they bring down strikes nothing. Then each
-   * other munition strikes the first ship its path crosses (see `strikeDirectly`), except that a
-   * missile with a nuclear warhead goes off near it (see `detonateNear`). A munition that strikes
-   * or goes off leaves the battle. A slug that has passed its target for good flies on out of the
-   * battle; so does a missile that has, once it has no propellant left to turn back.
-   */
-  const resolveMunitions = (
-    before: ReadonlyMap<number, Vec3>,
-    shipsBefore: ReadonlyMap<SideId, Vec3>,
-    ctx: Omit<DamageContext, 'side'>,
-  ) => {
-    const shapes = createShapes();
-    slugs = slugs.filter((slug) => {
-      const from = before.get(slug.id) ?? slug.position;
-      if (strikeDirectly({ ...slug, kind: 'slug' }, from, shipsBefore, shapes, ctx)) return false;
-      return !passedTarget(slug, shapes);
-    });
-    const gone = burstFragmentation(before, ctx);
-    missiles = missiles.filter((missile) => {
-      if (gone.has(missile.id)) return false;
-      const from = before.get(missile.id) ?? missile.position;
-      const { warhead } = missile.design;
-      switch (warhead.type) {
-        case 'fragmentation':
-          return true;
-        case 'kinetic': {
-          const munition = { ...missile, kind: 'missile' as const, mass: missileMassNow(missile) };
-          if (strikeDirectly(munition, from, shipsBefore, shapes, ctx)) return false;
-          break;
-        }
-        case 'nuclear':
-          if (detonateNear(missile, warhead, from, shipsBefore, shapes, ctx)) return false;
-          break;
-      }
-      return !(missile.propellantMass <= 0 && passedTarget(missile, shapes));
-    });
-  };
-
-  const step = (): readonly BattleEvent[] => {
-    if (outcome) return [];
-    const start = steps * TIME_STEP;
-    // Fire control sees every ship as it was at the start of the step, so the order of sides
-    // never matters.
+  const snapshot = (): Snapshot => {
     const motions = new Map<SideId, Motion>(
-      combatants.map(({ side, ship }) => [
-        side.id,
-        { position: ship.position, velocity: ship.velocity, acceleration: ship.acceleration },
-      ]),
+      combatants.map(({ side, ship }) => [side.id, motionOf(ship)]),
     );
-    // So do missile guidance and missile defence, for missiles.
-    const missileMotions = new Map<number, Motion>(
-      missiles.map((m) => [
-        m.id,
-        { position: m.position, velocity: m.velocity, acceleration: m.acceleration },
-      ]),
-    );
+    const missileMotions = new Map<number, Motion>(missiles.map((m) => [m.id, motionOf(m)]));
     // Automatic defence launches at each incoming missile none of the ship's anti-missile
     // missiles is after yet.
     const defence = new Map<SideId, number[]>(
@@ -1425,26 +421,14 @@ export const createBattle = (setup: BattleSetup): Battle => {
         return [c.side.id, incoming.flatMap((m) => (engaged.has(m.id) ? [] : [m.id]))];
       }),
     );
-    // Point defence sees the missiles aimed at its ship and its target as they were at the start
-    // of the step; it leaves anti-missile missiles, which threaten only missiles, alone.
+    // Point defence sees the missiles aimed at its ship and its target; it leaves anti-missile
+    // missiles, which threaten only missiles, alone.
     const pointDefenceTargets = new Map<SideId, PointDefenceTargets>(
       combatants.map((c) => {
         const target = targetOf(c);
         const motion = target && motions.get(target.side.id);
         const threats = missiles.flatMap((m): Threat[] =>
-          m.target !== c.side.id
-            ? []
-            : [
-                {
-                  id: m.id,
-                  design: m.design,
-                  motion: {
-                    position: m.position,
-                    velocity: m.velocity,
-                    acceleration: m.acceleration,
-                  },
-                },
-              ],
+          m.target !== c.side.id ? [] : [{ id: m.id, design: m.design, motion: motionOf(m) }],
         );
         return [
           c.side.id,
@@ -1452,97 +436,120 @@ export const createBattle = (setup: BattleSetup): Battle => {
         ];
       }),
     );
-    // Weapons choose whether to fire first, so the drive knows what power they will ask for.
+    return { motions, missileMotions, defence, pointDefenceTargets };
+  };
+
+  /** Weapons choose whether to fire first, so the drive knows what power they will ask for. */
+  const aim = (seen: Snapshot) => {
     combatants.forEach((c) => {
       const target = targetOf(c);
       aimWeapons(
         c.ship,
         target ? distance(c.ship.position, target.ship.position) : null,
-        pointDefenceTargets.get(c.side.id),
+        seen.pointDefenceTargets.get(c.side.id),
       );
     });
-    // Every ship plans from the same snapshot of positions, so the order of sides never matters.
-    const launches: BattleEvent[] = [];
-    const plans = combatants.map(
-      (c): { heading: Vec3 | null; command: ManoeuvreCommand | null } => {
-        const state = c.ship.manoeuvre;
-        if (!state) return { heading: attitudeTarget(c), command: null };
-        const command = manoeuvreCommand(c.ship, state, contactOf(c));
-        return { heading: command.heading, command };
-      },
-    );
-    combatants.forEach((combatant, i) => {
-      const { ship } = combatant;
-      const { heading, command } = plans[i] ?? { heading: null, command: null };
-      steer(ship, heading, TIME_STEP);
-      const coasting = ship.velocity;
-      if (command && ship.manoeuvre) {
-        ship.manoeuvre = { ...ship.manoeuvre, correcting: command.correcting };
-        fireDrive(ship, manoeuvreThrottle(ship, command, TIME_STEP), TIME_STEP);
-      } else {
-        burn(ship, TIME_STEP);
-      }
-      ship.acceleration = scale(sub(ship.velocity, coasting), 1 / TIME_STEP);
-      settlePowerAndHeat(ship, TIME_STEP);
-      const target = targetOf(combatant);
-      beams.push(
-        ...emitBeams(
-          ship,
-          combatant.side.id,
-          target ? { id: target.side.id, position: target.ship.position } : null,
-          start,
-        ),
-      );
-      const motion = target && motions.get(target.side.id);
-      slugs.push(
-        ...fireKineticGuns(
-          ship,
-          combatant.side.id,
-          target && motion ? { id: target.side.id, motion } : null,
-          TIME_STEP,
-          nextMunitionId,
-        ),
-      );
-      const defending = pointDefenceTargets.get(combatant.side.id);
-      if (defending) {
-        bursts.push(...firePointDefence(ship, combatant.side.id, defending, start, TIME_STEP));
-      }
-      const salvoTarget = ship.weapons.salvo?.target ?? null;
-      const launched = launchMissiles(
+  };
+
+  /**
+   * Where a ship will point and what its autopilot commands, if it has a manoeuvre. Every ship
+   * plans before any steers, from the same positions, so the order of sides never matters.
+   */
+  const plan = (c: Combatant): Plan => {
+    const state = c.ship.manoeuvre;
+    if (!state) return { heading: attitudeTarget(c), command: null };
+    const command = manoeuvreCommand(c.ship, state, contactOf(c));
+    return { heading: command.heading, command };
+  };
+
+  /** A ship steers and fires its drive to its plan, then settles its power and heat. */
+  const drive = ({ ship }: Combatant, { heading, command }: Plan) => {
+    steer(ship, heading, TIME_STEP);
+    const coasting = ship.velocity;
+    if (command && ship.manoeuvre) {
+      ship.manoeuvre = { ...ship.manoeuvre, correcting: command.correcting };
+      fireDrive(ship, manoeuvreThrottle(ship, command, TIME_STEP), TIME_STEP);
+    } else {
+      burn(ship, TIME_STEP);
+    }
+    ship.acceleration = scale(sub(ship.velocity, coasting), 1 / TIME_STEP);
+    settlePowerAndHeat(ship, TIME_STEP);
+  };
+
+  /**
+   * A ship fires at the start of the step: its beam weapons, kinetic guns, point defence and
+   * launchers. Returns an event for each missile it launched.
+   */
+  const fire = (combatant: Combatant, seen: Snapshot, start: number): BattleEvent[] => {
+    const { ship } = combatant;
+    const target = targetOf(combatant);
+    beams.push(
+      ...emitBeams(
         ship,
         combatant.side.id,
-        salvoTarget !== null && inBattle(salvoTarget) ? salvoTarget : null,
-        defence.get(combatant.side.id) ?? [],
+        target ? { id: target.side.id, position: target.ship.position } : null,
+        start,
+      ),
+    );
+    const motion = target && seen.motions.get(target.side.id);
+    slugs.push(
+      ...fireKineticGuns(
+        ship,
+        combatant.side.id,
+        target && motion ? { id: target.side.id, motion } : null,
         TIME_STEP,
         nextMunitionId,
-      );
-      for (const { missile, launcher } of launched) {
-        missiles.push(missile);
-        const slot = componentSlots(ship.design)[ship.weapons.launchers[launcher]?.slot ?? -1];
-        const place = { section: slot?.section ?? 'forward', mount: slot?.index ?? 0 };
-        launchedFrom.set(missile.id, place);
-        launches.push({
-          type: 'launch',
-          time: start,
-          attacker: combatant.side.id,
-          target: missile.target,
-          munition: missile.id,
-          ...place,
-        });
-      }
-    });
-    // Missiles steer by what their guidance sees of their targets at the start of the step.
+      ),
+    );
+    const defending = seen.pointDefenceTargets.get(combatant.side.id);
+    if (defending) {
+      bursts.push(...firePointDefence(ship, combatant.side.id, defending, start, TIME_STEP));
+    }
+    const salvoTarget = ship.weapons.salvo?.target ?? null;
+    const launched = launchMissiles(
+      ship,
+      combatant.side.id,
+      salvoTarget !== null && inBattle(salvoTarget) ? salvoTarget : null,
+      seen.defence.get(combatant.side.id) ?? [],
+      TIME_STEP,
+      nextMunitionId,
+    );
+    const launches: BattleEvent[] = [];
+    for (const { missile, launcher } of launched) {
+      missiles.push(missile);
+      const slot = componentSlots(ship.design)[ship.weapons.launchers[launcher]?.slot ?? -1];
+      const place = { section: slot?.section ?? 'forward', mount: slot?.index ?? 0 };
+      launchedFrom.set(missile.id, place);
+      launches.push({
+        type: 'launch',
+        time: start,
+        attacker: combatant.side.id,
+        target: missile.target,
+        munition: missile.id,
+        ...place,
+      });
+    }
+    return launches;
+  };
+
+  /** Missiles steer by what their guidance sees of their targets at the start of the step. */
+  const guideMissiles = (seen: Snapshot) => {
     missiles = missiles.map((missile) => {
       const { target } = missile;
       const motion = targetsMissile(target)
-        ? missileMotions.get(target.munition)
-        : motions.get(target);
+        ? seen.missileMotions.get(target.munition)
+        : seen.motions.get(target);
       return guideMissile(missile, motion ?? null, TIME_STEP);
     });
-    // Ships and munitions move after all have fired, so every beam, slug and missile leaves from
-    // the same snapshot.
-    const shipsBefore = new Map(combatants.map(({ side, ship }) => [side.id, ship.position]));
-    const munitionsBefore = new Map(
+  };
+
+  /**
+   * Ships and munitions move after all have fired, so every beam, slug and missile leaves from
+   * the same snapshot. Returns where each ship and munition was before it moved.
+   */
+  const move = (): Departures => {
+    const ships = new Map(combatants.map(({ side, ship }) => [side.id, ship.position]));
+    const munitions = new Map(
       [...slugs, ...missiles].map((munition) => [munition.id, munition.position]),
     );
     combatants.forEach(({ ship }) => {
@@ -1556,36 +563,73 @@ export const createBattle = (setup: BattleSetup): Battle => {
       ...missile,
       position: add(missile.position, scale(missile.velocity, TIME_STEP)),
     }));
-    steps += 1;
+    return { ships, munitions };
+  };
 
-    // Beams that reach their targets by the end of the step strike them, in the order fired.
-    const time = steps * TIME_STEP;
-    const events: BattleEvent[] = [...launches];
+  /**
+   * What reaches its target by the end of the step strikes it: beams, then point defence bursts,
+   * each in the order fired, then slugs and missiles (see `resolveMunitions`). What landed on
+   * each ship in the step before is forgotten first.
+   */
+  const resolveArrivals = (before: Departures, ctx: Omit<DamageContext, 'side'>) => {
+    const { time } = ctx;
     const arriving = beams.filter((b) => b.arrival <= time + 1e-9);
     beams = beams.filter((b) => b.arrival > time + 1e-9);
     combatants.forEach((c) => {
       if (c.beamsLanding.length > 0) c.beamsLanding = [];
       if (c.impacts.length > 0) c.impacts = [];
     });
-    for (const beam of arriving) resolveBeam(beam, { time, random, events });
-    resolveBursts(
+    for (const beam of arriving) resolveBeam(beam, ctx);
+    missiles = munitions.resolveBursts(
+      missiles,
       bursts.filter((b) => b.arrival <= time + 1e-9),
-      { time, random, events },
+      ctx,
     );
     bursts = bursts.filter((b) => b.arrival > time + 1e-9);
-    resolveMunitions(munitionsBefore, shipsBefore, { time, random, events });
+    ({ slugs, missiles } = munitions.resolveMunitions({ slugs, missiles }, before, ctx));
+  };
+
+  /** Each ship's heat damages it at the end of the step if it runs too hot (see `overheat`). */
+  const overheatShips = (ctx: Omit<DamageContext, 'side'>) => {
     combatants.forEach(({ side, ship }) => {
-      overheat(ship, TIME_STEP, { side: side.id, time, random, events });
+      overheat(ship, TIME_STEP, { ...ctx, side: side.id });
     });
-    // Ships that lost in this step lose together; if all of them did, nobody wins.
-    outcome = judge(
+  };
+
+  /**
+   * How the battle ended in the step, if it did. Ships that lost in it lose together; if all of
+   * them did, nobody wins. A side that loses in the step that reaches the time limit still loses.
+   */
+  const judgeStep = (time: number): BattleOutcome | null => {
+    const decided = judge(
       time,
       combatants.map(({ side, ship }) => ({ side: side.id, loss: lossOf(ship) })),
     );
-    // A side that loses in the step that reaches the time limit still loses.
-    if (!outcome && timeLimit !== undefined && time >= timeLimit - 1e-9) {
-      outcome = noResult(time, setup.sides);
-    }
+    if (decided) return decided;
+    return timeLimit !== undefined && time >= timeLimit - 1e-9 ? noResult(time, setup.sides) : null;
+  };
+
+  const step = (): readonly BattleEvent[] => {
+    if (outcome) return [];
+    const start = steps * TIME_STEP;
+    const seen = snapshot();
+    aim(seen);
+    const plans = combatants.map(plan);
+    const launches: BattleEvent[] = [];
+    combatants.forEach((c, i) => {
+      drive(c, plans[i] ?? { heading: null, command: null });
+      launches.push(...fire(c, seen, start));
+    });
+    guideMissiles(seen);
+    const before = move();
+    steps += 1;
+
+    const time = steps * TIME_STEP;
+    const events: BattleEvent[] = [...launches];
+    const ctx = { time, random, events };
+    resolveArrivals(before, ctx);
+    overheatShips(ctx);
+    outcome = judgeStep(time);
     if (outcome) events.push({ type: 'battle-ended', time, outcome });
     record(events);
     return events;
@@ -1656,55 +700,11 @@ export const createBattle = (setup: BattleSetup): Battle => {
     },
     observe(sideId) {
       const own = combatantOf(sideId);
-      const { ship } = own;
       return {
         time: steps * TIME_STEP,
-        ownShip: {
-          sideId,
-          designName: own.side.design.name,
-          position: ship.position,
-          velocity: ship.velocity,
-          acceleration: ship.acceleration,
-          orientation: ship.orientation,
-          nose: noseOf(ship),
-          angularVelocity: rotate(ship.orientation, ship.angularVelocity),
-          mass: shipMassProperties(ship).mass,
-          propellantMass: ship.propellantMass,
-          deltaV: deltaVOf(ship),
-          thrust: ship.thrust,
-          torque: ship.torque,
-          attitude: ship.attitude,
-          burn: ship.burn,
-          manoeuvre: ship.manoeuvre ? observeManoeuvre(ship, ship.manoeuvre, contactOf(own)) : null,
-          power: observePower(ship),
-          heat: observeHeat(ship),
-          shields: observeShields(ship),
-          energyLedger: ship.ledger,
-          sections: observeSections(ship),
-          weapons: observeWeapons(
-            ship,
-            missiles.flatMap(({ id, attacker, target }) =>
-              attacker === sideId && targetsMissile(target)
-                ? [{ antiMissile: id, target: target.munition }]
-                : [],
-            ),
-          ),
-          appearance: observeAppearance(own),
-        },
-        contacts: combatants
-          .filter((c) => c !== own)
-          .map((c) => ({
-            sideId: c.side.id,
-            position: c.ship.position,
-            velocity: c.ship.velocity,
-            acceleration: c.ship.acceleration,
-            orientation: c.ship.orientation,
-            appearance: observeAppearance(c),
-          })),
-        munitions: [
-          ...slugs.map((slug): SlugObservation => ({ kind: 'slug', ...slug })),
-          ...missiles.map(observeMissile),
-        ],
+        ownShip: observeOwnShip(own, contactOf(own), antiMissileEngagements(sideId, missiles)),
+        contacts: combatants.filter((c) => c !== own).map(observeContact),
+        munitions: observeMunitions(slugs, missiles),
         events: [...(logs.get(sideId) ?? [])],
         outcome,
       };

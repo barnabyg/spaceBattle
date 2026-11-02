@@ -37,6 +37,13 @@ export interface Motion {
   readonly acceleration: Vec3;
 }
 
+/** The motion of a ship or missile as it is now, apart from the rest of its state. */
+export const motionOf = ({ position, velocity, acceleration }: Motion): Motion => ({
+  position,
+  velocity,
+  acceleration,
+});
+
 /** Which way to fire a slug and how long it will take to reach the target. */
 export interface FiringSolution {
   /** World unit vector, relative to the firing ship's motion. */
