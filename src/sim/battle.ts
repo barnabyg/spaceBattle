@@ -38,7 +38,7 @@ import {
   type PowerShare,
   type PowerSystem,
 } from './power';
-import { endedBy, judge, lossOf, type BattleOutcome } from './outcome';
+import { endedBy, judge, lossOf, noResult, type BattleOutcome } from './outcome';
 import { IDENTITY, rotate, type Quat } from './quaternion';
 import { createRandom } from './random';
 import type { ShapePart } from './shape';
@@ -100,6 +100,11 @@ export interface BattleSetup {
   readonly seed: number;
   readonly scenario: Scenario;
   readonly sides: readonly SideSetup[];
+  /**
+   * Test mode only: once this much simulated time has passed without a side losing, the battle
+   * ends with no result, s. A battle normally has no time limit.
+   */
+  readonly timeLimit?: number;
 }
 
 /** A ship's power: its ranking, where power went in the last step, and what is stored. */
@@ -620,6 +625,10 @@ export const createBattle = (setup: BattleSetup): Battle => {
   if (setup.sides.length !== setup.scenario.starts.length) {
     throw new Error('A scenario needs one start for each side');
   }
+  const { timeLimit } = setup;
+  if (timeLimit !== undefined && !(timeLimit > 0 && Number.isFinite(timeLimit))) {
+    throw new Error('A time limit must be a positive number of seconds');
+  }
   const combatants: Combatant[] = setup.sides.map((side, i) => {
     const start = setup.scenario.starts[i];
     if (!start) throw new Error(`No start for side ${side.id}`);
@@ -950,6 +959,10 @@ export const createBattle = (setup: BattleSetup): Battle => {
       time,
       combatants.map(({ side, ship }) => ({ side: side.id, loss: lossOf(ship) })),
     );
+    // A side that loses in the step that reaches the time limit still loses.
+    if (!outcome && timeLimit !== undefined && time >= timeLimit - 1e-9) {
+      outcome = noResult(time, setup.sides);
+    }
     if (outcome) events.push({ type: 'battle-ended', time, outcome });
     record(events);
     return events;

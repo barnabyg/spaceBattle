@@ -22,10 +22,12 @@ On Windows, double-click `run.bat` in the repository root. It installs the depen
 
 The game opens on the main menu. Choose **Free battle**, pick a hand-made design for Blue and Red and whether the player or the computer commands each side, then **Start battle**. When the battle ends, the result screen leads back to setup with the same choices.
 
+**Test mode**, for testing the game rather than playing it, is switched on with the **Test mode** switch on the main menu and is unavailable otherwise. With it on, free battle setup adds a **Seed** (blank for a new one each battle), a **Time limit** in hours (12 by default; a battle that reaches it ends with no result) and **Battles** for a batch run. A battle in test mode shows its seed, the enemy's full design and state, and a test log of every event, and offers time compression up to 10000× and **Replay** from the same seed. **Run batch** fights the chosen designs against each other, the computer commanding both sides, without graphics and in parallel, then shows each side's wins, draws, no results, how sides lost and each battle's seed; enter a battle's seed with the computer commanding both sides to watch it again.
+
 ## Layout
 
 - `src/sim/` — the battle simulation: fixed time step, deterministic, SI units, no rendering or DOM (ADR-0001). Lint and a DOM-free type check enforce this. Computer captains command their sides here, through the same orders as the player.
-- `src/game/` — headless glue around the simulation, such as the battle runner (pause and time compression).
+- `src/game/` — headless glue around the simulation, such as the battle runner (pause and time compression) and test mode batch runs.
 - `src/data/` — hand-made designs (JSON data files) and scenarios.
 - `src/ui/` — the browser UI: menus in HTML/CSS, views in Three.js. It reads simulation state and gives orders; it never changes state directly.
 - `e2e/` — Playwright tests in Firefox.

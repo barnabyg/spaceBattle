@@ -1,6 +1,7 @@
 import { handMadeDesign } from '../data/designs';
 import { OPENING_PASS } from '../data/scenarios';
 import { createBattle, type Commander, type SideSetup } from '../sim/battle';
+import type { BatchSetup } from './batch';
 import { createBattleRunner, type BattleRunner } from './battleRunner';
 
 /** One side of a free battle as chosen on the setup screen. */
@@ -36,6 +37,40 @@ export const freeBattleSides = (setup: FreeBattleSetup): readonly SideSetup[] =>
     return { ...side, commander, design: handMadeDesign(designId) };
   });
 
-/** Sets up a free battle in the opening pass and returns it ready to run. */
-export const startFreeBattle = (setup: FreeBattleSetup, seed = Date.now() >>> 0): BattleRunner =>
-  createBattleRunner(createBattle({ seed, scenario: OPENING_PASS, sides: freeBattleSides(setup) }));
+/** What test mode adds to a free battle. */
+export interface FreeBattleTestMode {
+  /** The battle ends with no result once this much simulated time has passed, s. */
+  readonly timeLimit: number;
+}
+
+/** A new seed for a battle, different each time. */
+export const newSeed = (): number => Math.floor(Math.random() * 2 ** 32);
+
+/**
+ * Sets up a free battle in the opening pass and returns it ready to run. The same choices and
+ * seed fight the same battle, given the same orders. Test mode adds a time limit and time
+ * compression above 1000×.
+ */
+export const startFreeBattle = (
+  setup: FreeBattleSetup,
+  seed = newSeed(),
+  testMode?: FreeBattleTestMode,
+): BattleRunner =>
+  createBattleRunner(
+    createBattle({
+      seed,
+      scenario: OPENING_PASS,
+      sides: freeBattleSides(setup),
+      ...(testMode && { timeLimit: testMode.timeLimit }),
+    }),
+    { testMode: testMode !== undefined },
+  );
+
+/**
+ * A test mode batch run of free battles in the opening pass between the chosen designs; the
+ * computer commands both sides, whatever the choices say.
+ */
+export const freeBattleBatch = (
+  setup: FreeBattleSetup,
+  options: Pick<BatchSetup, 'battles' | 'seed' | 'timeLimit'>,
+): BatchSetup => ({ sides: freeBattleSides(setup), scenario: OPENING_PASS, ...options });

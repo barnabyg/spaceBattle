@@ -3,13 +3,13 @@ import type { ComponentType, SectionKind } from '../sim/design';
 import { el } from './el';
 import { formatBattleTime, formatGJ, formatMm, formatMW } from './format';
 
-const SECTION_TEXT: Readonly<Record<SectionKind, string>> = {
+export const SECTION_TEXT: Readonly<Record<SectionKind, string>> = {
   forward: 'Forward',
   middle: 'Middle',
   engine: 'Engine',
 };
 
-const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
+export const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
   drive: 'Drive',
   thrusters: 'Thrusters',
   reactor: 'Reactor',
@@ -75,16 +75,32 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
   }
 };
 
-/** Armour, structure and component integrity of the captain's own ship, and recent events. */
-export const createDamagePanel = (viewer: SideId) => {
+export interface DamagePanelOptions {
+  /** The panel's heading, which also names it; 'Damage' by default. */
+  readonly title?: string;
+  /** Shown under the heading. */
+  readonly intro?: HTMLElement;
+  /** Whether to show the side's latest events; true by default. */
+  readonly log?: boolean;
+}
+
+/**
+ * Armour, structure and component integrity of a side's ship, and its recent events: by default
+ * the captain's own ship. Test mode shows the enemy ship this way too.
+ */
+export const createDamagePanel = (
+  viewer: SideId,
+  { title = 'Damage', intro, log: showLog = true }: DamagePanelOptions = {},
+) => {
   const body = el('div', { className: 'damage-sections' });
   const log = el('ol', { className: 'battle-log', attrs: { 'aria-label': 'Battle log' } });
   const element = el(
     'section',
-    { className: 'panel', attrs: { 'aria-label': 'Damage' } },
-    el('h2', { text: 'Damage' }),
+    { className: 'panel', attrs: { 'aria-label': title } },
+    el('h2', { text: title }),
+    ...(intro ? [intro] : []),
     body,
-    log,
+    ...(showLog ? [log] : []),
   );
 
   // Built on the first update, once the ship's sections and components are known.
@@ -143,6 +159,7 @@ export const createDamagePanel = (viewer: SideId) => {
           part.item.classList.toggle('lost', component.integrity <= 0);
         });
       });
+      if (!showLog) return;
       const latest = observation.events.slice(-LOG_LENGTH).reverse();
       const lines = latest.map((event) => describeEvent(event, viewer));
       if (lines.join('\n') !== [...log.children].map((li) => li.textContent).join('\n')) {

@@ -183,6 +183,47 @@ describe('battle outcomes', () => {
   });
 });
 
+describe('a battle time limit (test mode)', () => {
+  it('ends the battle with no result once the time limit is reached', () => {
+    const battle = createBattle(testSetup({ timeLimit: 60 }));
+    const events = battle.advance(120);
+    const outcome = {
+      time: 60,
+      winner: null,
+      sides: [
+        { side: 'blue', loss: null, shipLost: false },
+        { side: 'red', loss: null, shipLost: false },
+      ],
+    };
+    expect(battle.time).toBeCloseTo(60);
+    expect(battle.outcome).toEqual({ ...outcome, time: battle.time });
+    expect(events).toEqual([{ type: 'battle-ended', time: battle.time, outcome: battle.outcome }]);
+    expect(battle.observe('red').outcome).toEqual(battle.outcome);
+    expectFrozen(battle);
+  });
+
+  it('lets a battle decided before the time limit end as usual', () => {
+    const setup = duelSetup(armedTestDesign(), forwardReactorDesign(), 20_000 * KM);
+    const battle = createBattle({ ...setup, timeLimit: 3_600 });
+    fireAtRed(battle);
+    fightToTheEnd(battle);
+    expect(battle.time).toBeLessThan(3_600);
+    expect(battle.outcome?.winner).toBe('blue');
+  });
+
+  it('has no time limit unless one is set', () => {
+    const battle = createBattle(testSetup());
+    battle.advance(2 * 3_600);
+    expect(battle.outcome).toBeNull();
+  });
+
+  it('must be a positive number of seconds', () => {
+    for (const timeLimit of [0, -60, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => createBattle(testSetup({ timeLimit }))).toThrow(/time limit/i);
+    }
+  });
+});
+
 describe('ending a battle', () => {
   it('is a forfeit for a player side: it loses and its ship is treated as destroyed', () => {
     const battle = createBattle(testSetup());

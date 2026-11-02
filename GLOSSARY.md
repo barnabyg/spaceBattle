@@ -204,7 +204,7 @@ Running the battle faster than real time; it drops back to normal speed automati
 _Avoid_: Fast forward, speed-up
 
 **Battle**:
-A single engagement between sides. It has no time limit.
+A single engagement between sides. It has no time limit outside test mode.
 _Avoid_: Fight, match, encounter
 
 **Tactical map**:
@@ -232,6 +232,10 @@ A section's own structure being broken through, so that the section and everythi
 The player ending a battle early with the "End battle" option. It counts as a loss and the ship is treated as destroyed.
 _Avoid_: Concede, surrender, quit
 
+**No result**:
+The end of a battle in which no side lost, so nobody wins: a battle between computer sides ended with "End battle", or a test mode battle that reached its time limit.
+_Avoid_: Stalemate, timeout
+
 **Disabled**:
 A ship with no working weapons or no working drive; it has lost the battle.
 
@@ -253,6 +257,10 @@ _Avoid_: Skirmish, quick battle, test bench
 **Test mode**:
 A setting for testing the game itself rather than playing it. It adds things that don't belong in real play, such as a battle time limit and extra logging.
 _Avoid_: Debug mode, test bench
+
+**Batch run**:
+In test mode, a number of battles between the same two designs, each commanded by the computer, fought without graphics from seeds derived from one batch seed, and summed up as each side's wins, draws and no results.
+_Avoid_: Simulation run, sweep
 
 **Credits**:
 The money spent on designs, components and repairs, earned by winning battles.

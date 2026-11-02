@@ -32,7 +32,8 @@ export interface BattleOutcome {
   readonly time: number;
   /**
    * The one side left that did not lose, or null when there is none: every side lost in the
-   * same step (a draw), or a battle between computer sides was ended with no result.
+   * same step (a draw), or the battle ended with no result because a battle between computer
+   * sides was ended or, in test mode, the time limit was reached.
    */
   readonly winner: SideId | null;
   /** Every side, in the battle's order. */
@@ -94,6 +95,13 @@ export const judge = (
 ): BattleOutcome | null =>
   losses.some(({ loss }) => loss !== null) ? outcome(time, losses) : null;
 
+/** A battle that ended with nobody losing: no result. */
+export const noResult = (time: number, sides: readonly SideSetup[]): BattleOutcome =>
+  outcome(
+    time,
+    sides.map((s) => ({ side: s.id, loss: null })),
+  );
+
 /**
  * The outcome of a side choosing "End battle". A player side forfeits: it loses, its ship is
  * treated as destroyed, and the other side wins (this holds when both sides are players too).
@@ -111,8 +119,9 @@ export const endedBy = (
   if (!forfeit && sides.some((s) => s.commander === 'player')) {
     throw new Error('Only a player side can end a battle against a player');
   }
+  if (!forfeit) return noResult(time, sides);
   return outcome(
     time,
-    sides.map((s) => ({ side: s.id, loss: forfeit && s === side ? { result: 'forfeit' } : null })),
+    sides.map((s) => ({ side: s.id, loss: s === side ? { result: 'forfeit' } : null })),
   );
 };

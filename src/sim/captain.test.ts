@@ -248,6 +248,20 @@ describe('two computer captains', () => {
     30_000,
   );
 
+  it('replay a battle from its seed with an identical event log', () => {
+    const setup = { ...computerDuel('bastion', 'lance', 140_000 * KM), seed: 99, timeLimit: HOUR };
+    const eventLog = () => {
+      const battle = withComputerCaptains(createBattle(setup));
+      const events: BattleEvent[] = [];
+      while (!battle.outcome) events.push(...battle.step());
+      return events;
+    };
+    const first = eventLog();
+    expect(first.filter((e) => e.type === 'hit').length).toBeGreaterThan(0);
+    expect(first.at(-1)?.type).toBe('battle-ended');
+    expect(eventLog()).toStrictEqual(first);
+  }, 20_000);
+
   it('fight the same battle every time from the same seed', () => {
     const setup = computerDuel('bastion', 'lance', 140_000 * KM);
     const first = runBattle(setup, { maxTime: 6 * HOUR });

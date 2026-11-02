@@ -11,7 +11,12 @@ import {
   testSetup,
   testSides,
 } from '../sim/testing';
-import { createBattleRunner, TIME_COMPRESSIONS, type TimeCompression } from './battleRunner';
+import {
+  createBattleRunner,
+  TEST_TIME_COMPRESSIONS,
+  TIME_COMPRESSIONS,
+  type TimeCompression,
+} from './battleRunner';
 
 const runner = () => createBattleRunner(createBattle(testSetup()));
 
@@ -40,6 +45,29 @@ describe('battle runner', () => {
     expect(r.timeCompression).toBe(1000);
     r.update(0.1);
     expect(r.battle.time).toBeCloseTo(100);
+  });
+
+  it('compresses time above 1000x only in test mode', () => {
+    const r = runner();
+    r.setTimeCompression(10_000);
+    expect(r.timeCompression).toBe(1);
+    const test = createBattleRunner(createBattle(testSetup()), { testMode: true });
+    TEST_TIME_COMPRESSIONS.forEach(() => {
+      test.faster();
+    });
+    expect(test.timeCompression).toBe(10_000);
+    test.update(0.02);
+    expect(test.battle.time).toBeCloseTo(200);
+    test.setTimeCompression(1000);
+    test.faster();
+    expect(test.timeCompression).toBe(2000);
+  });
+
+  it('runs at most 250 s of battle in one update, however compressed', () => {
+    const r = createBattleRunner(createBattle(testSetup()), { testMode: true });
+    r.setTimeCompression(10_000);
+    r.update(0.25);
+    expect(r.battle.time).toBeCloseTo(250);
   });
 
   it('never goes below real time', () => {

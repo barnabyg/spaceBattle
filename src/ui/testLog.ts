@@ -1,0 +1,76 @@
+import type { BattleEvent, SideSetup } from '../sim/battle';
+import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
+import { el } from './el';
+import { formatBattleTime, formatGJ, formatKm, formatKmPerS, formatMW } from './format';
+import { outcomeDetails, outcomeHeadline } from './resultScreen';
+
+/** How many events the test log keeps on screen, newest first. */
+const TEST_LOG_LENGTH = 500;
+
+/** A section, or one of its mounts, in words. */
+const partText = (section: keyof typeof SECTION_TEXT, mount: number | null): string =>
+  mount === null
+    ? `${SECTION_TEXT[section].toLowerCase()} section`
+    : `${SECTION_TEXT[section].toLowerCase()} mount ${mount + 1}`;
+
+/** One line of the test log: any event in full, naming the sides rather than us and them. */
+export const describeTestEvent = (event: BattleEvent, sides: readonly SideSetup[]): string => {
+  const nameOf = (id: string) => sides.find((s) => s.id === id)?.name ?? id;
+  const time = formatBattleTime(event.time);
+  switch (event.type) {
+    case 'hit': {
+      const intensity = (event.intensity / 1e6).toLocaleString('en-GB', {
+        maximumFractionDigits: 2,
+      });
+      const spot = event.spotRadius.toLocaleString('en-GB', { maximumFractionDigits: 1 });
+      return `${time} ${nameOf(event.attacker)} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatMW(event.power)} · ${intensity} MW/m² · spot ${spot} m · range ${formatKm(event.range)}`;
+    }
+    case 'impact':
+      return `${time} ${nameOf(event.attacker)} ${event.munition} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatGJ(event.energy)} · ${formatKmPerS(event.speed)}`;
+    case 'launch':
+      return `${time} ${nameOf(event.attacker)} launched missile ${event.munition} at ${nameOf(event.target)} from ${partText(event.section, event.mount)}`;
+    case 'armour-breached':
+      return `${time} ${nameOf(event.side)} ${SECTION_TEXT[event.section].toLowerCase()} armour breached`;
+    case 'component-lost': {
+      const where = event.mounted
+        ? `${SECTION_TEXT[event.section].toLowerCase()} mount ${event.index + 1}`
+        : `${SECTION_TEXT[event.section].toLowerCase()} section`;
+      return `${time} ${nameOf(event.side)} ${COMPONENT_TEXT[event.component].toLowerCase()} lost (${where})`;
+    }
+    case 'structural-failure':
+      return `${time} ${nameOf(event.side)} ${SECTION_TEXT[event.section].toLowerCase()} section structural failure`;
+    case 'battle-ended':
+      return `${time} Battle over: ${outcomeHeadline(event.outcome, sides)} · ${outcomeDetails(event.outcome, sides).join(' · ')}`;
+  }
+};
+
+/** Test mode's log of every event in the battle, for both sides, newest first. */
+export const createTestLog = (sides: readonly SideSetup[]) => {
+  const list = el('ol', { className: 'battle-log test-log' });
+  const count = el('span', { className: 'test-log__count', text: '0 events' });
+  const element = el(
+    'section',
+    { className: 'panel', attrs: { 'aria-label': 'Test log' } },
+    el('h2', { text: 'Test log' }),
+    count,
+    list,
+  );
+  let total = 0;
+
+  return {
+    element,
+    /** Adds events, oldest first, to the top of the log. */
+    add(events: readonly BattleEvent[]) {
+      if (events.length === 0) return;
+      total += events.length;
+      count.textContent = `${total.toLocaleString('en-GB')} ${total === 1 ? 'event' : 'events'}`;
+      list.prepend(
+        ...events
+          .slice(-TEST_LOG_LENGTH)
+          .reverse()
+          .map((event) => el('li', { text: describeTestEvent(event, sides) })),
+      );
+      while (list.children.length > TEST_LOG_LENGTH) list.lastElementChild?.remove();
+    },
+  };
+};

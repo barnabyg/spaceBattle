@@ -1,12 +1,16 @@
 import type { BattleRunner } from '../game/battleRunner';
+import type { SideSetup } from '../sim/battle';
 import { el } from './el';
 import { createDamagePanel } from './damagePanel';
+import { designSummary } from './designSummary';
 import { createEndBattle } from './endBattle';
 import { createInstrumentView } from './instrumentView';
 import { createOrdersPanel } from './ordersPanel';
 import { createResultScreen } from './resultScreen';
 import { createStatusPanel } from './statusPanel';
+import { formatDuration } from './format';
 import { createTacticalMap, SIDE_COLOURS } from './tacticalMap';
+import { createTestLog } from './testLog';
 import { createTimeControls } from './timeControls';
 
 export interface BattleScreenOptions {
@@ -14,7 +18,35 @@ export interface BattleScreenOptions {
   readonly onContinue?: () => void;
   /** What the result screen's button says. */
   readonly continueLabel?: string;
+  /** Test mode: what the battle was set up with, and how to fight it again. */
+  readonly test?: BattleScreenTestMode;
 }
+
+export interface BattleScreenTestMode {
+  readonly seed: number;
+  /** s */
+  readonly timeLimit: number;
+  /** Fights the battle again from the same seed. */
+  readonly onReplay: () => void;
+}
+
+/** Test mode's view of the enemy: its full design and the state of its ship. */
+const createEnemyPanel = (enemy: SideSetup) => {
+  const intro = el(
+    'div',
+    {},
+    el('p', { className: 'order-state', text: `${enemy.name} · ${enemy.design.name}` }),
+    el(
+      'dl',
+      { className: 'status-list design-summary' },
+      ...designSummary(enemy.design).flatMap(([label, value]) => [
+        el('dt', { text: label }),
+        el('dd', { text: value }),
+      ]),
+    ),
+  );
+  return createDamagePanel(enemy.id, { title: 'Enemy design', intro, log: false });
+};
 
 /** The battle as one side's captain sees it, running in real time. */
 export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOptions = {}) => {
@@ -36,7 +68,14 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   const orders = createOrdersPanel((order) => {
     battle.giveOrder(viewer.id, order);
   });
-  const endBattle = createEndBattle(runner, viewer, () => battle.endBattle(viewer.id));
+  const { test } = options;
+  const enemy = ordered[1];
+  const enemyPanel = test && enemy ? createEnemyPanel(enemy) : null;
+  const testLog = test ? createTestLog(battle.sides) : null;
+  const endBattle = createEndBattle(runner, viewer, () => {
+    const events = battle.endBattle(viewer.id);
+    testLog?.add(events);
+  });
   const result = createResultScreen(
     battle.sides,
     options.onContinue ??
@@ -44,6 +83,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
         location.reload();
       }),
     options.continueLabel,
+    test?.onReplay,
   );
 
   const element = el(
@@ -54,6 +94,15 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
       { className: 'top-bar' },
       el('h1', { text: 'Space Battle' }),
       timeControls.element,
+      ...(test
+        ? [
+            el('span', {
+              className: 'test-mode-info',
+              text: `Test mode · Seed ${test.seed} · Time limit ${formatDuration(test.timeLimit)}`,
+              attrs: { 'aria-label': 'Test mode' },
+            }),
+          ]
+        : []),
       endBattle.button,
     ),
     map.element,
@@ -70,6 +119,8 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
             className: 'order-state',
             text: `${viewer.name} is commanded by the computer.`,
           }),
+      ...(enemyPanel ? [enemyPanel.element] : []),
+      ...(testLog ? [testLog.element] : []),
     ),
     endBattle.dialog,
     result.element,
@@ -78,12 +129,14 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   let last = performance.now();
   let frame = 0;
   const tick = (now: number) => {
-    runner.update((now - last) / 1000);
+    const events = runner.update((now - last) / 1000);
     last = now;
+    testLog?.add(events);
     const observation = battle.observe(viewer.id);
     timeControls.update();
     status.update(observation);
     damage.update(observation);
+    if (enemy) enemyPanel?.update(battle.observe(enemy.id));
     orders.update(observation);
     map.update(observation);
     map.render();
