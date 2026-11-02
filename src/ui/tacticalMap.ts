@@ -6,6 +6,7 @@ import type { SideId, SideObservation, SideSetup } from '../sim/battle';
 import { designComponent } from '../sim/design';
 import { rotate, type Quat } from '../sim/quaternion';
 import { length, vec3, type Vec3 } from '../sim/vector';
+import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { formatDuration, formatKm, formatKmPerS } from './format';
 
@@ -53,8 +54,14 @@ const niceLength = (target: number): number => {
   return step * magnitude;
 };
 
-/** The captain's main working view: symbols and exact data, centred on their own ship. */
-export const createTacticalMap = (sides: readonly SideSetup[]) => {
+/**
+ * The captain's main working view: symbols and exact data, centred on their own ship. The own
+ * ship's side comes first; `colours` gives each side's colour in the same order.
+ */
+export const createTacticalMap = (
+  sides: readonly SideSetup[],
+  colours: readonly string[] = SIDE_COLOURS,
+) => {
   const element = el('section', {
     className: 'tactical-map',
     attrs: { 'aria-label': 'Tactical map' },
@@ -104,7 +111,7 @@ export const createTacticalMap = (sides: readonly SideSetup[]) => {
 
   const markers = new Map<SideId, ShipMarker>();
   sides.forEach((side, index) => {
-    const colour = SIDE_COLOURS[index % SIDE_COLOURS.length] ?? '#ffffff';
+    const colour = colours[index] ?? '#ffffff';
     const label = el('span', { className: 'ship-symbol__label' });
     const symbol = new CSS2DObject(
       el(
@@ -346,7 +353,8 @@ export const createTacticalMap = (sides: readonly SideSetup[]) => {
     dispose() {
       resizeObserver.disconnect();
       controls.dispose();
-      renderer.dispose();
+      disposeScene(scene);
+      disposeRenderer(renderer);
     },
   };
 };

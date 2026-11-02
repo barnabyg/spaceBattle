@@ -31,6 +31,10 @@ export const formatDuration = (seconds: number): string => {
   return `${Math.floor(whole / 3600)} h ${Math.floor(whole / 60) % 60} min`;
 };
 
+/** A mass given in kg, shown in tonnes. */
+export const formatTonnes = (kg: number): string =>
+  `${(kg / 1000).toLocaleString('en-GB', { maximumFractionDigits: 1 })} t`;
+
 /** A power given in W, shown in MW. */
 export const formatMW = (watts: number): string => `${grouped(watts / 1e6, 0)} MW`;
 

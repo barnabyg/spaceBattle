@@ -3,10 +3,15 @@ import { OVERHEAT_TEMPERATURE } from '../sim/heat';
 import { POWER_SYSTEMS } from '../sim/power';
 import { distance, length } from '../sim/vector';
 import { el } from './el';
-import { formatGJ, formatKelvin, formatKm, formatKmPerS, formatMW, formatPercent } from './format';
-
-const formatTonnes = (kg: number) =>
-  `${(kg / 1000).toLocaleString('en-GB', { maximumFractionDigits: 1 })} t`;
+import {
+  formatGJ,
+  formatKelvin,
+  formatKm,
+  formatKmPerS,
+  formatMW,
+  formatPercent,
+  formatTonnes,
+} from './format';
 const formatMN = (newtons: number) =>
   `${(newtons / 1e6).toLocaleString('en-GB', { maximumFractionDigits: 2 })} MN`;
 

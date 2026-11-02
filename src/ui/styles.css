@@ -437,3 +437,113 @@ h3 {
 .result-time {
   color: var(--muted);
 }
+
+/* Menus: the main menu and free battle setup, centred on the screen. */
+.menu-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  height: 100%;
+  padding: 3rem;
+  overflow-y: auto;
+}
+
+.menu-title {
+  font-size: 3rem;
+  letter-spacing: 0.06em;
+}
+
+.menu-tagline {
+  margin: 0 0 1.5rem;
+  max-width: 60rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.menu-button {
+  min-width: 14rem;
+  padding: 0.6rem 1.6rem;
+  font-size: 1.2rem;
+  background: #16223a;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.menu-button:hover:not(:disabled),
+.menu-button:focus-visible {
+  border-color: var(--accent);
+}
+
+.menu-button--primary {
+  background: #1c3358;
+  border-color: var(--accent);
+}
+
+.menu-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.menu-note {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.setup-sides {
+  display: grid;
+  grid-template-columns: repeat(2, 44rem);
+  gap: 3rem;
+}
+
+.setup-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem 2rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-top: 6px solid var(--side-colour);
+  border-radius: 10px;
+}
+
+.setup-side__name {
+  margin: 0;
+  color: var(--side-colour);
+}
+
+.design-summary {
+  padding: 0.8rem 0;
+  border-top: 1px solid var(--panel-border);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.field select {
+  font: inherit;
+  font-size: 1.1rem;
+  color: var(--text);
+  background: #0a1120;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+}
+
+.setup-actions {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}

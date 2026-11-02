@@ -16,6 +16,10 @@ Run from the repository root after `npm ci` (and `npx playwright install firefox
 | `npm run e2e`       | End-to-end tests in Firefox (Playwright).                                              |
 | `npm run typecheck` | Type checks the app, and the headless core without DOM types.                          |
 
+## Playing
+
+`npm run dev` opens the main menu. Choose **Free battle**, pick a hand-made design for Blue and Red and whether the player or the computer commands each side, then **Start battle**. When the battle ends, the result screen leads back to setup with the same choices.
+
 ## Layout
 
 - `src/sim/` — the battle simulation: fixed time step, deterministic, SI units, no rendering or DOM (ADR-0001). Lint and a DOM-free type check enforce this. Computer captains command their sides here, through the same orders as the player.

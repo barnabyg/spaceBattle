@@ -40,15 +40,19 @@ export const outcomeDetails = (
 
 /**
  * A modal screen over the battle saying how it ended, with a button to go on. What going on
- * means is the caller's choice (for now, a fresh battle).
+ * means, and what the button says, is the caller's choice.
  */
-export const createResultScreen = (sides: readonly SideSetup[], onContinue: () => void) => {
+export const createResultScreen = (
+  sides: readonly SideSetup[],
+  onContinue: () => void,
+  continueLabel = 'Fight again',
+) => {
   const headline = el('h2', { className: 'result-headline' });
   const details = el('ul', { className: 'result-details' });
   const time = el('p', { className: 'result-time' });
   const button = el('button', {
     className: 'order-button result-continue',
-    text: 'Fight again',
+    text: continueLabel,
     attrs: { type: 'button' },
   });
   const element = el(

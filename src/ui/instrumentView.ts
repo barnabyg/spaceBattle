@@ -4,6 +4,7 @@ import type { ShipAppearance, SideObservation, SideSetup } from '../sim/battle';
 import { HULLS, hullLength } from '../sim/hull';
 import type { Quat } from '../sim/quaternion';
 import { distance, normalize, sub, type Vec3 } from '../sim/vector';
+import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { formatKm } from './format';
 import {
@@ -328,7 +329,8 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       controls.dispose();
       disposeShipModel(own.model);
       disposeShipModel(contact.model);
-      renderer.dispose();
+      disposeScene(scene);
+      disposeRenderer(renderer);
     },
   };
 };

@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
+import { startFreeBattle } from './freeBattle';
 
 const kmOf = (text: string | null) => Number((text ?? '').replace(/[^\d.]/g, ''));
 
 test('the game loads a battle and the ships move when time runs', async ({ page }) => {
-  await page.goto('/');
+  await startFreeBattle(page);
   const map = page.getByRole('region', { name: 'Tactical map' });
   await expect(map.locator('canvas')).toBeVisible();
   await expect(map.locator('[data-side="blue"]')).toBeVisible();
@@ -19,7 +20,7 @@ test('the game loads a battle and the ships move when time runs', async ({ page 
 });
 
 test('pause stops the battle clock', async ({ page }) => {
-  await page.goto('/');
+  await startFreeBattle(page);
   const clock = page.getByLabel('Battle time');
   await page.keyboard.press(' ');
   await expect(page.getByLabel('Time compression')).toHaveText('Paused');
@@ -32,7 +33,7 @@ test('pause stops the battle clock', async ({ page }) => {
 });
 
 test('a manoeuvre order shows its goal and planned burns on the map', async ({ page }) => {
-  await page.goto('/');
+  await startFreeBattle(page);
   await page.keyboard.press(' ');
   await page.getByLabel('Range km').fill('150000');
   await page.getByRole('button', { name: 'Hold', exact: true }).click();
@@ -47,7 +48,7 @@ test('a manoeuvre order shows its goal and planned burns on the map', async ({ p
 });
 
 test('power and radiator orders work while paused', async ({ page }) => {
-  await page.goto('/');
+  await startFreeBattle(page);
   await page.keyboard.press(' ');
   const priorities = page.getByRole('list', { name: 'Power priorities' }).getByRole('listitem');
   await expect(priorities.first()).toContainText('Shields');
@@ -61,7 +62,7 @@ test('power and radiator orders work while paused', async ({ page }) => {
 });
 
 test('the ship heats up during a burn', async ({ page }) => {
-  await page.goto('/');
+  await startFreeBattle(page);
   await page.keyboard.press(' ');
   const temperature = page.getByLabel('Temperature');
   await expect(temperature).toHaveText('300 K');
@@ -75,7 +76,7 @@ test('the ship heats up during a burn', async ({ page }) => {
 test('weapons orders work while paused and the damage panel shows each section', async ({
   page,
 }) => {
-  await page.goto('/');
+  await startFreeBattle(page);
   await page.keyboard.press(' ');
   const damage = page.getByRole('region', { name: 'Damage' });
   await expect(damage.getByLabel('Forward section')).toHaveText(
@@ -93,7 +94,7 @@ test('weapons orders work while paused and the damage panel shows each section',
 });
 
 test('End battle asks first, then shows the player forfeited', async ({ page }) => {
-  await page.goto('/');
+  await startFreeBattle(page);
   await page.getByRole('button', { name: 'End battle' }).click();
   const confirm = page.getByRole('dialog', { name: 'End battle' });
   await expect(confirm).toContainText('forfeit');

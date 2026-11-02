@@ -6,12 +6,14 @@ import { createInstrumentView } from './instrumentView';
 import { createOrdersPanel } from './ordersPanel';
 import { createResultScreen } from './resultScreen';
 import { createStatusPanel } from './statusPanel';
-import { createTacticalMap } from './tacticalMap';
+import { createTacticalMap, SIDE_COLOURS } from './tacticalMap';
 import { createTimeControls } from './timeControls';
 
 export interface BattleScreenOptions {
   /** Called when the captain goes on from the result screen; by default, reloads the page. */
   readonly onContinue?: () => void;
+  /** What the result screen's button says. */
+  readonly continueLabel?: string;
 }
 
 /** The battle as one side's captain sees it, running in real time. */
@@ -23,7 +25,11 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   const ordered = [viewer, ...battle.sides.filter((s) => s !== viewer)];
 
   const timeControls = createTimeControls(runner);
-  const map = createTacticalMap(ordered);
+  // Each side keeps its own colour, whichever side the viewer is.
+  const map = createTacticalMap(
+    ordered,
+    ordered.map((s) => SIDE_COLOURS[battle.sides.indexOf(s) % SIDE_COLOURS.length] ?? '#ffffff'),
+  );
   const instruments = createInstrumentView(ordered);
   const status = createStatusPanel();
   const damage = createDamagePanel(viewer.id);
@@ -37,6 +43,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
       (() => {
         location.reload();
       }),
+    options.continueLabel,
   );
 
   const element = el(
@@ -51,7 +58,19 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     ),
     map.element,
     instruments.element,
-    el('aside', { className: 'side-panel' }, status.element, damage.element, orders.element),
+    el(
+      'aside',
+      { className: 'side-panel' },
+      status.element,
+      damage.element,
+      // Only a player side takes orders from the screen; a computer side's captain gives its own.
+      viewer.commander === 'player'
+        ? orders.element
+        : el('p', {
+            className: 'order-state',
+            text: `${viewer.name} is commanded by the computer.`,
+          }),
+    ),
     endBattle.dialog,
     result.element,
   );
@@ -78,11 +97,13 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
 
   return {
     element,
+    /** Stops the battle's loop and frees its views, listeners and GPU resources. */
     dispose() {
       cancelAnimationFrame(frame);
       timeControls.dispose();
       map.dispose();
       instruments.dispose();
+      element.remove();
     },
   };
 };
