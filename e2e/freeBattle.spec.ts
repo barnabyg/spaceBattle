@@ -20,6 +20,11 @@ test('a free battle goes from the main menu through setup and the battle to its 
   await expect(blue.getByLabel('Hull size')).toHaveText('Cruiser');
   await expect(blue.getByLabel('Commander')).toHaveValue('player');
   await expect(red.getByLabel('Commander')).toHaveValue('computer');
+  // The player commands one side at most.
+  await red.getByLabel('Commander').selectOption('player');
+  await expect(blue.getByLabel('Commander')).toHaveValue('computer');
+  await blue.getByLabel('Commander').selectOption('player');
+  await expect(red.getByLabel('Commander')).toHaveValue('computer');
   await page.getByRole('button', { name: 'Start battle' }).click();
 
   // The battle, seen from the player's side, fighting the chosen designs.

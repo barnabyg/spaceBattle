@@ -67,6 +67,7 @@ const createSideChoice = (
 
   return {
     element,
+    commander,
     value: (): FreeBattleSide => ({
       designId: design.value,
       commander: commander.value === 'computer' ? 'computer' : 'player',
@@ -80,6 +81,18 @@ export const createSetupScreen = (initial: FreeBattleSetup, actions: SetupScreen
   const blue = createSideChoice(blueSide, SIDE_COLOURS[0], initial.sides[0]);
   const red = createSideChoice(redSide, SIDE_COLOURS[1], initial.sides[1]);
   const setup = (): FreeBattleSetup => ({ sides: [blue.value(), red.value()] });
+
+  // The player commands at most one side; the battle screen gives orders for one side only.
+  const keepOnePlayer = (chosen: typeof blue, other: typeof blue) => {
+    if (chosen.commander.value === 'player') other.commander.value = 'computer';
+  };
+  blue.commander.addEventListener('change', () => {
+    keepOnePlayer(blue, red);
+  });
+  red.commander.addEventListener('change', () => {
+    keepOnePlayer(red, blue);
+  });
+  keepOnePlayer(blue, red);
 
   const start = el('button', {
     className: 'menu-button menu-button--primary',
@@ -104,7 +117,7 @@ export const createSetupScreen = (initial: FreeBattleSetup, actions: SetupScreen
     el('h1', { className: 'menu-title', text: 'Free battle' }),
     el('p', {
       className: 'menu-tagline',
-      text: 'Choose a design for each side and who commands it. You see the battle from the first side you command, or from Blue if the computer commands both.',
+      text: 'Choose a design for each side and who commands it. You command at most one side and see the battle from it, or from Blue if the computer commands both.',
     }),
     el('div', { className: 'setup-sides' }, blue.element, red.element),
     el('div', { className: 'setup-actions' }, back, start),
