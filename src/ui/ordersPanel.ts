@@ -110,6 +110,18 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     next[rank] = b;
     next[other] = a;
     giveOrder({ type: 'power', priorities: next });
+    // Relabel at once, so a second click before the next frame acts on the new order.
+    priorities = next;
+    labelPriorityRows();
+  };
+  const labelPriorityRows = () => {
+    priorities.forEach((system, rank) => {
+      const row = priorityRows[rank];
+      if (!row) return;
+      row.name.textContent = SYSTEM_TEXT[system];
+      row.raise.setAttribute('aria-label', `Raise ${SYSTEM_TEXT[system]}`);
+      row.lower.setAttribute('aria-label', `Lower ${SYSTEM_TEXT[system]}`);
+    });
   };
   const priorityRows = POWER_SYSTEMS.map((_, rank) => {
     const name = el('span', { className: 'priority-name' });
@@ -291,14 +303,11 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       planState.textContent = manoeuvre ? describePlan(manoeuvre) : '';
 
       priorities = ship.power.priorities;
+      labelPriorityRows();
       priorities.forEach((system, rank) => {
-        const row = priorityRows[rank];
-        if (!row) return;
         const { demand, supplied } = ship.power.systems[system];
-        row.name.textContent = SYSTEM_TEXT[system];
-        row.share.textContent = `${formatMW(supplied)} of ${formatMW(demand)}`;
-        row.raise.setAttribute('aria-label', `Raise ${SYSTEM_TEXT[system]}`);
-        row.lower.setAttribute('aria-label', `Lower ${SYSTEM_TEXT[system]}`);
+        const row = priorityRows[rank];
+        if (row) row.share.textContent = `${formatMW(supplied)} of ${formatMW(demand)}`;
       });
       deployRadiators.classList.toggle('active', ship.heat.radiatorsDeployed);
       retractRadiators.classList.toggle('active', !ship.heat.radiatorsDeployed);
