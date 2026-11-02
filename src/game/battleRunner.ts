@@ -7,20 +7,23 @@ export const TIME_COMPRESSIONS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000] as c
 export const TEST_TIME_COMPRESSIONS = [...TIME_COMPRESSIONS, 2000, 5000, 10_000] as const;
 export type TimeCompression = (typeof TEST_TIME_COMPRESSIONS)[number];
 
-/** Events that drop time compression back to real time, so the captain can respond. */
-const SIGNIFICANT_EVENTS: ReadonlySet<BattleEvent['type']> = new Set([
-  'hit',
-  'impact',
-  'launch',
-  'intercept',
-  'miss',
-  'detonation',
-  'magazine-explosion',
-  'armour-breached',
-  'component-lost',
-  'structural-failure',
-  'battle-ended',
-]);
+/**
+ * Whether each kind of event drops time compression back to real time, so the captain can
+ * respond. A record, so a new kind of event cannot be added without deciding.
+ */
+const SIGNIFICANT: Readonly<Record<BattleEvent['type'], boolean>> = {
+  hit: true,
+  impact: true,
+  launch: true,
+  intercept: true,
+  miss: true,
+  detonation: true,
+  'magazine-explosion': true,
+  'armour-breached': true,
+  'component-lost': true,
+  'structural-failure': true,
+  'battle-ended': true,
+};
 
 /** Real time longer than this between updates (e.g. a background tab) is not caught up. */
 const MAX_REAL_DELTA = 0.25;
@@ -106,7 +109,7 @@ export const createBattleRunner = (
       for (let i = 0; i < steps; i++) {
         const happened = battle.step();
         events.push(...happened);
-        if (happened.some((event) => SIGNIFICANT_EVENTS.has(event.type))) {
+        if (happened.some((event) => SIGNIFICANT[event.type])) {
           compressionIndex = 0;
           owed = 0;
           break;
