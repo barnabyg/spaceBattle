@@ -283,7 +283,7 @@ export const createTacticalMap = (
           ownMarker,
           own,
           centre.z,
-          `${sideName(own.sideId)} · ${formatKmPerS(length(own.velocity))}`,
+          `${sideName(own.sideId)} · ${formatKmPerS(length(own.velocity))} · Δv ${formatKmPerS(own.deltaV)}`,
           observation.time,
         );
       }
