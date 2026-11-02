@@ -10,7 +10,7 @@ import type { Random } from './random';
 import { firstHit, shipShape, type ShapePart } from './shape';
 import type { ShipState } from './ship';
 import { TIME_STEP } from './time';
-import { normalize, scale, sub } from './vector';
+import { normalize, scale, sub, type Vec3 } from './vector';
 import { spotRadius, type Beam } from './weapons';
 
 /**
@@ -46,6 +46,8 @@ export interface Strike {
   readonly intensity: number;
   /** m */
   readonly spotRadius: number;
+  /** Where on the part the beam lands, in the ship's body frame, m. */
+  readonly point: Vec3;
 }
 
 /** The part of the hull's structure mass in a section, by its share of the volume, kg. */
@@ -190,7 +192,8 @@ export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike 
     const mass = componentSlots(ship.design)[slot]?.component.mass ?? 1;
     damageComponent(ship, slot, energy / (mass * COMPONENT_WRECK_ENERGY), ctx);
   }
-  return { part: hit.part, power, intensity, spotRadius: radius };
+  const point = scale(body, hit.distance - RAY_START);
+  return { part: hit.part, power, intensity, spotRadius: radius, point };
 };
 
 /** Above the damage temperature every component loses integrity, faster the hotter it is. */

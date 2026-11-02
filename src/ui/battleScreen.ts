@@ -2,6 +2,7 @@ import type { BattleRunner } from '../game/battleRunner';
 import { el } from './el';
 import { createDamagePanel } from './damagePanel';
 import { createEndBattle } from './endBattle';
+import { createInstrumentView } from './instrumentView';
 import { createOrdersPanel } from './ordersPanel';
 import { createResultScreen } from './resultScreen';
 import { createStatusPanel } from './statusPanel';
@@ -23,6 +24,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
 
   const timeControls = createTimeControls(runner);
   const map = createTacticalMap(ordered);
+  const instruments = createInstrumentView(ordered);
   const status = createStatusPanel();
   const damage = createDamagePanel(viewer.id);
   const orders = createOrdersPanel((order) => {
@@ -48,6 +50,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
       endBattle.button,
     ),
     map.element,
+    instruments.element,
     el('aside', { className: 'side-panel' }, status.element, damage.element, orders.element),
     endBattle.dialog,
     result.element,
@@ -67,6 +70,8 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     map.render();
     endBattle.update(observation.outcome !== null);
     if (observation.outcome) result.show(observation.outcome);
+    instruments.update(observation);
+    instruments.render();
     frame = requestAnimationFrame(tick);
   };
   frame = requestAnimationFrame(tick);
@@ -77,6 +82,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
       cancelAnimationFrame(frame);
       timeControls.dispose();
       map.dispose();
+      instruments.dispose();
     },
   };
 };

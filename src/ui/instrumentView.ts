@@ -1,0 +1,334 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { ShipAppearance, SideObservation, SideSetup } from '../sim/battle';
+import { HULLS, hullLength } from '../sim/hull';
+import type { Quat } from '../sim/quaternion';
+import { distance, normalize, sub, type Vec3 } from '../sim/vector';
+import { el } from './el';
+import { formatKm } from './format';
+import {
+  createShipModel,
+  disposeShipModel,
+  shipModelNeedsRebuild,
+  softGlowTexture,
+  updateShipModel,
+} from './shipModel';
+
+/** The sun, far off in this direction (world frame, z up as on the tactical map). */
+const SUN_DIRECTION = new THREE.Vector3(0.55, -0.35, 0.75).normalize();
+/** The sky (stars and sun) sits on a sphere this far from the camera, m. */
+const SKY_RADIUS = 400_000;
+const STAR_COUNT = 3_500;
+/** Beam landings shown on each ship at once. */
+const MAX_SPOTS = 4;
+const HIT_COLOUR = '#fff1c8';
+/** The contact's telescope view frames it at this many ship lengths, unless zoomed. */
+const TELESCOPE_DISTANCE = 1.8;
+const FOV = 35;
+/** Layer 0 holds the sky, which both views see; each ship has a layer of its own. */
+const SKY_LAYER = 0;
+
+/** A small deterministic generator, so the star field is the same every time. */
+const starRandom = (() => {
+  let state = 0x2f6b1d;
+  return () => {
+    state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+    return state / 2 ** 32;
+  };
+})();
+
+const createSky = () => {
+  const sky = new THREE.Group();
+  const positions = new Float32Array(STAR_COUNT * 3);
+  const colours = new Float32Array(STAR_COUNT * 3);
+  for (let i = 0; i < STAR_COUNT; i++) {
+    // Uniform over the sphere: z uniform in [−1, 1], longitude uniform.
+    const z = 2 * starRandom() - 1;
+    const longitude = 2 * Math.PI * starRandom();
+    const r = Math.sqrt(1 - z * z);
+    positions.set([r * Math.cos(longitude), r * Math.sin(longitude), z], i * 3);
+    // Most stars faint, a few bright; a slight spread of colour from blue-white to amber.
+    const brightness = 0.15 + 0.85 * starRandom() ** 4;
+    const warmth = starRandom() - 0.5;
+    colours.set(
+      [brightness * (1 + 0.15 * warmth), brightness, brightness * (1 - 0.25 * warmth)],
+      i * 3,
+    );
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+  const stars = new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({
+      size: 2,
+      sizeAttenuation: false,
+      vertexColors: true,
+      depthWrite: false,
+    }),
+  );
+  const sun = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: softGlowTexture(),
+      color: '#fff6e6',
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  sun.position.copy(SUN_DIRECTION);
+  sun.scale.setScalar(0.06);
+  sky.add(stars, sun);
+  sky.scale.setScalar(SKY_RADIUS);
+  sky.renderOrder = -1;
+  sky.traverse((object) => {
+    object.layers.set(SKY_LAYER);
+    object.renderOrder = -1;
+  });
+  return sky;
+};
+
+/** One ship as the view draws it, alone on its own layer at the origin. */
+interface ShipView {
+  readonly side: SideSetup;
+  readonly layer: number;
+  readonly length: number;
+  /** Turned to the ship's orientation; holds its model and hit spots. */
+  readonly anchor: THREE.Group;
+  model: THREE.Group;
+  readonly spots: readonly THREE.Sprite[];
+  readonly hitLight: THREE.PointLight;
+}
+
+const setLayer = (object: THREE.Object3D, layer: number) => {
+  object.traverse((o) => {
+    o.layers.set(layer);
+  });
+};
+
+const createShipView = (scene: THREE.Scene, side: SideSetup, layer: number): ShipView => {
+  const anchor = new THREE.Group();
+  const model = createShipModel(side.design);
+  const spots = Array.from({ length: MAX_SPOTS }, () => {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: softGlowTexture(),
+        color: HIT_COLOUR,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    sprite.visible = false;
+    return sprite;
+  });
+  // Always present, dark when nothing lands, so the number of lights (and shaders) never changes.
+  const hitLight = new THREE.PointLight('#ffcf8a', 0, 0, 2);
+  anchor.add(model, ...spots, hitLight);
+  setLayer(anchor, layer);
+  scene.add(anchor);
+  return {
+    side,
+    layer,
+    length: hullLength(HULLS[side.design.hullSize]),
+    anchor,
+    model,
+    spots,
+    hitLight,
+  };
+};
+
+const toQuaternion = (q: Quat, target: THREE.Quaternion) => target.set(q.x, q.y, q.z, q.w);
+
+const outward = new THREE.Vector3();
+
+/** Brings a ship's model, orientation and hit spots up to date with what is observed. */
+const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance) => {
+  toQuaternion(orientation, view.anchor.quaternion);
+  if (shipModelNeedsRebuild(view.model, look)) {
+    view.anchor.remove(view.model);
+    disposeShipModel(view.model);
+    view.model = createShipModel(view.side.design, look);
+    setLayer(view.model, view.layer);
+    view.anchor.add(view.model);
+  } else {
+    updateShipModel(view.model, look);
+  }
+
+  // Lasers are invisible; only the spot where a beam lands glows, brighter the more intense.
+  let brightest = 0;
+  view.spots.forEach((sprite, i) => {
+    const landing = look.beamsLanding[i];
+    sprite.visible = landing !== undefined;
+    if (!landing) return;
+    const intensity = landing.power / (Math.PI * landing.spotRadius ** 2);
+    const strength = Math.min(1, Math.max(0.35, (Math.log10(intensity) - 5.5) / 2.5));
+    // The landing point lies on the line of fire through the centre of mass, on the side the
+    // beam came from, so outward from the centre of mass is back towards the attacker.
+    outward.set(landing.point.x, landing.point.y, landing.point.z).normalize();
+    // Half a glow out from the surface, so the hull hides it only when the spot faces away.
+    const size = Math.max(4, 5 * landing.spotRadius);
+    sprite.position
+      .set(landing.point.x, landing.point.y, landing.point.z)
+      .addScaledVector(outward, size / 2);
+    sprite.scale.setScalar(size * (0.85 + 0.3 * Math.random()));
+    sprite.material.opacity = strength;
+    if (strength > brightest) {
+      brightest = strength;
+      view.hitLight.position.copy(sprite.position).addScaledVector(outward, 3);
+    }
+  });
+  view.hitLight.intensity = 600 * brightest;
+};
+
+const lineOfSight = new THREE.Vector3();
+
+/**
+ * The instrument view: the battle as the ship's telescopes see it, beside the tactical map. Ships
+ * tens of metres long, tens of thousands of kilometres apart, cannot share one frame, so it is
+ * split: the own ship above, orbited freely, and the contact below as the telescope sees it,
+ * along the line of sight from the own ship. Both ships are drawn in full until sensors limit
+ * what can be made out of the contact (a later phase). One renderer draws both halves.
+ */
+export const createInstrumentView = (sides: readonly SideSetup[]) => {
+  const ownSide = sides[0];
+  const contactSide = sides[1];
+  if (!ownSide || !contactSide) throw new Error('The instrument view needs two sides');
+
+  const caption = (text: string) => el('span', { className: 'instrument-view__caption', text });
+  const ownCaption = caption(`${ownSide.name} · ${ownSide.design.name}`);
+  const contactCaption = caption(`${contactSide.name} · ${contactSide.design.name}`);
+  const ownPane = el(
+    'div',
+    {
+      className: 'instrument-view__pane instrument-view__pane--own',
+      attrs: { 'aria-label': 'Own ship' },
+    },
+    ownCaption,
+    el('span', { className: 'instrument-view__hint', text: 'Drag to orbit · wheel to zoom' }),
+  );
+  const contactPane = el(
+    'div',
+    {
+      className: 'instrument-view__pane instrument-view__pane--contact',
+      attrs: { 'aria-label': 'Contact through telescope' },
+    },
+    contactCaption,
+    el('span', { className: 'instrument-view__hint', text: 'Telescope · wheel to zoom' }),
+  );
+  const element = el(
+    'section',
+    { className: 'instrument-view', attrs: { 'aria-label': 'Instrument view' } },
+    ownPane,
+    contactPane,
+  );
+
+  // Pixel ratio 1 and no shadows keep two views cheap at 4K.
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(1);
+  renderer.setScissorTest(true);
+  element.prepend(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#000000');
+  const sky = createSky();
+  scene.add(sky);
+  const sunlight = new THREE.DirectionalLight('#fff4e0', 3);
+  sunlight.position.copy(SUN_DIRECTION).multiplyScalar(1_000);
+  const ambient = new THREE.AmbientLight('#8090b0', 0.3);
+  sunlight.layers.enableAll();
+  ambient.layers.enableAll();
+  scene.add(sunlight, ambient);
+
+  const own = createShipView(scene, ownSide, 1);
+  const contact = createShipView(scene, contactSide, 2);
+
+  const camera = (view: ShipView) => {
+    const c = new THREE.PerspectiveCamera(FOV, 1, 0.5, SKY_RADIUS * 2);
+    c.up.set(0, 0, 1);
+    c.layers.enable(view.layer);
+    return c;
+  };
+  const ownCamera = camera(own);
+  ownCamera.position.set(-1.2, -1.6, 0.8).multiplyScalar(own.length);
+  const controls = new OrbitControls(ownCamera, ownPane);
+  controls.enablePan = false;
+  controls.enableDamping = true;
+  controls.minDistance = own.length * 0.4;
+  controls.maxDistance = own.length * 12;
+
+  const contactCamera = camera(contact);
+  let telescopeZoom = TELESCOPE_DISTANCE;
+  const onWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    telescopeZoom = Math.min(12, Math.max(0.9, telescopeZoom * Math.exp(event.deltaY * 0.001)));
+  };
+  contactPane.addEventListener('wheel', onWheel, { passive: false });
+
+  let width = 0;
+  let height = 0;
+  const resize = () => {
+    width = element.clientWidth;
+    height = element.clientHeight;
+    if (width === 0 || height === 0) return;
+    renderer.setSize(width, height);
+    const half = Math.floor(height / 2);
+    ownCamera.aspect = width / half;
+    ownCamera.updateProjectionMatrix();
+    contactCamera.aspect = width / (height - half);
+    contactCamera.updateProjectionMatrix();
+  };
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(element);
+
+  let ownPosition: Vec3 | null = null;
+  let contactPosition: Vec3 | null = null;
+
+  /** Draws one half: the sky around the camera, then the ship on the camera's layer. */
+  const renderView = (view: THREE.PerspectiveCamera, y: number, h: number) => {
+    sky.position.copy(view.position);
+    renderer.setViewport(0, y, width, h);
+    renderer.setScissor(0, y, width, h);
+    renderer.render(scene, view);
+  };
+
+  return {
+    element,
+    update(observation: SideObservation) {
+      const ship = observation.ownShip;
+      updateShipView(own, ship.orientation, ship.appearance);
+      ownPosition = ship.position;
+      const seen = observation.contacts.find((c) => c.sideId === contactSide.id);
+      contact.anchor.visible = seen !== undefined;
+      contactPosition = seen?.position ?? null;
+      if (seen) {
+        updateShipView(contact, seen.orientation, seen.appearance);
+        contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${formatKm(distance(seen.position, ship.position))}`;
+      }
+    },
+    render() {
+      if (width === 0 || height === 0) return;
+      controls.update();
+      if (ownPosition && contactPosition) {
+        // The telescope looks from the own ship, so the contact is seen from that direction.
+        const towardsOwn = normalize(sub(ownPosition, contactPosition));
+        lineOfSight.set(towardsOwn.x, towardsOwn.y, towardsOwn.z);
+        contactCamera.position.copy(lineOfSight).multiplyScalar(telescopeZoom * contact.length);
+        // Keep the map's z up, unless looking straight along it.
+        if (Math.abs(lineOfSight.z) > 0.999) contactCamera.up.set(0, 1, 0);
+        else contactCamera.up.set(0, 0, 1);
+        contactCamera.lookAt(0, 0, 0);
+      }
+      const half = Math.floor(height / 2);
+      // Viewports count from the bottom: the own ship takes the top half.
+      renderView(ownCamera, height - half, half);
+      renderView(contactCamera, 0, height - half);
+    },
+    dispose() {
+      resizeObserver.disconnect();
+      contactPane.removeEventListener('wheel', onWheel);
+      controls.dispose();
+      disposeShipModel(own.model);
+      disposeShipModel(contact.model);
+      renderer.dispose();
+    },
+  };
+};

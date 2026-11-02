@@ -1,5 +1,5 @@
 import { componentSlots } from './components';
-import { overheat, strike, type DamageContext } from './damage';
+import { intactShape, overheat, strike, type DamageContext } from './damage';
 import type { ArmourType, ComponentType, Design, SectionKind } from './design';
 import { involves, type BattleEvent, type HitEvent } from './events';
 import {
@@ -23,6 +23,7 @@ import {
 import { endedBy, judge, lossOf, type BattleOutcome } from './outcome';
 import { IDENTITY, rotate, type Quat } from './quaternion';
 import { createRandom } from './random';
+import type { ShapePart } from './shape';
 import {
   burn,
   createShip,
@@ -159,6 +160,31 @@ export interface WeaponsObservation {
   readonly lastHit: HitEvent | null;
 }
 
+/** A beam landing on a ship. */
+export interface BeamLanding {
+  /** Where it lands, in the ship's body frame (centre of mass at the origin, nose along +x), m. */
+  readonly point: Vec3;
+  /** Beam power landing, W. */
+  readonly power: number;
+  /** m */
+  readonly spotRadius: number;
+}
+
+/** How a ship looks from outside: what an instrument view needs to draw it. */
+export interface ShipAppearance {
+  /** kg; with the design it sets the centre of mass, the origin of the body frame. */
+  readonly propellantMass: number;
+  readonly radiatorsDeployed: boolean;
+  /** The ship's temperature, which its radiators glow with, K. */
+  readonly temperature: number;
+  /** Drive thrust applied in the last step, N. */
+  readonly thrust: number;
+  /** The parts still there, in the body frame: sections not failed, mounts not wrecked. */
+  readonly parts: readonly ShapePart[];
+  /** Where beams landed on the ship in the last step. */
+  readonly beamsLanding: readonly BeamLanding[];
+}
+
 /** A side's own ship, which it knows in full. */
 export interface OwnShipObservation {
   readonly sideId: SideId;
@@ -191,6 +217,7 @@ export interface OwnShipObservation {
   /** From nose to tail. */
   readonly sections: readonly SectionObservation[];
   readonly weapons: WeaponsObservation;
+  readonly appearance: ShipAppearance;
 }
 
 /** An enemy ship as a side perceives it; its position, motion and orientation are known. */
@@ -199,6 +226,8 @@ export interface ContactObservation {
   readonly position: Vec3;
   readonly velocity: Vec3;
   readonly orientation: Quat;
+  /** Full detail until sensors limit what a side can make out (a later phase). */
+  readonly appearance: ShipAppearance;
 }
 
 export interface SideObservation {
@@ -242,6 +271,8 @@ export interface Battle {
 interface Combatant {
   readonly side: SideSetup;
   readonly ship: ShipState;
+  /** Beams that landed on the ship in the last step. */
+  beamsLanding: BeamLanding[];
 }
 
 const checkOrder = (order: Order): Order => {
@@ -353,6 +384,15 @@ const observeWeapons = (ship: ShipState): WeaponsObservation => {
   };
 };
 
+const observeAppearance = ({ ship, beamsLanding }: Combatant): ShipAppearance => ({
+  propellantMass: ship.propellantMass,
+  radiatorsDeployed: ship.radiatorsDeployed,
+  temperature: temperatureOf(ship),
+  thrust: ship.thrust,
+  parts: intactShape(ship),
+  beamsLanding,
+});
+
 export const createBattle = (setup: BattleSetup): Battle => {
   if (setup.sides.length !== setup.scenario.starts.length) {
     throw new Error('A scenario needs one start for each side');
@@ -363,6 +403,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
     return {
       side,
       ship: createShip(side.design, start.position, start.velocity, start.orientation ?? IDENTITY),
+      beamsLanding: [],
     };
   });
   let steps = 0;
@@ -416,6 +457,10 @@ export const createBattle = (setup: BattleSetup): Battle => {
     const target = combatantOf(beam.target);
     const attacker = combatantOf(beam.attacker).ship;
     const landed = strike(target.ship, beam, { ...ctx, side: beam.target });
+    if (landed) {
+      const { point, power, spotRadius } = landed;
+      target.beamsLanding.push({ point, power, spotRadius });
+    }
     const part = landed
       ? landed.part.mount === null
         ? landed.part.section
@@ -496,6 +541,9 @@ export const createBattle = (setup: BattleSetup): Battle => {
     const events: BattleEvent[] = [];
     const arriving = beams.filter((b) => b.arrival <= time + 1e-9);
     beams = beams.filter((b) => b.arrival > time + 1e-9);
+    combatants.forEach((c) => {
+      if (c.beamsLanding.length > 0) c.beamsLanding = [];
+    });
     for (const beam of arriving) resolveBeam(beam, { time, random, events });
     combatants.forEach(({ side, ship }) => {
       overheat(ship, TIME_STEP, { side: side.id, time, random, events });
@@ -587,14 +635,16 @@ export const createBattle = (setup: BattleSetup): Battle => {
           energyLedger: ship.ledger,
           sections: observeSections(ship),
           weapons: observeWeapons(ship),
+          appearance: observeAppearance(own),
         },
         contacts: combatants
           .filter((c) => c !== own)
-          .map(({ side, ship: s }) => ({
-            sideId: side.id,
-            position: s.position,
-            velocity: s.velocity,
-            orientation: s.orientation,
+          .map((c) => ({
+            sideId: c.side.id,
+            position: c.ship.position,
+            velocity: c.ship.velocity,
+            orientation: c.ship.orientation,
+            appearance: observeAppearance(c),
           })),
         events: [...(logs.get(sideId) ?? [])],
         outcome,
