@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { handMadeDesign } from '../data/designs';
 import { createBattle, type Battle, type BattleEvent } from '../sim/battle';
 import { IDENTITY } from '../sim/quaternion';
-import { armedTestDesign, duelSetup, testDesign, testSetup } from '../sim/testing';
-import { createBattleRunner, TIME_COMPRESSIONS } from './battleRunner';
+import { armedTestDesign, duelSetup, testDesign, testSetup, testSides } from '../sim/testing';
+import { createBattleRunner, TIME_COMPRESSIONS, type TimeCompression } from './battleRunner';
 
 const runner = () => createBattleRunner(createBattle(testSetup()));
 
@@ -110,6 +111,25 @@ describe('battle runner', () => {
     expect(events.at(-1)?.type).toBe('battle-ended');
     expect(r.timeCompression).toBe(1);
     expect(battle.time).toBe(battle.outcome?.time);
+  });
+
+  it('lets computer captains command their sides, the same at any time compression', () => {
+    const run = (compression: TimeCompression, updates: number) => {
+      const sides = testSides([handMadeDesign('lance'), handMadeDesign('bastion')]);
+      const r = createBattleRunner(createBattle(testSetup({ sides })));
+      r.setTimeCompression(compression);
+      for (let i = 0; i < updates; i++) r.update(0.1);
+      return r.battle;
+    };
+    const realTime = run(1, 600);
+    const compressed = run(100, 6);
+    expect(compressed.time).toBe(realTime.time);
+    // Red is the computer's: it targets blue and manoeuvres. Blue waits for the player's orders.
+    const red = realTime.observe('red').ownShip;
+    expect(red.weapons).toMatchObject({ target: 'blue', mode: 'fire-freely' });
+    expect(red.manoeuvre).not.toBeNull();
+    expect(realTime.observe('blue').ownShip.weapons.target).toBeNull();
+    expect(compressed.observe('red')).toStrictEqual(realTime.observe('red'));
   });
 
   it('does not try to catch up a long gap in real time', () => {

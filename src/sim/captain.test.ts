@@ -1,0 +1,224 @@
+import { describe, expect, it } from 'vitest';
+import { handMadeDesign } from '../data/designs';
+import { OPENING_PASS } from '../data/scenarios';
+import {
+  createBattle,
+  type Battle,
+  type BattleEvent,
+  type BattleSetup,
+  type SideObservation,
+} from './battle';
+import { createComputerCaptain } from './captain';
+import { DECISION_INTERVAL, runBattle, withComputerCaptains } from './command';
+import { designComponentsOfType, type Design } from './design';
+import type { Order } from './orders';
+import { duelSetup } from './testing';
+import { distance } from './vector';
+import { effectiveRange } from './weapons';
+
+const KM = 1000;
+const HOUR = 3_600;
+
+const reachOf = (design: Design) =>
+  Math.max(...designComponentsOfType(design, 'laser').map(effectiveRange));
+const LANCE_REACH = reachOf(handMadeDesign('lance'));
+const BASTION_REACH = reachOf(handMadeDesign('bastion'));
+
+/** Two hand-made designs at rest `range` apart, both commanded by the computer. */
+const computerDuel = (blue: string, red: string, range: number): BattleSetup => {
+  const setup = duelSetup(handMadeDesign(blue), handMadeDesign(red), range);
+  return { ...setup, sides: setup.sides.map((side) => ({ ...side, commander: 'computer' })) };
+};
+
+/** A player who gives no orders in blue's `blue`, against the computer in `red`. */
+const againstIdlePlayer = (blue: Design, red: Design, range: number): Battle =>
+  withComputerCaptains(createBattle(duelSetup(blue, red, range)));
+
+/** Runs the battle until it ends, failing if it has not within `limit` seconds. */
+const fightToTheEnd = (battle: Battle, limit: number): BattleEvent[] => {
+  const events: BattleEvent[] = [];
+  while (!battle.outcome) {
+    if (battle.time > limit) throw new Error('The battle never ended');
+    events.push(...battle.advance(60));
+  }
+  return events;
+};
+
+/** A copy of an observation that throws if anything tries to change it. */
+const frozen = <T>(value: T): T => {
+  if (typeof value === 'object' && value !== null) {
+    Object.values(value).forEach(frozen);
+    Object.freeze(value);
+  }
+  return value;
+};
+
+const range = (observation: SideObservation) =>
+  distance(observation.ownShip.position, observation.contacts[0]?.position ?? { x: 0, y: 0, z: 0 });
+
+/** Every computer side's battle has been decided: one lost by destruction or disablement. */
+const expectDecided = (battle: Battle) => {
+  const outcome = battle.outcome;
+  expect(outcome).not.toBeNull();
+  const losses = outcome?.sides.flatMap((side) => (side.loss ? [side.loss.result] : [])) ?? [];
+  expect(losses.length).toBeGreaterThan(0);
+  expect(losses.every((result) => result === 'destroyed' || result === 'disabled')).toBe(true);
+};
+
+describe('computer captain', () => {
+  it('commands its ship only through orders, from what its side observes', () => {
+    const setup = computerDuel('lance', 'bastion', 170_000 * KM);
+    const duration = 1_200;
+    const commanded = runBattle(setup, { maxTime: duration });
+
+    // The same battle with each captain handed a frozen copy of its side's observation, and the
+    // orders it returns given by hand: the battle accepts each one, and it plays out the same.
+    const battle = createBattle(setup);
+    const captains = setup.sides.map((side) => createComputerCaptain(side.id, setup.sides));
+    const given = new Set<Order['type']>();
+    while (battle.time < duration - 1e-9 && !battle.outcome) {
+      for (const captain of captains) {
+        for (const order of captain.decide(frozen(structuredClone(battle.observe(captain.side))))) {
+          battle.giveOrder(captain.side, order);
+          given.add(order.type);
+        }
+      }
+      battle.advance(DECISION_INTERVAL);
+    }
+
+    expect(given).toEqual(new Set(['weapons', 'manoeuvre', 'radiators', 'power']));
+    expect(battle.time).toBe(commanded.time);
+    expect(battle.observe('blue')).toStrictEqual(commanded.observe('blue'));
+    expect(battle.observe('red')).toStrictEqual(commanded.observe('red'));
+  });
+
+  it('leaves a player side to the player', () => {
+    const battle = againstIdlePlayer(handMadeDesign('lance'), handMadeDesign('bastion'), 1e5 * KM);
+    battle.advance(60);
+    const player = battle.observe('blue').ownShip;
+    expect(player.manoeuvre).toBeNull();
+    expect(player.weapons).toMatchObject({ target: null, mode: 'hold-fire' });
+    expect(battle.observe('red').ownShip.weapons).toMatchObject({
+      target: 'blue',
+      mode: 'fire-freely',
+    });
+  });
+
+  it('outranging its enemy, holds just inside its own reach and wears the enemy down', () => {
+    const battle = againstIdlePlayer(
+      handMadeDesign('bastion'),
+      handMadeDesign('lance'),
+      200_000 * KM,
+    );
+    battle.advance(10);
+    const order = battle.observe('red').ownShip.manoeuvre;
+    expect(order?.goal).toBe('hold');
+    expect(order?.range).toBeGreaterThan(BASTION_REACH);
+    expect(order?.range).toBeLessThan(LANCE_REACH);
+
+    const events = fightToTheEnd(battle, 12 * HOUR);
+    expect(battle.outcome?.winner).toBe('red');
+    const hits = events.filter((e) => e.type === 'hit' && e.attacker === 'red');
+    expect(hits.length).toBeGreaterThan(0);
+    // Every hit landed from beyond the reach of the enemy's lasers.
+    for (const hit of hits) expect(hit.type === 'hit' && hit.range).toBeGreaterThan(BASTION_REACH);
+  }, 20_000); // Simulates hours of battle; takes a few seconds.
+
+  it('outranged, closes in to fight, with the drive first on the way and the weapons first there', () => {
+    const battle = againstIdlePlayer(
+      handMadeDesign('lance'),
+      handMadeDesign('bastion'),
+      200_000 * KM,
+    );
+    battle.advance(10);
+    let red = battle.observe('red').ownShip;
+    expect(red.manoeuvre?.goal).toBe('close');
+    expect(red.manoeuvre?.range).toBeLessThan(BASTION_REACH);
+    expect(red.power.priorities[0]).toBe('drive');
+    expect(red.heat.radiatorsDeployed).toBe(false);
+
+    while (!red.weapons.lasers.some((laser) => laser.firing)) {
+      if (battle.time > 12 * HOUR) throw new Error('Red never fired');
+      battle.advance(60);
+      red = battle.observe('red').ownShip;
+    }
+    expect(red.power.priorities[0]).toBe('weapons');
+    expect(red.heat.radiatorsDeployed).toBe(true);
+
+    fightToTheEnd(battle, 12 * HOUR);
+    expect(battle.outcome?.winner).toBe('red');
+    expect(range(battle.observe('red'))).toBeLessThan(BASTION_REACH);
+  }, 20_000); // Simulates hours of battle; takes a few seconds.
+
+  it('deploys its radiators when it runs hot, and retracts them once cool', () => {
+    const setup = duelSetup(handMadeDesign('lance'), handMadeDesign('bastion'), 300_000 * KM);
+    const observation = createBattle(setup).observe('red');
+    const withHeat = (temperature: number, radiatorsDeployed: boolean): SideObservation => ({
+      ...observation,
+      ownShip: {
+        ...observation.ownShip,
+        heat: { ...observation.ownShip.heat, temperature, radiatorsDeployed },
+      },
+    });
+    const radiators = (temperature: number, deployed: boolean) =>
+      createComputerCaptain('red', setup.sides)
+        .decide(withHeat(temperature, deployed))
+        .find((order) => order.type === 'radiators');
+
+    expect(radiators(300, false)).toBeUndefined();
+    expect(radiators(800, false)).toEqual({ type: 'radiators', deployed: true });
+    // Out of reach, the radiators stay out until the ship has cooled well down.
+    expect(radiators(600, true)).toBeUndefined();
+    expect(radiators(350, true)).toEqual({ type: 'radiators', deployed: false });
+  });
+
+  it('closes in when nothing has happened for a while', () => {
+    // Without propellant neither ship can move, so the Lance cannot reach its standoff range.
+    const stranded = (id: string): Design => ({ ...handMadeDesign(id), propellantMass: 0 });
+    const setup = duelSetup(stranded('lance'), stranded('bastion'), 250_000 * KM);
+    const battle = runBattle(
+      { ...setup, sides: setup.sides.map((side) => ({ ...side, commander: 'computer' })) },
+      { maxTime: 60 },
+    );
+    expect(battle.observe('blue').ownShip.manoeuvre?.goal).toBe('hold');
+    battle.advance(HOUR);
+    const order = battle.observe('blue').ownShip.manoeuvre;
+    expect(order?.goal).toBe('close');
+    expect(order?.range).toBeLessThan(BASTION_REACH);
+  });
+});
+
+describe('two computer captains', () => {
+  it('fight the Lance and the Bastion to a result from the opening pass', () => {
+    const battle = runBattle(
+      {
+        seed: 7,
+        scenario: OPENING_PASS,
+        sides: [
+          { id: 'blue', name: 'Blue', commander: 'computer', design: handMadeDesign('lance') },
+          { id: 'red', name: 'Red', commander: 'computer', design: handMadeDesign('bastion') },
+        ],
+      },
+      { maxTime: 24 * HOUR },
+    );
+    expectDecided(battle);
+  }, 30_000); // Simulates most of a day of battle; takes a few seconds.
+
+  it.each(['lance', 'bastion'])(
+    'fight %s against its own design to a result',
+    (design) => {
+      const battle = runBattle(computerDuel(design, design, 200_000 * KM), { maxTime: 24 * HOUR });
+      expectDecided(battle);
+    },
+    30_000,
+  );
+
+  it('fight the same battle every time from the same seed', () => {
+    const setup = computerDuel('bastion', 'lance', 140_000 * KM);
+    const first = runBattle(setup, { maxTime: 6 * HOUR });
+    const second = runBattle(setup, { maxTime: 6 * HOUR });
+    expectDecided(first);
+    expect(second.outcome).toStrictEqual(first.outcome);
+    expect(second.observe('blue')).toStrictEqual(first.observe('blue'));
+  }, 20_000);
+});

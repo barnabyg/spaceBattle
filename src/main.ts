@@ -14,6 +14,4 @@ const sides: SideSetup[] = [
 ];
 
 const battle = createBattle({ seed: Date.now() >>> 0, scenario: OPENING_PASS, sides });
-// Until the computer captain commands its ship (#24), it simply fires freely at the player.
-battle.giveOrder('red', { type: 'weapons', target: 'blue', mode: 'fire-freely' });
 app.append(createBattleScreen(createBattleRunner(battle)).element);

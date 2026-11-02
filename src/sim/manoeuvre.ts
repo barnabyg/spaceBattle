@@ -12,7 +12,7 @@ import { dot, length, normalize, scale, sub, ZERO, type Vec3 } from './vector';
 
 /** Fraction of the drive's acceleration the autopilot plans to brake with, leaving slack. */
 const BRAKING_MARGIN = 0.5;
-/** The fastest the autopilot closes or opens the range, as a fraction of the delta-v left. */
+/** The speed the autopilot works up to towards a range, as a fraction of the delta-v left. */
 const CRUISE_FRACTION = 0.1;
 /** Within this of the ordered range the autopilot only stops relative motion, m. */
 const RANGE_TOLERANCE = 1_000;
@@ -92,20 +92,24 @@ const fullAvailableThrottle = (ship: ShipState): number =>
 
 /**
  * The speed towards the ordered range from which the ship can still stop on arrival: it coasts
- * while it flips round (v·t) and then brakes (v²/2a), so v = a(√(t² + 2d/a) − t). Capped at a
- * cruise speed that keeps most of the delta-v for later.
+ * while it flips round (v·t) and then brakes (v²/2a), so v = a(√(t² + 2d/a) − t).
  */
-const approachSpeed = (ship: ShipState, distance: number): number => {
+const stoppingSpeed = (ship: ShipState, distance: number): number => {
   const a = BRAKING_MARGIN * accelerationOf(ship);
   if (!(a > 0)) return 0;
   const t = turnTime(ship, Math.PI);
   // A ship that cannot turn cannot plan to stop.
   if (!Number.isFinite(t)) return 0;
-  const stoppable = a * (Math.sqrt(t * t + (2 * distance) / a) - t);
-  return Math.min(stoppable, CRUISE_FRACTION * deltaVOf(ship));
+  return a * (Math.sqrt(t * t + (2 * distance) / a) - t);
 };
 
-/** The relative velocity the goal wants (along the line of sight, nothing across it) and the gap. */
+/**
+ * The relative velocity the goal wants (along the line of sight, nothing across it) and the gap.
+ * Heading for the range, the ship speeds up to a cruise speed that keeps most of its delta-v for
+ * later, and slows down to no more than it can still stop from. In between it keeps whatever
+ * speed it has: two ships closing on each other, each wanting its own cruise speed, would
+ * otherwise burn against each other until their propellant ran out.
+ */
 const guidance = (
   ship: ShipState,
   order: ActiveManoeuvreOrder,
@@ -118,9 +122,13 @@ const guidance = (
   let rangeRate = 0;
   if (order.goal !== 'match-velocity') {
     rangeError = length(offset) - order.range;
-    const speed = approachSpeed(ship, Math.max(0, Math.abs(rangeError) - RANGE_TOLERANCE));
-    if (rangeError > 0 && order.goal !== 'open') rangeRate = -speed;
-    if (rangeError < 0 && order.goal !== 'close') rangeRate = speed;
+    const limit = stoppingSpeed(ship, Math.max(0, Math.abs(rangeError) - RANGE_TOLERANCE));
+    const cruise = Math.min(limit, CRUISE_FRACTION * deltaVOf(ship));
+    let direction = 0;
+    if (rangeError > 0 && order.goal !== 'open') direction = -1;
+    if (rangeError < 0 && order.goal !== 'close') direction = 1;
+    const towards = direction * dot(relative, outward);
+    rangeRate = direction * Math.min(limit, Math.max(cruise, towards));
   }
   return {
     rangeError,

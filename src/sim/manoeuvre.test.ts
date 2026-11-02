@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
+import { OPENING_PASS } from '../data/scenarios';
 import { createBattle, type Battle } from './battle';
 import { designComponent, type Design } from './design';
 import { testDesign, testSetup, testSides } from './testing';
@@ -14,6 +15,8 @@ const separation = (battle: Battle): number => {
   const { ownShip, contacts } = battle.observe('blue');
   return distance(ownShip.position, contacts[0]?.position ?? ownShip.position);
 };
+
+const own = (battle: Battle, side: string) => battle.observe(side).ownShip;
 
 const relativeSpeed = (battle: Battle): number => {
   const { ownShip, contacts } = battle.observe('blue');
@@ -41,7 +44,7 @@ describe('manoeuvre orders', () => {
     battle.giveOrder('blue', { type: 'manoeuvre', goal: 'hold', range });
     battle.advance(4 * HOUR);
     expect(worstRangeError(battle, range, 4 * HOUR)).toBeLessThan(TOLERANCE);
-  });
+  }, 20_000); // Simulates hours of battle; takes a few seconds.
 
   it('holds a range against an enemy accelerating across and away', () => {
     const battle = battleWith();
@@ -52,7 +55,7 @@ describe('manoeuvre orders', () => {
     battle.advance(120);
     battle.giveOrder('red', { type: 'burn', throttle: 0.3, duration: HOUR });
     expect(worstRangeError(battle, range, 2 * HOUR)).toBeLessThan(TOLERANCE);
-  });
+  }, 20_000);
 
   it('holds a range in a heavy cruiser against a nimble frigate', () => {
     const battle = battleWith(handMadeDesign('bastion'), handMadeDesign('lance'));
@@ -73,6 +76,26 @@ describe('manoeuvre orders', () => {
     battle.giveOrder('blue', { type: 'manoeuvre', goal: 'close', range });
     battle.advance(7 * HOUR);
     expect(worstRangeError(battle, range, HOUR)).toBeLessThan(TOLERANCE);
+  });
+
+  it('lets two ships close on each other without burning against each other', () => {
+    const battle = createBattle({
+      seed: 1,
+      scenario: OPENING_PASS,
+      sides: testSides([handMadeDesign('lance'), handMadeDesign('bastion')]),
+    });
+    const start = { blue: own(battle, 'blue').deltaV, red: own(battle, 'red').deltaV };
+    for (const side of ['blue', 'red']) {
+      // With the radiators out, heat does not hold the drives back from such a contest.
+      battle.giveOrder(side, { type: 'radiators', deployed: true });
+      battle.giveOrder(side, { type: 'manoeuvre', goal: 'close', range: 80_000 * KM });
+    }
+    battle.advance(2 * HOUR);
+    // Each needs only a few km/s to set off; their approach speeds differ a little, and without
+    // slack each would keep burning to undo the other's burns.
+    expect(separation(battle)).toBeLessThan(270_000 * KM);
+    expect(own(battle, 'blue').deltaV).toBeGreaterThan(0.95 * start.blue);
+    expect(own(battle, 'red').deltaV).toBeGreaterThan(0.95 * start.red);
   });
 
   it('opens the range out to the ordered range', () => {

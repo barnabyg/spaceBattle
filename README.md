@@ -18,7 +18,7 @@ Run from the repository root after `npm ci` (and `npx playwright install firefox
 
 ## Layout
 
-- `src/sim/` — the battle simulation: fixed time step, deterministic, SI units, no rendering or DOM (ADR-0001). Lint and a DOM-free type check enforce this.
+- `src/sim/` — the battle simulation: fixed time step, deterministic, SI units, no rendering or DOM (ADR-0001). Lint and a DOM-free type check enforce this. Computer captains command their sides here, through the same orders as the player.
 - `src/game/` — headless glue around the simulation, such as the battle runner (pause and time compression).
 - `src/data/` — hand-made designs (JSON data files) and scenarios.
 - `src/ui/` — the browser UI: menus in HTML/CSS, views in Three.js. It reads simulation state and gives orders; it never changes state directly.

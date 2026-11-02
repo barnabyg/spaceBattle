@@ -1,4 +1,5 @@
 import { TIME_STEP, type Battle, type BattleEvent } from '../sim/battle';
+import { withComputerCaptains } from '../sim/command';
 
 /** The time compression settings the captain can choose between. */
 export const TIME_COMPRESSIONS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000] as const;
@@ -16,8 +17,12 @@ const SIGNIFICANT_EVENTS: ReadonlySet<BattleEvent['type']> = new Set([
 /** Real time longer than this between updates (e.g. a background tab) is not caught up. */
 const MAX_REAL_DELTA = 0.25;
 
-/** Turns real time into whole simulation steps, honouring pause and time compression. */
+/**
+ * Turns real time into whole simulation steps, honouring pause and time compression. Computer
+ * sides are commanded by their captains as the battle runs; player sides wait for orders.
+ */
 export interface BattleRunner {
+  /** The battle, with its computer sides commanded (see `withComputerCaptains`). */
   readonly battle: Battle;
   readonly paused: boolean;
   readonly timeCompression: TimeCompression;
@@ -34,7 +39,8 @@ export interface BattleRunner {
   update(realSeconds: number): readonly BattleEvent[];
 }
 
-export const createBattleRunner = (battle: Battle): BattleRunner => {
+export const createBattleRunner = (uncommanded: Battle): BattleRunner => {
+  const battle = withComputerCaptains(uncommanded);
   let paused = false;
   let compressionIndex = 0;
   let owed = 0;
