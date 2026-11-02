@@ -7,6 +7,7 @@ import {
 import { deltaVWith, massProperties } from '../sim/ship';
 import { kineticGunRange } from '../sim/kinetic';
 import { missileDeltaV, missileReach } from '../sim/missile';
+import { pointDefenceRange } from '../sim/pointDefence';
 import { effectiveRange, type BeamWeaponDesign } from '../sim/beams';
 import { designMissiles } from '../sim/weapons';
 import { formatKilotons, formatKm, formatKmPerS, formatMm, formatMW, formatTonnes } from './format';
@@ -35,6 +36,8 @@ export const designSummary = (design: Design): readonly (readonly [string, strin
   const launchers = designComponentsOfType(design, 'launcher');
   const missiles = magazines.reduce((n, m) => n + m.missiles, 0);
   const missileDesigns = designMissiles(design);
+  const pointDefence = designComponentsOfType(design, 'point-defence');
+  const rounds = magazines.reduce((n, m) => n + m.rounds, 0);
   return [
     ['Hull size', capitalise(design.hullSize)],
     ['Mass', formatTonnes(mass)],
@@ -64,6 +67,12 @@ export const designSummary = (design: Design): readonly (readonly [string, strin
       launchers.length === 0
         ? 'None'
         : `${launchers.length} launchers · ${missiles.toLocaleString('en-GB')} ${missileDesigns.map(missileName).join(', ')} · ${formatKmPerS(Math.max(...missileDesigns.map((m) => missileDeltaV(m))))} · reach ${formatKm(Math.max(...missileDesigns.map(missileReach)))}`,
+    ],
+    [
+      'Point defence',
+      pointDefence.length === 0
+        ? 'None'
+        : `${pointDefence.length} · ${formatKmPerS(Math.max(...pointDefence.map((g) => g.muzzleVelocity)))} · ${rounds.toLocaleString('en-GB')} rounds · reach ${formatKm(Math.max(...pointDefence.map(pointDefenceRange)))}`,
     ],
     ...design.sections.map((s): readonly [string, string] => [
       `${capitalise(s.kind)} armour`,

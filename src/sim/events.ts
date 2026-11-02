@@ -1,5 +1,5 @@
 import type { SideId } from './battle';
-import type { ComponentType, SectionKind } from './design';
+import type { ComponentType, SectionKind, WarheadType } from './design';
 import type { BattleOutcome } from './outcome';
 import type { Vec3 } from './vector';
 
@@ -10,10 +10,17 @@ export type BeamKind = 'laser' | ParticleBeamKind;
 /** What kind of munition is in flight: a slug from a kinetic gun, or a missile. */
 export type MunitionKind = 'slug' | 'missile';
 /**
+ * What can strike a ship directly: a munition in flight, or a burst of point defence rounds,
+ * which are never tracked in flight.
+ */
+export type ImpactKind = MunitionKind | 'point-defence';
+/**
  * Every kind of attack a ship can suffer. Each kind of shield and armour counters some kinds
  * better than others.
  */
-export type AttackKind = BeamKind | MunitionKind;
+export type AttackKind = BeamKind | ImpactKind;
+/** What can shoot down a missile. */
+export type InterceptWeapon = 'point-defence';
 
 /**
  * A beam weapon's beam started landing on a part of the target: a section, or one of its
@@ -41,15 +48,16 @@ export interface HitEvent {
 }
 
 /**
- * A munition struck a part of a ship directly: a slug, or a missile with a kinetic warhead. It
- * struck a section, or one of its mounts.
+ * A munition struck a part of a ship directly: a slug, a missile with a kinetic warhead, or a
+ * burst of point defence rounds (its rounds that landed, taken together). It struck a section,
+ * or one of its mounts.
  */
 export interface ImpactEvent {
   readonly type: 'impact';
   readonly time: number;
   readonly attacker: SideId;
   readonly target: SideId;
-  readonly munition: MunitionKind;
+  readonly munition: ImpactKind;
   readonly section: SectionKind;
   /** The mount struck on that section, or null for the section itself. */
   readonly mount: number | null;
@@ -70,6 +78,29 @@ export interface LaunchEvent {
   /** Where the launcher is: its section, and its place in the section's mounts. */
   readonly section: SectionKind;
   readonly mount: number;
+}
+
+/** A side's weapon shot down an enemy missile in flight; it leaves the battle. */
+export interface InterceptEvent {
+  readonly type: 'intercept';
+  readonly time: number;
+  /** The side that shot it down. */
+  readonly side: SideId;
+  /** The side that launched the missile. */
+  readonly attacker: SideId;
+  /** The missile's id among the munitions in flight. */
+  readonly munition: number;
+  readonly warhead: WarheadType;
+  readonly weapon: InterceptWeapon;
+  /** Where the weapon that shot it down is: its section, and its place in the section's mounts. */
+  readonly section: SectionKind;
+  readonly mount: number;
+  /** Where the missile was shot down, in the world, m. */
+  readonly position: Vec3;
+  /** From there to the centre of mass of the ship that shot it down, m. */
+  readonly distance: number;
+  /** The chance the shot that brought it down had of doing so (0–1). */
+  readonly chance: number;
 }
 
 /** What a nuclear burst delivered to one part of a ship that faced it. */
@@ -170,6 +201,7 @@ export type BattleEvent =
   | HitEvent
   | ImpactEvent
   | LaunchEvent
+  | InterceptEvent
   | DetonationEvent
   | MagazineExplosionEvent
   | ArmourBreachedEvent
@@ -177,9 +209,14 @@ export type BattleEvent =
   | StructuralFailureEvent
   | BattleEndedEvent;
 
-/** Whether an event concerns a side: its own ship, a hit it scored, or the end of the battle. */
+/**
+ * Whether an event concerns a side: its own ship, a hit it scored, its missiles and the missiles
+ * it shot down, or the end of the battle.
+ */
 export const involves = (event: BattleEvent, side: SideId): boolean => {
   switch (event.type) {
+    case 'intercept':
+      return event.side === side || event.attacker === side;
     case 'hit':
     case 'impact':
     case 'launch':

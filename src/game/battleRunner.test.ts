@@ -4,6 +4,7 @@ import { createBattle, type Battle, type BattleEvent } from '../sim/battle';
 import { IDENTITY } from '../sim/quaternion';
 import {
   armedTestDesign,
+  defendedTestDesign,
   duelSetup,
   gunnedTestDesign,
   launchingTestDesign,
@@ -133,6 +134,24 @@ describe('battle runner', () => {
     expect(detonation).toBeDefined();
     expect(r.timeCompression).toBe(1);
     expect(r.battle.time).toBeCloseTo(detonation?.time ?? NaN, 9);
+  });
+
+  it('drops to real time when point defence shoots down a missile', () => {
+    const battle = createBattle(
+      duelSetup(launchingTestDesign(1), defendedTestDesign({ mounts: 4 }), 500e3),
+    );
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    const r = createBattleRunner(battle);
+    r.update(0.1);
+    r.setTimeCompression(1000);
+    const events: BattleEvent[] = [];
+    for (let i = 0; i < 100 && !events.some((e) => e.type === 'intercept'); i++) {
+      events.push(...r.update(0.25));
+    }
+    const intercept = events.find((e) => e.type === 'intercept');
+    expect(intercept).toBeDefined();
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeCloseTo(intercept?.time ?? NaN, 9);
   });
 
   it('drops to real time when a component is lost', () => {

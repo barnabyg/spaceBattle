@@ -22,6 +22,8 @@ const ACCELERATOR_LENGTH = 24;
 const LAUNCHER_GIRTH = 2.5;
 /** ...and at most this long, along the ship, m. */
 const LAUNCHER_LENGTH = 8;
+/** A point defence gun is a turret, a cube this size, m. */
+const POINT_DEFENCE_TURRET = 2.5;
 
 /**
  * One box of a ship's outline, in its body frame with the centre of mass at the origin and the
@@ -67,9 +69,10 @@ const mountBox = (
   let width: number;
   let lo: number;
   let hi: number;
-  if (component.type === 'laser') {
-    // A turret: a cube around the mirror, centred in its slot.
-    const side = component.aperture + TURRET_MARGIN;
+  if (component.type === 'laser' || component.type === 'point-defence') {
+    // A turret: a cube around the mirror or gun, centred in its slot.
+    const side =
+      component.type === 'laser' ? component.aperture + TURRET_MARGIN : POINT_DEFENCE_TURRET;
     const centre = (slot[0] + slot[1]) / 2;
     lo = centre - side / 2;
     hi = centre + side / 2;

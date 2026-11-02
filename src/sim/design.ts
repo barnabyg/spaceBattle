@@ -139,6 +139,30 @@ export interface KineticGunDesign {
   readonly rateOfFire: number;
 }
 
+/**
+ * A short-range, rapid-fire gun that shoots down incoming missiles. It fires bursts of small
+ * rounds that spread in a narrow cone, so it hits a missile more often the closer it is. Each
+ * burst takes the rounds' ½mv² over its efficiency in electrical energy, and its rounds from a
+ * magazine. Its captain can let it fire on the enemy ship too, which its rounds barely mark.
+ */
+export interface PointDefenceDesign {
+  readonly type: 'point-defence';
+  /** kg */
+  readonly mass: number;
+  /** Mass of each round, kg. */
+  readonly roundMass: number;
+  /** Speed it gives a round relative to the ship, m/s. */
+  readonly muzzleVelocity: number;
+  /** Fraction of the electrical energy drawn that the rounds carry off; the rest is heat (0–1). */
+  readonly efficiency: number;
+  /** Rounds in each burst. */
+  readonly roundsPerBurst: number;
+  /** Bursts per second, given full power. */
+  readonly burstRate: number;
+  /** Half-angle of the cone its rounds spread through, rad. */
+  readonly dispersion: number;
+}
+
 /** A missile warhead: what it does on reaching its target. */
 export interface KineticWarheadDesign {
   /** Destroys by hitting the target directly, with the whole missile's kinetic energy. */
@@ -201,8 +225,9 @@ export interface LauncherDesign {
 }
 
 /**
- * Stores ammunition inside a section: slugs for the ship's kinetic guns, or missiles of one
- * design for its launchers, never both. It starts every battle full.
+ * Stores ammunition inside a section: slugs for the ship's kinetic guns, rounds for its point
+ * defence, or missiles of one design for its launchers; only one of them. It starts every battle
+ * full.
  */
 export interface MagazineDesign {
   readonly type: 'magazine';
@@ -213,6 +238,8 @@ export interface MagazineDesign {
   readonly mass: number;
   /** How many slugs it holds. */
   readonly slugs: number;
+  /** How many point defence rounds it holds. */
+  readonly rounds: number;
   /** How many missiles it holds. */
   readonly missiles: number;
   /** The missiles it holds; null when it holds none. */
@@ -229,6 +256,7 @@ export type MountedComponentDesign =
   | ChargedParticleBeamDesign
   | NeutralParticleBeamDesign
   | KineticGunDesign
+  | PointDefenceDesign
   | LauncherDesign;
 export type ComponentDesign = InternalComponentDesign | MountedComponentDesign;
 export type ComponentType = ComponentDesign['type'];
@@ -240,6 +268,7 @@ const MOUNTED_TYPES = [
   'charged-particle-beam',
   'neutral-particle-beam',
   'kinetic-gun',
+  'point-defence',
   'launcher',
 ] as const;
 
@@ -439,6 +468,22 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
         efficiency: requireFraction(data, 'efficiency', where),
         rateOfFire: requireNumber(data, 'rateOfFire', where),
       };
+    case 'point-defence': {
+      const roundsPerBurst = requireNumber(data, 'roundsPerBurst', where);
+      if (!Number.isInteger(roundsPerBurst)) {
+        throw new Error(`${where}: "roundsPerBurst" must be a whole number`);
+      }
+      return {
+        type,
+        mass,
+        roundMass: requireNumber(data, 'roundMass', where),
+        muzzleVelocity: requireNumber(data, 'muzzleVelocity', where),
+        efficiency: requireFraction(data, 'efficiency', where),
+        roundsPerBurst,
+        burstRate: requireNumber(data, 'burstRate', where),
+        dispersion: requireNumber(data, 'dispersion', where),
+      };
+    }
     case 'launcher':
       return { type, mass, reloadTime: requireNumber(data, 'reloadTime', where) };
     case 'magazine':
@@ -495,20 +540,20 @@ const parseMissile = (data: unknown, where: string): MissileDesign => {
 
 const parseMagazine = (data: Record<string, unknown>, mass: number, where: string) => {
   const slugs = requireCount(data, 'slugs', where);
+  const rounds = requireCount(data, 'rounds', where);
   const missiles = requireCount(data, 'missiles', where);
-  if (slugs > 0 && missiles > 0) {
-    throw new Error(`${where}: a magazine holds slugs or missiles, not both`);
-  }
-  if (slugs + missiles === 0) throw new Error(`${where}: a magazine needs slugs or missiles`);
+  const kinds = [slugs, rounds, missiles].filter((count) => count > 0).length;
+  if (kinds > 1) throw new Error(`${where}: a magazine holds slugs, rounds or missiles, not more`);
+  if (kinds === 0) throw new Error(`${where}: a magazine needs slugs, rounds or missiles`);
   if (missiles === 0) {
     if (data.missile !== undefined) throw new Error(`${where}: "missile" needs "missiles"`);
-    return { type: 'magazine', mass, slugs, missiles, missile: null } as const;
+    return { type: 'magazine', mass, slugs, rounds, missiles, missile: null } as const;
   }
   const missile = parseMissile(data.missile, `${where} missile`);
   if (missiles * missileMass(missile) >= mass) {
     throw new Error(`${where}: "mass" must be more than the missiles it holds`);
   }
-  return { type: 'magazine', mass, slugs, missiles, missile } as const;
+  return { type: 'magazine', mass, slugs, rounds, missiles, missile } as const;
 };
 
 const parseArmour = (data: unknown, where: string): ArmourDesign => {
@@ -578,6 +623,14 @@ export const parseDesign = (data: unknown): Design => {
   const heaviestSlug = Math.max(0, ...guns.map((gun) => gun.slugMass));
   if (magazines.some((m) => m.slugs * heaviestSlug >= m.mass)) {
     throw new Error(`${where}: a magazine's "mass" must be more than the slugs it holds`);
+  }
+  const pointDefence = designComponentsOfType(design, 'point-defence');
+  if (pointDefence.length > 0 && !magazines.some((m) => m.rounds > 0)) {
+    throw new Error(`${where}: point defence needs a magazine for its rounds`);
+  }
+  const heaviestRound = Math.max(0, ...pointDefence.map((gun) => gun.roundMass));
+  if (magazines.some((m) => m.rounds * heaviestRound >= m.mass)) {
+    throw new Error(`${where}: a magazine's "mass" must be more than the rounds it holds`);
   }
   if (
     designComponentsOfType(design, 'launcher').length > 0 &&

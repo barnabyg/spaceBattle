@@ -7,7 +7,7 @@ import { designComponent } from '../sim/design';
 import type { BeamKind } from '../sim/events';
 import { rotate, type Quat } from '../sim/quaternion';
 import { length, vec3, type Vec3 } from '../sim/vector';
-import { createBurstFlash } from './burstFlash';
+import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { formatDuration, formatKm, formatKmPerS } from './format';
@@ -48,6 +48,9 @@ const MISSILE_SIZE = 9;
 /** A nuclear burst's flash, at its brightest this share of the map's height across. */
 const BURST_FLASH_SIZE = 0.12;
 const BURST_COLOUR = '#fffbe8';
+/** A missile shot down flashes smaller, in amber. */
+const INTERCEPT_FLASH_SIZE = 0.04;
+const INTERCEPT_COLOUR = '#ffc24d';
 
 export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
 
@@ -269,21 +272,37 @@ export const createTacticalMap = (
       geometry.setDrawRange(0, shown.length);
     };
   };
+  /** A flash that keeps its size on screen, drawn over everything. */
+  const flashSprite = (colour: string) => {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: softGlowTexture(),
+        color: colour,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false,
+        sizeAttenuation: false,
+      }),
+    );
+    sprite.renderOrder = 2;
+    sprite.visible = false;
+    scene.add(sprite);
+    return sprite;
+  };
   // A nuclear burst flashes where it went off, fading in a second or two.
-  const burst = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: softGlowTexture(),
-      color: BURST_COLOUR,
-      blending: THREE.AdditiveBlending,
-      depthTest: false,
-      depthWrite: false,
-      sizeAttenuation: false,
-    }),
-  );
-  burst.renderOrder = 2;
-  burst.visible = false;
-  scene.add(burst);
+  const burst = flashSprite(BURST_COLOUR);
   const burstFlash = createBurstFlash();
+  // So does a missile shot down, smaller and quicker.
+  const intercept = flashSprite(INTERCEPT_COLOUR);
+  const interceptFlash = createInterceptFlash();
+  const showIntercept = (observation: SideObservation) => {
+    const flash = interceptFlash(observation);
+    intercept.visible = flash !== null;
+    if (!flash) return;
+    intercept.position.copy(toScene(flash.intercept.position));
+    intercept.scale.setScalar(INTERCEPT_FLASH_SIZE * (0.4 + 0.6 * flash.strength));
+    intercept.material.opacity = flash.strength;
+  };
   const showBurst = (observation: SideObservation) => {
     const flash = burstFlash(observation);
     burst.visible = flash !== null;
@@ -416,6 +435,7 @@ export const createTacticalMap = (
       }
       showMunitions(observation);
       showBurst(observation);
+      showIntercept(observation);
 
       if (ownDrive) {
         const lastBurnEnd = Math.max(

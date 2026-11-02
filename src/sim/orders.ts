@@ -74,6 +74,26 @@ export interface LaunchOrder {
   readonly missiles: number;
 }
 
+/**
+ * What point defence fires on: incoming missiles only, ignoring the enemy ship; or missiles
+ * first, and the weapons order's target while it fires freely and no missile is within reach.
+ */
+export type PointDefencePriority = 'missiles' | 'missiles-then-ship';
+export const POINT_DEFENCE_PRIORITIES: readonly PointDefencePriority[] = [
+  'missiles',
+  'missiles-then-ship',
+];
+
+/**
+ * Set what the point defence fires on. It stands apart from the weapons order: on missiles it
+ * fires whatever the fire mode, at any enemy missile within its reach. Every ship starts with
+ * point defence on missiles only.
+ */
+export interface PointDefenceOrder {
+  readonly type: 'point-defence';
+  readonly priority: PointDefencePriority;
+}
+
 /** An instruction from a side's captain to its ship. */
 export type Order =
   | AttitudeOrder
@@ -82,4 +102,5 @@ export type Order =
   | PowerOrder
   | RadiatorsOrder
   | WeaponsOrder
-  | LaunchOrder;
+  | LaunchOrder
+  | PointDefenceOrder;

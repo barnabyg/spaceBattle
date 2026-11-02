@@ -43,6 +43,13 @@ describe('design summary', () => {
     );
   });
 
+  it("shows a design's point defence and the rounds it carries", () => {
+    expect(summaryOf('lance').get('Point defence')).toBe('None');
+    expect(summaryOf('rampart').get('Point defence')).toBe(
+      '2 · 5.00 km/s · 40,000 rounds · reach 25 km',
+    );
+  });
+
   it('tells the nimble frigate from the heavier cruiser', () => {
     const lance = summaryOf('lance');
     const bastion = summaryOf('bastion');

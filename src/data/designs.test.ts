@@ -47,6 +47,14 @@ describe('hand-made designs', () => {
     expect(magazines?.map((missile) => missile.warhead.type)).toContain('kinetic');
   });
 
+  it('include one carrying point defence and a magazine of rounds for it', () => {
+    const defended = HAND_MADE_DESIGNS.find((d) =>
+      d.sections.some((s) => s.mounts.some((m) => m.type === 'point-defence')),
+    );
+    const components = defended?.sections.flatMap((s) => s.components) ?? [];
+    expect(components.some((c) => c.type === 'magazine' && c.rounds > 0)).toBe(true);
+  });
+
   it('include one carrying missiles with nuclear warheads, kept out of its middle section', () => {
     const nuclear = HAND_MADE_DESIGNS.find((d) =>
       d.sections.some((s) =>
@@ -215,7 +223,12 @@ describe('parseDesign', () => {
     };
     const magazine = { type: 'magazine', mass: 100, slugs: 10 };
     const design = parseDesign(withMiddle([thrusters, reactor, magazine], [gun]));
-    expect(design.sections[1]?.components[2]).toEqual({ ...magazine, missiles: 0, missile: null });
+    expect(design.sections[1]?.components[2]).toEqual({
+      ...magazine,
+      rounds: 0,
+      missiles: 0,
+      missile: null,
+    });
     expect(design.sections[1]?.mounts).toEqual([gun]);
     expect(() => parseDesign(withMiddle([thrusters, reactor], [gun]))).toThrow(/magazine/);
     expect(() => parseDesign(withMiddle([thrusters, reactor, magazine, gun]))).toThrow(/mount/);
@@ -249,14 +262,14 @@ describe('parseDesign', () => {
     };
     const magazine = { type: 'magazine', mass: 10e3, missiles: 4, missile };
     const design = parseDesign(withMiddle([thrusters, reactor, magazine], [launcher]));
-    expect(design.sections[1]?.components[2]).toEqual({ ...magazine, slugs: 0 });
+    expect(design.sections[1]?.components[2]).toEqual({ ...magazine, slugs: 0, rounds: 0 });
     expect(design.sections[1]?.mounts).toEqual([launcher]);
     const slugs = { type: 'magazine', mass: 100, slugs: 10 };
     const launching = (...components: unknown[]) =>
       parseDesign(withMiddle([thrusters, reactor, ...components], [launcher]));
     expect(() => launching()).toThrow(/launchers need a magazine of missiles/);
     expect(() => launching(slugs)).toThrow(/launchers need a magazine of missiles/);
-    expect(() => launching({ ...magazine, slugs: 10 })).toThrow(/not both/);
+    expect(() => launching({ ...magazine, slugs: 10 })).toThrow(/not more/);
     expect(() => launching({ ...magazine, missile: undefined })).toThrow(/missile/);
     expect(() => launching({ ...magazine, mass: 8_000 })).toThrow(/mass/);
     expect(() => launching({ ...magazine, missiles: 1.5 })).toThrow(/missiles/);
@@ -264,8 +277,50 @@ describe('parseDesign', () => {
     expect(() =>
       launching({ ...magazine, missile: { ...missile, warhead: { type: 'antimatter' } } }),
     ).toThrow(/type/);
-    expect(() => launching({ type: 'magazine', mass: 100 })).toThrow(/slugs or missiles/);
+    expect(() => launching({ type: 'magazine', mass: 100 })).toThrow(/slugs, rounds or missiles/);
     expect(() => parseDesign(withMiddle([thrusters, reactor, launcher]))).toThrow(/mount/);
+  });
+
+  it('reads point defence on mounts and magazines of rounds, and needs rounds for it', () => {
+    const gun = {
+      type: 'point-defence',
+      mass: 1,
+      roundMass: 0.05,
+      muzzleVelocity: 5e3,
+      efficiency: 0.5,
+      roundsPerBurst: 20,
+      burstRate: 5,
+      dispersion: 2e-3,
+    };
+    const magazine = { type: 'magazine', mass: 100, rounds: 1_000 };
+    const defended = (...components: unknown[]) =>
+      parseDesign(withMiddle([thrusters, reactor, ...components], [gun]));
+    const design = defended(magazine);
+    expect(design.sections[1]?.components[2]).toEqual({
+      ...magazine,
+      slugs: 0,
+      missiles: 0,
+      missile: null,
+    });
+    expect(design.sections[1]?.mounts).toEqual([gun]);
+    expect(() => defended()).toThrow(/point defence needs a magazine/);
+    expect(() => defended({ type: 'magazine', mass: 100, slugs: 10 })).toThrow(/point defence/);
+    expect(() => defended({ ...magazine, slugs: 10 })).toThrow(/not more/);
+    // A magazine weighs more than the rounds it holds.
+    expect(() => defended({ ...magazine, mass: 50 })).toThrow(/mass/);
+    expect(() => parseDesign(withMiddle([thrusters, reactor, magazine, gun]))).toThrow(/mount/);
+    for (const [key, value] of [
+      ['roundMass', 0],
+      ['muzzleVelocity', -1],
+      ['efficiency', 1.5],
+      ['roundsPerBurst', 2.5],
+      ['burstRate', 0],
+      ['dispersion', 0],
+    ] as const) {
+      expect(() =>
+        parseDesign(withMiddle([thrusters, reactor, magazine], [{ ...gun, [key]: value }])),
+      ).toThrow(new RegExp(key));
+    }
   });
 
   it('reads nuclear warheads of up to 10 kt, with a detonation distance', () => {

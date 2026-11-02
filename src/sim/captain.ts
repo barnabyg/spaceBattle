@@ -4,6 +4,7 @@ import type {
   LaunchOrder,
   ManoeuvreOrder,
   Order,
+  PointDefenceOrder,
   PowerOrder,
   RadiatorsOrder,
   WeaponsOrder,
@@ -54,7 +55,7 @@ const missileReach = ({ weapons }: OwnShipObservation): number =>
 /**
  * The furthest the ship's working weapons fire, m: its lasers and particle beams, its kinetic
  * guns while it has slugs left, and its missiles while it has missiles and a launcher. Zero once
- * none is left.
+ * none is left. Point defence is left out: it is kept for missiles.
  */
 const ownReach = (ship: OwnShipObservation): number => {
   const { weapons } = ship;
@@ -70,6 +71,15 @@ const ownReach = (ship: OwnShipObservation): number => {
   );
 };
 
+/** How far the ship's point defence reaches while it has a working gun and rounds left, m. */
+const pointDefenceReach = ({ weapons }: OwnShipObservation): number =>
+  weapons.ammunition.rounds > 0
+    ? Math.max(
+        0,
+        ...weapons.pointDefence.filter((gun) => gun.integrity > 0).map((gun) => gun.effectiveRange),
+      )
+    : 0;
+
 /** Whether an order is already standing, so giving it again would change nothing. */
 const inForce = (ship: OwnShipObservation, order: Order): boolean => {
   switch (order.type) {
@@ -84,6 +94,8 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
       );
     case 'power':
       return order.priorities.every((system, i) => ship.power.priorities[i] === system);
+    case 'point-defence':
+      return ship.weapons.pointDefencePriority === order.priority;
     case 'manoeuvre': {
       const standing = ship.manoeuvre;
       if (order.goal === 'none') return standing === null;
@@ -103,7 +115,9 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
  *
  * It targets the enemy and fires freely throughout, and launches a salvo of missiles, one from
  * each working launcher, whenever the enemy is within their reach and none of its missiles is
- * still in flight. If it outranges the enemy it holds just
+ * still in flight. It keeps its point defence on missiles, ignoring the enemy ship, unless point
+ * defence is the only weapon it has left, when it turns it on the ship too and fights at its
+ * short reach. If it outranges the enemy it holds just
  * inside its own reach, out of the enemy's; otherwise it closes to where its beams bite hard.
  * If neither side fires and the range stops shrinking for a while, it gives up on standing off
  * and closes in for good. It ranks weapons first in a fight and the drive first otherwise, and
@@ -124,6 +138,7 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
       [...weapons.lasers, ...weapons.particleBeams, ...weapons.kineticGuns].some(
         (weapon) => weapon.firing,
       ) ||
+      weapons.pointDefence.some((gun) => gun.engaging !== null) ||
       weapons.salvo !== null ||
       observation.munitions.length > 0 ||
       appearance.beamsLanding.length > 0 ||
@@ -158,7 +173,9 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
       const ship = observation.ownShip;
       const range = distance(ship.position, enemy.position);
       notice(observation, range);
-      const reach = ownReach(ship);
+      // With nothing else left to fight with, point defence turns on the ship.
+      const lastResort = ownReach(ship) === 0 && pointDefenceReach(ship) > 0;
+      const reach = lastResort ? pointDefenceReach(ship) : ownReach(ship);
       const fighting = range <= FIGHTING_FRACTION * Math.max(reach, enemyReach);
       const hot =
         ship.heat.temperature >
@@ -169,8 +186,18 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
         type: 'power',
         priorities: fighting ? COMBAT_PRIORITIES : MANOEUVRE_PRIORITIES,
       };
+      const pointDefence: PointDefenceOrder = {
+        type: 'point-defence',
+        priority: lastResort ? 'missiles-then-ship' : 'missiles',
+      };
       const course = manoeuvre(reach);
-      const orders: Order[] = [weapons, ...(course ? [course] : []), radiators, power];
+      const orders: Order[] = [
+        weapons,
+        pointDefence,
+        ...(course ? [course] : []),
+        radiators,
+        power,
+      ];
       const inFlight = observation.munitions.some(
         (m) => m.kind === 'missile' && m.attacker === side,
       );

@@ -15,6 +15,10 @@ const NAVIGATION_CONSTANT = 3;
  * target has too long to manoeuvre and the flight too long to matter.
  */
 export const MISSILE_REACH_TIME = 3_600;
+/** A missile's body is a cylinder this many times longer than it is wide. */
+export const MISSILE_FINENESS = 8;
+/** A missile's average density as launched, propellant and all, kg/m³. */
+export const MISSILE_DENSITY = 1_000;
 
 /** A missile in flight. */
 export interface Missile {
@@ -29,7 +33,35 @@ export interface Missile {
   readonly velocity: Vec3;
   /** Drive thrust applied in the last step, N. */
   readonly thrust: number;
+  /** Its drive's acceleration over the last step, m/s². */
+  readonly acceleration: Vec3;
 }
+
+/**
+ * The size of a missile design's body, a cylinder of its launch mass at `MISSILE_DENSITY` and
+ * `MISSILE_FINENESS` times as long as it is wide, m. It keeps its size as it burns propellant.
+ */
+export const missileSize = (
+  design: MissileDesign,
+): { readonly length: number; readonly diameter: number } => {
+  const volume = (design.dryMass + design.propellantMass) / MISSILE_DENSITY;
+  // V = π/4 · D² · L with L = F·D.
+  const diameter = Math.cbrt((4 * volume) / (Math.PI * MISSILE_FINENESS));
+  return { length: MISSILE_FINENESS * diameter, diameter };
+};
+
+/**
+ * How large a missile looks seen along a unit direction, m²: its end-on disc and its side-on
+ * outline in proportion to how far the direction lies off its long axis, which points along
+ * `axis` (any length).
+ */
+export const missileSilhouette = (design: MissileDesign, axis: Vec3, along: Vec3): number => {
+  const { length: long, diameter } = missileSize(design);
+  const size = length(axis);
+  const cos = size > 0 ? Math.min(1, Math.abs(dot(axis, along)) / size) : 0;
+  const sin = Math.sqrt(1 - cos ** 2);
+  return Math.PI * (diameter / 2) ** 2 * cos + long * diameter * sin;
+};
 
 /** A missile's mass now, with the propellant it has left, kg. */
 export const missileMassNow = (missile: Missile): number =>
@@ -64,6 +96,7 @@ export const launchMissile = (
   position: from.position,
   velocity: from.velocity,
   thrust: 0,
+  acceleration: ZERO,
 });
 
 /**
@@ -113,18 +146,22 @@ const guidance = (missile: Missile, target: Motion, maxAcceleration: number): Ve
 export const guideMissile = (missile: Missile, target: Motion | null, dt: number): Missile => {
   const { design } = missile;
   const mass = missileMassNow(missile);
-  if (!target || missile.propellantMass <= 0) return { ...missile, thrust: 0 };
+  if (!target || missile.propellantMass <= 0) {
+    return { ...missile, thrust: 0, acceleration: ZERO };
+  }
   const wanted = guidance(missile, target, design.thrust / mass);
   const force = Math.min(design.thrust, length(wanted) * mass);
-  if (!(force > 0)) return { ...missile, thrust: 0 };
+  if (!(force > 0)) return { ...missile, thrust: 0, acceleration: ZERO };
   const burn = (force / design.exhaustVelocity) * dt;
   const used = Math.min(burn, missile.propellantMass);
   const deltaV = design.exhaustVelocity * Math.log(mass / (mass - used));
+  const change = scale(wanted, deltaV / length(wanted));
   return {
     ...missile,
     propellantMass: used === missile.propellantMass ? 0 : missile.propellantMass - used,
-    velocity: add(missile.velocity, scale(wanted, deltaV / length(wanted))),
+    velocity: add(missile.velocity, change),
     thrust: (force * used) / burn,
+    acceleration: scale(change, 1 / dt),
   };
 };
 

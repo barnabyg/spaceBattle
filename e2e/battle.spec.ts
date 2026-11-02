@@ -168,3 +168,26 @@ test('a ship with launchers launches missiles by order, dropping to real time', 
   await expect(page.getByLabel('Ammunition')).toHaveText('10 of 12 missiles');
   await expect(page.getByRole('list', { name: 'Battle log' })).toContainText('Missile launched');
 });
+
+test('a ship with point defence shows its guns and rounds, and takes priority orders', async ({
+  page,
+}) => {
+  await startFreeBattle(page, { blue: { design: 'Rampart' }, red: { design: 'Quiver' } });
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Ammunition')).toHaveText('40,000 of 40,000 rounds');
+  await expect(page.getByLabel('Point defence', { exact: true })).toHaveText(
+    '0 of 2 firing · 0 shot down',
+  );
+  await expect(
+    page.getByRole('region', { name: 'Damage' }).getByText('Point defence (mount)'),
+  ).toHaveCount(2);
+  const state = page.getByLabel('Point defence state');
+  await expect(state).toHaveText('Ready · reach 25 km · 0 shot down');
+
+  const missilesOnly = page.getByRole('button', { name: 'Missiles only' });
+  const thenShip = page.getByRole('button', { name: 'Missiles, then ship' });
+  await expect(missilesOnly).toHaveClass(/active/);
+  await thenShip.click();
+  await expect(thenShip).toHaveClass(/active/);
+  await expect(missilesOnly).not.toHaveClass(/active/);
+});

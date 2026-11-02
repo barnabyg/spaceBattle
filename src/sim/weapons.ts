@@ -15,6 +15,7 @@ import {
   type KineticGunDesign,
   type LauncherDesign,
   type MissileDesign,
+  type PointDefenceDesign,
 } from './design';
 import type { BeamKind, HitEvent } from './events';
 import { thermalLimit, thermalProperties } from './heat';
@@ -27,10 +28,20 @@ import {
   type Slug,
 } from './kinetic';
 import { launchMissile, missileReach, type Missile } from './missile';
-import type { FireMode } from './orders';
+import type { FireMode, PointDefencePriority } from './orders';
+import {
+  assignPointDefence,
+  burstEnergy,
+  burstSpread,
+  missileHitChance,
+  pointDefencePower,
+  pointDefenceSolution,
+  type PointDefenceEngagement,
+  type Threat,
+} from './pointDefence';
 import { shipMassProperties, type ShipState } from './ship';
 import { TIME_STEP } from './time';
-import { add, scale, sub, type Vec3 } from './vector';
+import { add, dot, normalize, scale, sub, type Vec3 } from './vector';
 
 /** The missiles a design's magazines hold, by design. */
 export const designMissiles = (design: Design): readonly MissileDesign[] =>
@@ -85,6 +96,21 @@ export interface KineticGunState {
   readonly charge: number;
 }
 
+/** One point defence gun's state. */
+export interface PointDefenceState {
+  /** Its place in the ship's component slots. */
+  readonly slot: number;
+  readonly gun: PointDefenceDesign;
+  /** What it is firing on this step, if anything. */
+  readonly engaging: PointDefenceEngagement | null;
+  /** Electrical power it asks for this step, W. */
+  readonly demand: number;
+  /** Electrical energy drawn towards its next burst, J. */
+  readonly charge: number;
+  /** The chance its latest burst at a missile had of bringing it down, or null before any. */
+  readonly lastChance: number | null;
+}
+
 /** One launcher's state. */
 export interface LauncherState {
   /** Its place in the ship's component slots. */
@@ -107,6 +133,11 @@ export interface WeaponsState {
   /** Lasers and particle beams, in the order of the ship's component slots. */
   readonly beamWeapons: readonly BeamWeaponState[];
   readonly kineticGuns: readonly KineticGunState[];
+  readonly pointDefence: readonly PointDefenceState[];
+  /** What the captain has the point defence fire on. */
+  readonly pointDefencePriority: PointDefencePriority;
+  /** Enemy missiles the ship has shot down. */
+  readonly intercepts: number;
   readonly launchers: readonly LauncherState[];
   /** The launch order still being carried out, if any. */
   readonly salvo: Salvo | null;
@@ -114,7 +145,10 @@ export interface WeaponsState {
   readonly demand: number;
   /** The fraction of the power the weapons draw that leaves in beams. */
   readonly beamFraction: number;
-  /** The fraction of the power the weapons draw that kinetic guns put into their slugs. */
+  /**
+   * The fraction of the power the weapons draw that kinetic guns and point defence put into their
+   * slugs and rounds.
+   */
   readonly slugFraction: number;
   /** The latest hit this ship's beam weapons scored. */
   readonly lastHit: HitEvent | null;
@@ -125,6 +159,7 @@ export interface MagazineState {
   /** Its place in the ship's component slots. */
   readonly slot: number;
   readonly slugs: number;
+  readonly rounds: number;
   readonly missiles: number;
   /** The missiles it holds, if any. */
   readonly missile: MissileDesign | null;
@@ -138,6 +173,7 @@ export const initialAmmunition = (design: Design): MagazineState[] =>
           {
             slot: i,
             slugs: component.slugs,
+            rounds: component.rounds,
             missiles: component.missiles,
             missile: component.missile,
           },
@@ -149,25 +185,40 @@ export const initialAmmunition = (design: Design): MagazineState[] =>
 export const slugsLeft = (ship: ShipState): number =>
   ship.ammunition.reduce((total, magazine) => total + magazine.slugs, 0);
 
+/** Point defence rounds left in the ship's magazines. */
+export const roundsLeft = (ship: ShipState): number =>
+  ship.ammunition.reduce((total, magazine) => total + magazine.rounds, 0);
+
 /** Missiles left in the ship's magazines. */
 export const missilesLeft = (ship: ShipState): number =>
   ship.ammunition.reduce((total, magazine) => total + magazine.missiles, 0);
 
+/** How much ammunition of each kind to take. */
+interface Taken {
+  readonly slugs?: number;
+  readonly rounds?: number;
+  readonly missiles?: number;
+  /** How much lighter it leaves the ship, kg. */
+  readonly mass: number;
+}
+
 /**
- * Takes rounds out of the magazine at `magazine` in the ship's ammunition list: `slugs` and
- * `missiles` say how many of each, and `mass` how much lighter that leaves the ship, kg.
+ * Takes ammunition out of the magazine at `magazine` in the ship's ammunition list: so many
+ * slugs, rounds and missiles, leaving the ship lighter by `mass`.
  */
-const takeAmmunition = (
-  ship: ShipState,
-  magazine: number,
-  taken: { readonly slugs: number; readonly missiles: number; readonly mass: number },
-): void => {
+const takeAmmunition = (ship: ShipState, magazine: number, taken: Taken): void => {
   const slot = ship.ammunition[magazine]?.slot ?? -1;
   const section = componentSlots(ship.design)[slot]?.section;
   if (!section) return;
+  const { slugs = 0, rounds = 0, missiles = 0 } = taken;
   ship.ammunition = ship.ammunition.map((m, i) =>
     i === magazine
-      ? { ...m, slugs: m.slugs - taken.slugs, missiles: m.missiles - taken.missiles }
+      ? {
+          ...m,
+          slugs: m.slugs - slugs,
+          rounds: m.rounds - rounds,
+          missiles: m.missiles - missiles,
+        }
       : m,
   );
   ship.ammunitionSpent = {
@@ -200,7 +251,10 @@ export interface Beam {
   readonly continuing: boolean;
 }
 
-/** Every ship starts a battle with no target and holding fire. */
+/**
+ * Every ship starts a battle with no target and holding fire, its point defence on missiles
+ * only.
+ */
 export const initialWeapons = (design: Design): WeaponsState => ({
   target: null,
   mode: 'hold-fire',
@@ -227,6 +281,13 @@ export const initialWeapons = (design: Design): WeaponsState => ({
       ? [{ slot: i, gun: slot.component, firing: false, demand: 0, charge: 0 }]
       : [],
   ),
+  pointDefence: componentSlots(design).flatMap((slot, i) =>
+    slot.component.type === 'point-defence'
+      ? [{ slot: i, gun: slot.component, engaging: null, demand: 0, charge: 0, lastChance: null }]
+      : [],
+  ),
+  pointDefencePriority: 'missiles',
+  intercepts: 0,
   launchers: componentSlots(design).flatMap((slot, i) =>
     slot.component.type === 'launcher' ? [{ slot: i, launcher: slot.component, reload: 0 }] : [],
   ),
@@ -237,14 +298,31 @@ export const initialWeapons = (design: Design): WeaponsState => ({
   lastHit: null,
 });
 
+/** What point defence may fire on this step: enemy missiles, and the targeted ship. */
+export interface PointDefenceTargets {
+  /** Enemy missiles in flight, as seen at the start of the step. */
+  readonly threats: readonly Threat[];
+  /** The ship the weapons order targets, if any, as seen at the start of the step. */
+  readonly ship: { readonly id: SideId; readonly motion: Motion } | null;
+}
+
+/** Fires point defence on nothing. */
+const NO_POINT_DEFENCE_TARGETS: PointDefenceTargets = { threats: [], ship: null };
+
 /**
  * Decides which weapons fire this step and the power they ask for: when firing freely at a target
  * within their effective range, as much as their integrity and the ship's temperature allow.
  * A kinetic gun also needs slugs left, and asks only for what its next shot still needs.
  * `range` is the distance to the ordered target, or null without one. Phase 1 turrets bear in
- * every direction; firing arcs come later.
+ * every direction; firing arcs come later. Point defence, given rounds, fires on enemy missiles
+ * within its reach whatever the fire mode (see `assignPointDefence`), and on the targeted ship
+ * only when its priority allows and the weapons fire freely.
  */
-export const aimWeapons = (ship: ShipState, range: number | null): void => {
+export const aimWeapons = (
+  ship: ShipState,
+  range: number | null,
+  targets: PointDefenceTargets = NO_POINT_DEFENCE_TARGETS,
+): void => {
   const { weapons } = ship;
   const limit = thermalLimit(ship.heat / thermalProperties(ship.design).heatCapacity);
   const inReach = (reach: number) =>
@@ -270,10 +348,36 @@ export const aimWeapons = (ship: ShipState, range: number | null): void => {
     slug += wanted * state.gun.efficiency;
     return { ...state, firing, demand: wanted };
   });
+  const armed = roundsLeft(ship) > 0;
+  const onShip =
+    weapons.pointDefencePriority === 'missiles-then-ship' && weapons.mode === 'fire-freely';
+  const engagements = assignPointDefence(
+    ship,
+    weapons.pointDefence.map((state) =>
+      armed && (ship.integrity[state.slot] ?? 0) > 0 ? state.gun : null,
+    ),
+    targets.threats,
+    onShip ? targets.ship : null,
+    TIME_STEP,
+  );
+  const pointDefence = weapons.pointDefence.map((state, i) => {
+    const integrity = ship.integrity[state.slot] ?? 0;
+    const engaging = engagements[i] ?? null;
+    // Enough for every burst its rate allows in a step, and at least one.
+    const bursts = Math.max(1, state.gun.burstRate * TIME_STEP);
+    const needed = Math.max(0, bursts * burstEnergy(state.gun) - state.charge) / TIME_STEP;
+    const wanted = engaging
+      ? Math.min(pointDefencePower(state.gun) * integrity * limit, needed)
+      : 0;
+    demand += wanted;
+    slug += wanted * state.gun.efficiency;
+    return { ...state, engaging, demand: wanted };
+  });
   ship.weapons = {
     ...weapons,
     beamWeapons,
     kineticGuns,
+    pointDefence,
     demand,
     beamFraction: demand > 0 ? beam / demand : 0,
     slugFraction: demand > 0 ? slug / demand : 0,
@@ -327,7 +431,7 @@ export const emitBeams = (
 /** Takes one slug of `slugMass` kg from the first magazine that has any. */
 const takeSlug = (ship: ShipState, slugMass: number): void => {
   const from = ship.ammunition.findIndex((magazine) => magazine.slugs > 0);
-  takeAmmunition(ship, from, { slugs: 1, missiles: 0, mass: slugMass });
+  takeAmmunition(ship, from, { slugs: 1, mass: slugMass });
 };
 
 /**
@@ -373,6 +477,101 @@ export const fireKineticGuns = (
   return slugs;
 };
 
+/** A burst of point defence rounds on its way to what it was fired on. */
+export interface PointDefenceBurst {
+  /** The side that fired it. */
+  readonly attacker: SideId;
+  /** The gun's place in the attacker's point defence list. */
+  readonly gun: number;
+  readonly engagement: PointDefenceEngagement;
+  /** Battle time its rounds meet the target, s. */
+  readonly arrival: number;
+  readonly rounds: number;
+  /** kg */
+  readonly roundMass: number;
+  /** World unit vector its rounds fly along relative to the target. */
+  readonly direction: Vec3;
+  /** Its rounds' speed relative to the target, m/s. */
+  readonly speed: number;
+  /** Radius of the disc its rounds spread over about the target, m (see `burstSpread`). */
+  readonly spread: number;
+  /** For a burst at a missile, the chance it brings the missile down; 0 at a ship. */
+  readonly chance: number;
+}
+
+/** Takes `count` rounds of `roundMass` kg from the magazines, first to last. */
+const takeRounds = (ship: ShipState, count: number, roundMass: number): void => {
+  let left = count;
+  for (let i = 0; i < ship.ammunition.length && left > 0; i++) {
+    const taken = Math.min(left, ship.ammunition[i]?.rounds ?? 0);
+    if (taken > 0) takeAmmunition(ship, i, { rounds: taken, mass: taken * roundMass });
+    left -= taken;
+  }
+};
+
+/**
+ * Charges the point defence guns with their share of the power the weapons were given, and fires
+ * a burst from each one engaging a target as often as its charge allows, given rounds and a firing
+ * solution from fire control (see `pointDefenceSolution`). A burst takes its rounds from the
+ * magazines, or what is left of them, and its recoil pushes the ship back. It meets its target
+ * after the rounds' flight, leaving at `time`; at a missile it carries the chance it has of
+ * bringing it down then.
+ */
+export const firePointDefence = (
+  ship: ShipState,
+  attacker: SideId,
+  targets: PointDefenceTargets,
+  time: number,
+  dt: number,
+): PointDefenceBurst[] => {
+  const share = weaponsShare(ship);
+  const bursts: PointDefenceBurst[] = [];
+  const pointDefence = ship.weapons.pointDefence.map((state, gun) => {
+    const needed = burstEnergy(state.gun);
+    let charge = state.charge + state.demand * share * dt;
+    let { lastChance } = state;
+    const { engaging } = state;
+    const threat =
+      engaging?.kind === 'missile'
+        ? targets.threats.find((t) => t.id === engaging.munition)
+        : undefined;
+    const motion =
+      engaging?.kind === 'ship' && targets.ship?.id === engaging.side
+        ? targets.ship.motion
+        : threat?.motion;
+    // The allowance stops rounding error in the charge from holding a burst back a step.
+    while (engaging && motion && charge >= needed * (1 - 1e-9) && roundsLeft(ship) > 0) {
+      const solution = pointDefenceSolution(state.gun, ship, motion, dt);
+      if (!solution) break;
+      const { roundMass, muzzleVelocity, roundsPerBurst } = state.gun;
+      const rounds = Math.min(roundsPerBurst, roundsLeft(ship));
+      takeRounds(ship, rounds, roundMass);
+      const launch = scale(solution.direction, muzzleVelocity);
+      const relative = sub(add(ship.velocity, launch), motion.velocity);
+      const chance = threat ? missileHitChance(state.gun, rounds, ship, threat, solution) : 0;
+      bursts.push({
+        attacker,
+        gun,
+        engagement: engaging,
+        arrival: time + solution.flightTime,
+        rounds,
+        roundMass,
+        direction: normalize(relative),
+        speed: Math.sqrt(dot(relative, relative)),
+        spread: burstSpread(state.gun, ship, motion, solution),
+        chance,
+      });
+      if (threat) lastChance = chance;
+      const { mass } = shipMassProperties(ship);
+      ship.velocity = sub(ship.velocity, scale(launch, (rounds * roundMass) / mass));
+      charge -= needed;
+    }
+    return { ...state, charge: Math.min(charge, needed), lastChance };
+  });
+  ship.weapons = { ...ship.weapons, pointDefence };
+  return bursts;
+};
+
 /** A missile just launched, and the launcher in the ship's list that launched it. */
 export interface Launch {
   readonly missile: Missile;
@@ -404,7 +603,7 @@ export const launchMissiles = (
     // The allowance stops rounding error in the countdown from holding a launch back a step.
     const reload = state.reload - dt > 1e-9 ? state.reload - dt : 0;
     if (reload > 0 || remaining === 0 || !target || !design) return { ...state, reload };
-    takeAmmunition(ship, from, { slugs: 0, missiles: 1, mass: missileMass(design) });
+    takeAmmunition(ship, from, { missiles: 1, mass: missileMass(design) });
     remaining -= 1;
     launched.push({
       missile: launchMissile(nextId(), attacker, target, design, ship),

@@ -12,7 +12,7 @@ import { createComputerCaptain } from './captain';
 import { DECISION_INTERVAL, runBattle, withComputerCaptains } from './command';
 import { designComponentsOfType, type Design } from './design';
 import type { Order } from './orders';
-import { duelSetup, testDesign } from './testing';
+import { defendedTestDesign, duelSetup, TEST_LASER, testDesign, withSection } from './testing';
 import { distance } from './vector';
 import { effectiveRange } from './beams';
 
@@ -207,6 +207,45 @@ describe('computer captain', () => {
     expect(battle.advance(10).filter((e) => e.type === 'launch')).toHaveLength(launchers.length);
   });
 
+  it('keeps its point defence on missiles, and on the ship once it has nothing else', () => {
+    const armed = withSection(defendedTestDesign(), 'forward', {
+      ...defendedTestDesign().sections[0],
+      mounts: [TEST_LASER],
+    });
+    const battle = againstIdlePlayer(testDesign(), armed, 20 * KM);
+    battle.advance(10);
+    expect(battle.observe('red').ownShip.weapons.pointDefencePriority).toBe('missiles');
+
+    // With only point defence, it turns it on the enemy ship and fights at its short reach.
+    const lastResort = againstIdlePlayer(testDesign(), defendedTestDesign(), 100 * KM);
+    const firedOn = (events: readonly BattleEvent[]) =>
+      events.some(
+        (e) => e.type === 'impact' && e.attacker === 'red' && e.munition === 'point-defence',
+      );
+    while (!firedOn(lastResort.advance(10))) {
+      if (lastResort.time > 1_200 || lastResort.outcome) throw new Error('Red never fired on blue');
+    }
+    const red = lastResort.observe('red').ownShip;
+    expect(red.weapons.pointDefencePriority).toBe('missiles-then-ship');
+    expect(red.manoeuvre?.range).toBeLessThan(red.weapons.pointDefence[0]?.effectiveRange ?? 0);
+  });
+
+  it('faces point defence that shoots down its missiles without any order', () => {
+    // An idle player in the Rampart gives no orders; its point defence is on missiles from the start.
+    const battle = againstIdlePlayer(
+      handMadeDesign('rampart'),
+      handMadeDesign('quiver'),
+      40_000 * KM,
+    );
+    const events: BattleEvent[] = [];
+    while (!events.some((e) => e.type === 'intercept')) {
+      if (battle.time > 2 * HOUR || battle.outcome) throw new Error('No missile was shot down');
+      events.push(...battle.advance(60));
+    }
+    const intercept = events.find((e) => e.type === 'intercept');
+    expect(intercept).toMatchObject({ side: 'blue', attacker: 'red', weapon: 'point-defence' });
+  }, 20_000);
+
   it('deploys its radiators when it runs hot, and retracts them once cool', () => {
     const setup = duelSetup(handMadeDesign('lance'), handMadeDesign('bastion'), 300_000 * KM);
     const observation = createBattle(setup).observe('red');
@@ -261,7 +300,7 @@ describe('two computer captains', () => {
     expectDecided(battle);
   }, 30_000); // Simulates most of a day of battle; takes a few seconds.
 
-  it.each(['lance', 'bastion', 'quiver', 'torch', 'needle'])(
+  it.each(['lance', 'bastion', 'quiver', 'torch', 'needle', 'rampart'])(
     'fight %s against its own design to a result',
     (design) => {
       const battle = runBattle(computerDuel(design, design, 200_000 * KM), { maxTime: 24 * HOUR });

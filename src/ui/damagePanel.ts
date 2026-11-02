@@ -1,6 +1,6 @@
 import type { BattleEvent, SectionObservation, SideId, SideObservation } from '../sim/battle';
 import type { ComponentType, SectionKind } from '../sim/design';
-import type { BeamKind } from '../sim/events';
+import type { BeamKind, ImpactKind } from '../sim/events';
 import { el } from './el';
 import { formatBattleTime, formatGJ, formatKilotons, formatKm, formatMm, formatMW } from './format';
 
@@ -21,6 +21,7 @@ export const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
   'charged-particle-beam': 'Charged particle beam',
   'neutral-particle-beam': 'Neutral particle beam',
   'kinetic-gun': 'Kinetic gun',
+  'point-defence': 'Point defence',
   launcher: 'Launcher',
 };
 
@@ -31,7 +32,12 @@ export const BEAM_TEXT: Readonly<Record<BeamKind, string>> = {
   'neutral-particle': 'Neutral particle beam',
 };
 
-const MUNITION_TEXT = { slug: 'Slug', missile: 'Missile' } as const;
+/** What struck a ship directly, as a name. */
+export const IMPACT_TEXT: Readonly<Record<ImpactKind, string>> = {
+  slug: 'Slug',
+  missile: 'Missile',
+  'point-defence': 'Point defence',
+};
 
 /** How many of the latest events the log shows. */
 const LOG_LENGTH = 6;
@@ -65,7 +71,7 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
     }
     case 'impact': {
       const part = `${SECTION_TEXT[event.section].toLowerCase()} ${event.mount === null ? 'section' : 'mount'}`;
-      const munition = MUNITION_TEXT[event.munition];
+      const munition = IMPACT_TEXT[event.munition];
       return event.attacker === viewer
         ? `${time} ${munition} hit enemy ${part} · ${formatGJ(event.energy)}`
         : `${time} ${munition} hit on our ${part} · ${formatGJ(event.energy)}`;
@@ -74,6 +80,10 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
       return event.attacker === viewer
         ? `${time} Missile launched`
         : `${time} Enemy missile launched at us`;
+    case 'intercept':
+      return event.side === viewer
+        ? `${time} Point defence shot down enemy missile · ${formatKm(event.distance, 1)}`
+        : `${time} Our missile shot down by point defence`;
     case 'detonation': {
       const burst = `${formatKilotons(event.yield)} ${event.contact ? 'on contact' : `at ${formatKm(event.distance, 1)}`}`;
       return event.attacker === viewer

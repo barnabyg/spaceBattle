@@ -1,6 +1,6 @@
 import type { SideObservation, WeaponsObservation } from '../sim/battle';
 import type { ManoeuvreObservation } from '../sim/manoeuvre';
-import type { FireMode, ManoeuvreGoal, Order } from '../sim/orders';
+import type { FireMode, ManoeuvreGoal, Order, PointDefencePriority } from '../sim/orders';
 import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/power';
 import { length, vec3 } from '../sim/vector';
 import { el } from './el';
@@ -97,6 +97,29 @@ const describeLaunch = (weapons: WeaponsObservation): string => {
   if (ammunition.missiles === 0) return 'Out of missiles';
   const reach = Math.max(0, ...ammunition.missileDesigns.map((m) => m.reach));
   return `${left} ready · reach ${formatKm(reach)}`;
+};
+
+/**
+ * What the point defence is doing, e.g. "Firing on 2 missiles · 3,960 rounds left",
+ * "Firing on enemy ship · 3,960 rounds left" or "Ready · reach 25 km · 3 shot down".
+ */
+const describePointDefence = (weapons: WeaponsObservation): string => {
+  const { pointDefence, ammunition, intercepts } = weapons;
+  if (pointDefence.length === 0) return 'No point defence';
+  if (pointDefence.every((g) => g.integrity === 0)) return 'Point defence lost';
+  if (ammunition.rounds === 0) return 'Out of rounds';
+  const left = `${ammunition.rounds.toLocaleString('en-GB')} rounds left`;
+  const missiles = new Set(
+    pointDefence.flatMap((g) => (g.engaging?.kind === 'missile' ? [g.engaging.munition] : [])),
+  ).size;
+  if (missiles > 0)
+    return `Firing on ${missiles} ${missiles === 1 ? 'missile' : 'missiles'} · ${left}`;
+  if (pointDefence.some((g) => g.engaging?.kind === 'ship'))
+    return `Firing on enemy ship · ${left}`;
+  const reach = Math.max(
+    ...pointDefence.filter((g) => g.integrity > 0).map((g) => g.effectiveRange),
+  );
+  return `Ready · reach ${formatKm(reach)} · ${intercepts.toLocaleString('en-GB')} shot down`;
 };
 
 /** The captain's orders to their own ship. Orders can be given while running or paused. */
@@ -215,6 +238,19 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     className: 'order-state',
     attrs: { 'aria-label': 'Launch state' },
   });
+  const pointDefenceButtons = {
+    missiles: button('Missiles only'),
+    'missiles-then-ship': button('Missiles, then ship'),
+  } satisfies Record<PointDefencePriority, HTMLButtonElement>;
+  for (const [priority, priorityButton] of Object.entries(pointDefenceButtons)) {
+    priorityButton.addEventListener('click', () => {
+      giveOrder({ type: 'point-defence', priority: priority as PointDefencePriority });
+    });
+  }
+  const pointDefenceState = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Point defence state' },
+  });
   // The latest weapons order and contact, so each button changes only its own part.
   let weapons: { target: string | null; mode: FireMode } = { target: null, mode: 'hold-fire' };
   let enemy: string | null = null;
@@ -320,6 +356,14 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     weaponsState,
     el('div', { className: 'order-row' }, salvoSize.element, launch, callOff),
     launchState,
+    el('h3', { text: 'Point defence' }),
+    el(
+      'div',
+      { className: 'order-row' },
+      pointDefenceButtons.missiles,
+      pointDefenceButtons['missiles-then-ship'],
+    ),
+    pointDefenceState,
   );
 
   return {
@@ -373,6 +417,15 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       callOff.disabled = ship.weapons.salvo === null;
       launch.classList.toggle('active', ship.weapons.salvo !== null);
       launchState.textContent = describeLaunch(ship.weapons);
+      const defended = ship.weapons.pointDefence.length > 0;
+      for (const [priority, priorityButton] of Object.entries(pointDefenceButtons)) {
+        priorityButton.disabled = !defended;
+        priorityButton.classList.toggle(
+          'active',
+          defended && ship.weapons.pointDefencePriority === priority,
+        );
+      }
+      pointDefenceState.textContent = describePointDefence(ship.weapons);
     },
   };
 };

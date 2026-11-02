@@ -1,6 +1,7 @@
 import { effectiveRange } from './beams';
 import { componentSlots } from './components';
 import {
+  impactBurst,
   impactKinetic,
   intactShape,
   irradiate,
@@ -53,7 +54,19 @@ import {
   missileReach,
   type Missile,
 } from './missile';
-import type { AttitudeOrder, FireMode, Order } from './orders';
+import {
+  POINT_DEFENCE_PRIORITIES,
+  type AttitudeOrder,
+  type FireMode,
+  type Order,
+  type PointDefencePriority,
+} from './orders';
+import {
+  burstEnergy,
+  pointDefenceRange,
+  type PointDefenceEngagement,
+  type Threat,
+} from './pointDefence';
 import {
   POWER_SYSTEMS,
   powerPlantOf,
@@ -86,16 +99,20 @@ import {
   aimWeapons,
   emitBeams,
   fireKineticGuns,
+  firePointDefence,
   launchMissiles,
   missilesLeft,
+  roundsLeft,
   slugsLeft,
   type Beam,
   type BeamWeaponState,
+  type PointDefenceBurst,
+  type PointDefenceTargets,
   type Salvo,
 } from './weapons';
 
 export { TIME_STEP };
-export type { BattleEvent, BattleOutcome };
+export type { BattleEvent, BattleOutcome, PointDefenceEngagement, PointDefencePriority };
 
 export type SideId = string;
 export type Commander = 'player' | 'computer';
@@ -240,6 +257,33 @@ export interface KineticGunObservation {
   readonly effectiveRange: number;
 }
 
+/** One point defence gun and what it is doing. */
+export interface PointDefenceObservation {
+  readonly section: SectionKind;
+  /** Its place in the section's mounts. */
+  readonly mount: number;
+  readonly integrity: number;
+  /** What it fired on, or was drawing power to fire on, in the last step; null if nothing. */
+  readonly engaging: PointDefenceEngagement | null;
+  /** How much of the energy for its next burst it has drawn (0–1). */
+  readonly charge: number;
+  /** Electrical energy each burst takes, J. */
+  readonly burstEnergy: number;
+  /** Bursts per second, given full power. */
+  readonly burstRate: number;
+  readonly roundsPerBurst: number;
+  /** kg */
+  readonly roundMass: number;
+  /** m/s */
+  readonly muzzleVelocity: number;
+  /** Half-angle of the cone its rounds spread through, rad. */
+  readonly dispersion: number;
+  /** How far it fires: out to the longest flight fire control allows its rounds, m. */
+  readonly effectiveRange: number;
+  /** The chance its latest burst at a missile had of bringing it down, or null before any. */
+  readonly lastChance: number | null;
+}
+
 /** One launcher and what it is doing. */
 export interface LauncherObservation {
   readonly section: SectionKind;
@@ -272,6 +316,10 @@ export interface AmmunitionObservation {
   readonly slugs: number;
   /** Slugs the magazines hold when full. */
   readonly slugCapacity: number;
+  /** Point defence rounds left in working magazines. */
+  readonly rounds: number;
+  /** Point defence rounds the magazines hold when full. */
+  readonly roundCapacity: number;
   /** Missiles left in working magazines. */
   readonly missiles: number;
   /** Missiles the magazines hold when full. */
@@ -281,8 +329,8 @@ export interface AmmunitionObservation {
 }
 
 /**
- * The ship's weapons: the captain's weapons and launch orders, each weapon and the latest beam
- * hit scored.
+ * The ship's weapons: the captain's weapons, launch and point defence orders, each weapon, the
+ * latest beam hit scored and the missiles shot down.
  */
 export interface WeaponsObservation {
   readonly target: SideId | null;
@@ -291,6 +339,11 @@ export interface WeaponsObservation {
   /** Charged and neutral particle beams. */
   readonly particleBeams: readonly ParticleBeamObservation[];
   readonly kineticGuns: readonly KineticGunObservation[];
+  readonly pointDefence: readonly PointDefenceObservation[];
+  /** What the point defence fires on. */
+  readonly pointDefencePriority: PointDefencePriority;
+  /** Enemy missiles the ship has shot down. */
+  readonly intercepts: number;
   readonly launchers: readonly LauncherObservation[];
   /** Missiles still to launch under the latest launch order, or null when none are. */
   readonly salvo: Salvo | null;
@@ -417,6 +470,8 @@ export interface MissileObservation extends MunitionInFlight {
   readonly deltaV: number;
   /** Drive thrust applied in the last step, N. */
   readonly thrust: number;
+  /** Its drive's acceleration over the last step, m/s². */
+  readonly acceleration: Vec3;
 }
 
 /** A munition in flight. */
@@ -504,6 +559,13 @@ const checkOrder = (order: Order): Order => {
     case 'launch':
       if (!(Number.isInteger(order.missiles) && order.missiles >= 0)) {
         throw new Error('A launch order needs a whole, non-negative number of missiles');
+      }
+      return order;
+    case 'point-defence':
+      if (!POINT_DEFENCE_PRIORITIES.includes(order.priority)) {
+        throw new Error(
+          `A point defence order needs one of ${POINT_DEFENCE_PRIORITIES.join(', ')}`,
+        );
       }
       return order;
     case 'radiators':
@@ -606,6 +668,23 @@ const observeWeapons = (ship: ShipState): WeaponsObservation => {
       rateOfFire: state.gun.rateOfFire,
       effectiveRange: kineticGunRange(state.gun),
     })),
+    pointDefence: weapons.pointDefence.map((state) => ({
+      section: slots[state.slot]?.section ?? 'forward',
+      mount: slots[state.slot]?.index ?? 0,
+      integrity: ship.integrity[state.slot] ?? 0,
+      engaging: state.engaging,
+      charge: state.charge / burstEnergy(state.gun),
+      burstEnergy: burstEnergy(state.gun),
+      burstRate: state.gun.burstRate,
+      roundsPerBurst: state.gun.roundsPerBurst,
+      roundMass: state.gun.roundMass,
+      muzzleVelocity: state.gun.muzzleVelocity,
+      dispersion: state.gun.dispersion,
+      effectiveRange: pointDefenceRange(state.gun),
+      lastChance: state.lastChance,
+    })),
+    pointDefencePriority: weapons.pointDefencePriority,
+    intercepts: weapons.intercepts,
     ammunition: observeAmmunition(ship),
     lastHit: weapons.lastHit,
   };
@@ -617,6 +696,8 @@ const observeAmmunition = (ship: ShipState): AmmunitionObservation => {
   return {
     slugs: slugsLeft(ship),
     slugCapacity: magazines.reduce((n, m) => n + m.slugs, 0),
+    rounds: roundsLeft(ship),
+    roundCapacity: magazines.reduce((n, m) => n + m.rounds, 0),
     missiles: missilesLeft(ship),
     missileCapacity: magazines.reduce((n, m) => n + m.missiles, 0),
     missileDesigns: missiles.map((missile) => ({
@@ -642,6 +723,7 @@ const observeMissile = (missile: Missile): MissileObservation => ({
   propellantMass: missile.propellantMass,
   deltaV: missileDeltaV(missile.design, missile.propellantMass),
   thrust: missile.thrust,
+  acceleration: missile.acceleration,
 });
 
 const observeAppearance = ({ ship, beamsLanding, impacts }: Combatant): ShipAppearance => ({
@@ -687,6 +769,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
   let slugs: Slug[] = [];
   /** Missiles in flight, in the order launched. */
   let missiles: Missile[] = [];
+  /** Point defence bursts on their way to their targets, in the order fired. */
+  let bursts: PointDefenceBurst[] = [];
   let munitionsFired = 0;
   const nextMunitionId = () => ++munitionsFired;
   const logs = new Map<SideId, BattleEvent[]>(setup.sides.map((side) => [side.id, []]));
@@ -909,6 +993,69 @@ export const createBattle = (setup: BattleSetup): Battle => {
     return true;
   };
 
+  /**
+   * Point defence bursts meeting their targets, in the order fired. A burst at a missile still in
+   * flight brings it down with the chance it was fired with, and the missile leaves the battle; a
+   * burst at a ship strikes it (see `impactBurst`).
+   */
+  const resolveBursts = (
+    arriving: readonly PointDefenceBurst[],
+    ctx: Omit<DamageContext, 'side'>,
+  ) => {
+    for (const burst of arriving) {
+      const defender = combatantOf(burst.attacker);
+      const gun = defender.ship.weapons.pointDefence[burst.gun];
+      const place = componentSlots(defender.ship.design)[gun?.slot ?? -1];
+      const { engagement } = burst;
+      if (engagement.kind === 'missile') {
+        const missile = missiles.find((m) => m.id === engagement.munition);
+        if (!missile || !(ctx.random() < burst.chance)) continue;
+        missiles = missiles.filter((m) => m !== missile);
+        defender.ship.weapons = {
+          ...defender.ship.weapons,
+          intercepts: defender.ship.weapons.intercepts + 1,
+        };
+        ctx.events.push({
+          type: 'intercept',
+          time: ctx.time,
+          side: burst.attacker,
+          attacker: missile.attacker,
+          munition: missile.id,
+          warhead: missile.design.warhead.type,
+          weapon: 'point-defence',
+          section: place?.section ?? 'forward',
+          mount: place?.index ?? 0,
+          position: missile.position,
+          distance: distance(missile.position, defender.ship.position),
+          chance: burst.chance,
+        });
+        continue;
+      }
+      const target = combatants.find((c) => c.side.id === engagement.side);
+      if (!target) continue;
+      const { rounds, roundMass, speed, spread } = burst;
+      const landed = impactBurst(
+        target.ship,
+        burst.direction,
+        { rounds, roundMass, roundEnergy: 0.5 * roundMass * speed ** 2, spread },
+        { ...ctx, side: target.side.id },
+      );
+      if (!landed) continue;
+      target.impacts.push({ point: landed.point, energy: landed.energy });
+      ctx.events.push({
+        type: 'impact',
+        time: ctx.time,
+        attacker: burst.attacker,
+        target: target.side.id,
+        munition: 'point-defence',
+        section: landed.part.section,
+        mount: landed.part.mount,
+        energy: landed.energy,
+        speed,
+      });
+    }
+  };
+
   /** Whether a munition has passed its target for good, so it can be forgotten. */
   const passedTarget = (
     munition: { readonly target: SideId; readonly position: Vec3; readonly velocity: Vec3 },
@@ -971,10 +1118,40 @@ export const createBattle = (setup: BattleSetup): Battle => {
         { position: ship.position, velocity: ship.velocity, acceleration: ship.acceleration },
       ]),
     );
+    // Point defence sees enemy missiles and its target as they were at the start of the step.
+    const pointDefenceTargets = new Map<SideId, PointDefenceTargets>(
+      combatants.map((c) => {
+        const target = targetOf(c);
+        const motion = target && motions.get(target.side.id);
+        const threats = missiles.flatMap((m): Threat[] =>
+          m.attacker === c.side.id
+            ? []
+            : [
+                {
+                  id: m.id,
+                  design: m.design,
+                  motion: {
+                    position: m.position,
+                    velocity: m.velocity,
+                    acceleration: m.acceleration,
+                  },
+                },
+              ],
+        );
+        return [
+          c.side.id,
+          { threats, ship: target && motion ? { id: target.side.id, motion } : null },
+        ];
+      }),
+    );
     // Weapons choose whether to fire first, so the drive knows what power they will ask for.
     combatants.forEach((c) => {
       const target = targetOf(c);
-      aimWeapons(c.ship, target ? distance(c.ship.position, target.ship.position) : null);
+      aimWeapons(
+        c.ship,
+        target ? distance(c.ship.position, target.ship.position) : null,
+        pointDefenceTargets.get(c.side.id),
+      );
     });
     // Every ship plans from the same snapshot of positions, so the order of sides never matters.
     const launches: BattleEvent[] = [];
@@ -1018,6 +1195,10 @@ export const createBattle = (setup: BattleSetup): Battle => {
           nextMunitionId,
         ),
       );
+      const defending = pointDefenceTargets.get(combatant.side.id);
+      if (defending) {
+        bursts.push(...firePointDefence(ship, combatant.side.id, defending, start, TIME_STEP));
+      }
       const salvoTarget = ship.weapons.salvo?.target;
       const launched = launchMissiles(
         ship,
@@ -1073,6 +1254,11 @@ export const createBattle = (setup: BattleSetup): Battle => {
       if (c.impacts.length > 0) c.impacts = [];
     });
     for (const beam of arriving) resolveBeam(beam, { time, random, events });
+    resolveBursts(
+      bursts.filter((b) => b.arrival <= time + 1e-9),
+      { time, random, events },
+    );
+    bursts = bursts.filter((b) => b.arrival > time + 1e-9);
     resolveMunitions(munitionsBefore, shipsBefore, { time, random, events });
     combatants.forEach(({ side, ship }) => {
       overheat(ship, TIME_STEP, { side: side.id, time, random, events });
@@ -1132,6 +1318,9 @@ export const createBattle = (setup: BattleSetup): Battle => {
             throw new Error('A ship cannot target itself');
           }
           ship.weapons = { ...ship.weapons, target: checked.target, mode: checked.mode };
+          break;
+        case 'point-defence':
+          ship.weapons = { ...ship.weapons, pointDefencePriority: checked.priority };
           break;
         case 'launch':
           if (combatantOf(checked.target).side.id === sideId) {

@@ -161,7 +161,7 @@ A component inside a section that stores ammunition; how much it holds is a desi
 _Avoid_: Ammo store, munitions bay
 
 **Ammunition**:
-The missiles and kinetic gun slugs a ship carries, used up in battle and bought again between battles.
+The missiles, kinetic gun slugs and point defence rounds a ship carries, used up in battle and bought again between battles.
 _Avoid_: Munitions, ordnance, ammo
 
 **Kinetic warhead**:

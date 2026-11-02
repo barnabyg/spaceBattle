@@ -10,7 +10,7 @@ import type { BeamKind } from '../sim/events';
 import { HULLS, hullLength } from '../sim/hull';
 import type { Quat } from '../sim/quaternion';
 import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vector';
-import { createBurstFlash } from './burstFlash';
+import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { formatKm } from './format';
@@ -35,6 +35,8 @@ const HIT_COLOUR = '#fff1c8';
 const BURST_COLOUR = '#fffbe8';
 /** Brightest a burst lights its ship, against the sun's 3. */
 const BURST_LIGHT = 40;
+/** A missile shot down near a ship flashes beside it, in amber. */
+const INTERCEPT_COLOUR = '#ffc24d';
 /**
  * What glows where each kind of beam lands: a laser's burning spot, or the violet or blue glow of
  * the vapour a particle beam ionises as it bores in.
@@ -132,6 +134,8 @@ interface ShipView {
   readonly burstLight: THREE.DirectionalLight;
   /** Its glow, out beyond the ship in that direction. */
   readonly burstGlow: THREE.Sprite;
+  /** The flash of a missile it shot down, out beyond the ship in that missile's direction. */
+  readonly interceptGlow: THREE.Sprite;
 }
 
 const setLayer = (object: THREE.Object3D, layer: number) => {
@@ -170,9 +174,19 @@ const createShipView = (scene: THREE.Scene, side: SideSetup, layer: number): Shi
     }),
   );
   burstGlow.visible = false;
+  const interceptGlow = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: softGlowTexture(),
+      color: INTERCEPT_COLOUR,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  interceptGlow.visible = false;
   burstLight.layers.set(layer);
   burstGlow.layers.set(layer);
-  scene.add(anchor, burstLight, burstGlow);
+  interceptGlow.layers.set(layer);
+  scene.add(anchor, burstLight, burstGlow, interceptGlow);
   return {
     side,
     layer,
@@ -183,6 +197,7 @@ const createShipView = (scene: THREE.Scene, side: SideSetup, layer: number): Shi
     hitLight,
     burstLight,
     burstGlow,
+    interceptGlow,
   };
 };
 
@@ -271,6 +286,23 @@ const showBurst = (view: ShipView, burst: { offset: Vec3; strength: number } | n
   view.burstGlow.position.set(towards.x, towards.y, towards.z).multiplyScalar(1.5 * view.length);
   view.burstGlow.scale.setScalar(view.length * (1 + 2 * burst.strength));
   view.burstGlow.material.opacity = burst.strength;
+};
+
+/**
+ * Flashes beside a ship where a missile it shot down was, `offset` from it (world axes, m),
+ * `strength` from 1 fading to 0; or hides the flash when there is none. Missiles are shot down
+ * kilometres out, far outside the view, so the flash stands in a ship's length or so out in that
+ * direction.
+ */
+const showIntercept = (view: ShipView, shot: { offset: Vec3; strength: number } | null) => {
+  view.interceptGlow.visible = shot !== null;
+  if (!shot) return;
+  const towards = normalize(shot.offset);
+  view.interceptGlow.position
+    .set(towards.x, towards.y, towards.z)
+    .multiplyScalar(1.2 * view.length);
+  view.interceptGlow.scale.setScalar(view.length * (0.3 + 0.5 * shot.strength));
+  view.interceptGlow.material.opacity = shot.strength;
 };
 
 const lineOfSight = new THREE.Vector3();
@@ -394,6 +426,7 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
   const missileGlints = glintsOf(MISSILE_GLINT_SIZE);
   const glintColour = new THREE.Color();
   const burstFlash = createBurstFlash();
+  const interceptFlash = createInterceptFlash();
 
   const camera = (view: ShipView) => {
     const c = new THREE.PerspectiveCamera(FOV, 1, 0.5, SKY_RADIUS * 2);
@@ -473,9 +506,16 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       slugGlints.show();
       missileGlints.show();
       const flash = burstFlash(observation);
+      const shot = interceptFlash(observation);
       for (const view of [own, contact]) {
         const near = flash?.detonation.target === view.side.id ? flash : null;
         showBurst(view, near && { offset: near.detonation.offset, strength: near.strength });
+        const at = view === own ? ship.position : seen?.position;
+        const by = shot?.intercept.side === view.side.id && at ? shot : null;
+        showIntercept(
+          view,
+          by && at ? { offset: sub(by.intercept.position, at), strength: by.strength } : null,
+        );
       }
     },
     render() {

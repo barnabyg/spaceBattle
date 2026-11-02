@@ -40,11 +40,16 @@ export interface BattleOutcome {
   readonly sides: readonly SideOutcome[];
 }
 
+/**
+ * The components that count as weapons for whether a ship is disabled: those that can damage the
+ * enemy ship. Point defence counts, as its captain can turn it on the ship at short range.
+ */
 const WEAPON_TYPES: ReadonlySet<ComponentType> = new Set([
   'laser',
   'charged-particle-beam',
   'neutral-particle-beam',
   'kinetic-gun',
+  'point-defence',
   'launcher',
 ]);
 

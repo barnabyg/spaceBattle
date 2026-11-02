@@ -12,6 +12,7 @@ const SIGNIFICANT_EVENTS: ReadonlySet<BattleEvent['type']> = new Set([
   'hit',
   'impact',
   'launch',
+  'intercept',
   'detonation',
   'magazine-explosion',
   'armour-breached',

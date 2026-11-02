@@ -1,5 +1,5 @@
 import type { BattleEvent, SideSetup } from '../sim/battle';
-import { BEAM_TEXT, COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
+import { BEAM_TEXT, COMPONENT_TEXT, IMPACT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
 import {
   formatBattleTime,
@@ -37,9 +37,13 @@ export const describeTestEvent = (event: BattleEvent, sides: readonly SideSetup[
       return `${time} ${nameOf(event.attacker)} ${BEAM_TEXT[event.attack].toLowerCase()} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatMW(event.power)} · ${intensity} MW/m² · spot ${spot} m · range ${formatKm(event.range)}`;
     }
     case 'impact':
-      return `${time} ${nameOf(event.attacker)} ${event.munition} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatGJ(event.energy)} · ${formatKmPerS(event.speed)}`;
+      return `${time} ${nameOf(event.attacker)} ${IMPACT_TEXT[event.munition].toLowerCase()} hit ${nameOf(event.target)} ${partText(event.section, event.mount)} · ${formatGJ(event.energy)} · ${formatKmPerS(event.speed)}`;
     case 'launch':
       return `${time} ${nameOf(event.attacker)} launched missile ${event.munition} at ${nameOf(event.target)} from ${partText(event.section, event.mount)}`;
+    case 'intercept': {
+      const chance = Math.round(event.chance * 100);
+      return `${time} ${nameOf(event.side)} point defence (${partText(event.section, event.mount)}) shot down ${nameOf(event.attacker)} ${event.warhead} missile ${event.munition} · ${formatKm(event.distance, 2)} out · ${chance}% chance`;
+    }
     case 'detonation': {
       const burst = event.contact
         ? 'on contact'

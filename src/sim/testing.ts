@@ -13,6 +13,7 @@ import {
   type MissileDesign,
   type MountedComponentDesign,
   type NeutralParticleBeamDesign,
+  type PointDefenceDesign,
   type SectionDesign,
   type SectionKind,
 } from './design';
@@ -162,6 +163,7 @@ export const testMagazine = (slugs: number): MagazineDesign => ({
   type: 'magazine',
   mass: 5e3,
   slugs,
+  rounds: 0,
   missiles: 0,
   missile: null,
 });
@@ -207,6 +209,7 @@ export const missileMagazine = (
   type: 'magazine',
   mass: 5e3 + missiles * (missile.dryMass + missile.propellantMass),
   slugs: 0,
+  rounds: 0,
   missiles,
   missile,
 });
@@ -223,6 +226,54 @@ export const launchingTestDesign = (
     components: [missileMagazine(missiles, missile)],
     mounts: Array.from({ length: launchers }, () => TEST_LAUNCHER),
   });
+
+/**
+ * A point defence gun for test designs: bursts of 20 rounds of 50 g at 5 km/s, five bursts a
+ * second, spreading 2 mrad. Each burst takes 20 × ½mv² / 0.5 = 25 MJ, so it draws 125 MW while it
+ * fires, and it reaches 5 km/s × 5 s = 25 km.
+ */
+export const TEST_POINT_DEFENCE: PointDefenceDesign = {
+  type: 'point-defence',
+  mass: 10e3,
+  roundMass: 0.05,
+  muzzleVelocity: 5e3,
+  efficiency: 0.5,
+  roundsPerBurst: 20,
+  burstRate: 5,
+  dispersion: 2e-3,
+};
+
+/** A magazine for test designs holding `rounds` point defence rounds. */
+export const roundsMagazine = (rounds: number): MagazineDesign => ({
+  type: 'magazine',
+  mass: 5e3,
+  slugs: 0,
+  rounds,
+  missiles: 0,
+  missile: null,
+});
+
+/**
+ * The test design with `mounts` test point defence guns on middle mounts beside its radiator, and
+ * a magazine of `rounds` rounds for them in the forward section.
+ */
+export const defendedTestDesign = ({
+  mounts = 1,
+  rounds = 10_000,
+}: { mounts?: number; rounds?: number } = {}): Design => {
+  const design = testDesign();
+  const middle = design.sections.find((s) => s.kind === 'middle');
+  return withSection(
+    withSection(design, 'middle', {
+      mounts: [
+        ...(middle?.mounts ?? []),
+        ...Array.from({ length: mounts }, () => TEST_POINT_DEFENCE),
+      ],
+    }),
+    'forward',
+    { components: [roundsMagazine(rounds)] },
+  );
+};
 
 /** Turns red's nose (+x) to point back along −x, at blue. */
 export const FACING_BLUE: Quat = fromAxisAngle(vec3(0, 0, 1), Math.PI);

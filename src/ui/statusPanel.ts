@@ -86,9 +86,11 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   [
     'Ammunition',
     ({ ownShip: { weapons } }) => {
-      const { slugs, slugCapacity, missiles, missileCapacity } = weapons.ammunition;
+      const { slugs, slugCapacity, rounds, roundCapacity, missiles, missileCapacity } =
+        weapons.ammunition;
       const held = [
         ...(slugCapacity > 0 ? [`${count(slugs)} of ${count(slugCapacity)} slugs`] : []),
+        ...(roundCapacity > 0 ? [`${count(rounds)} of ${count(roundCapacity)} rounds`] : []),
         ...(missileCapacity > 0
           ? [`${count(missiles)} of ${count(missileCapacity)} missiles`]
           : []),
@@ -98,6 +100,15 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   ],
   ['Slugs in flight', (o) => inFlight(o, 'slug')],
   ['Missiles in flight', (o) => inFlight(o, 'missile')],
+  [
+    'Point defence',
+    ({ ownShip: { weapons } }) => {
+      const guns = weapons.pointDefence;
+      if (guns.length === 0) return '—';
+      const engaging = guns.filter((g) => g.engaging !== null).length;
+      return `${count(engaging)} of ${count(guns.length)} firing · ${count(weapons.intercepts)} shot down`;
+    },
+  ],
   [
     'Radiators',
     ({ ownShip: { heat } }) =>

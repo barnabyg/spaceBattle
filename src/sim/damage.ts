@@ -1,4 +1,4 @@
-import { beamResistance } from './armour';
+import { ARMOUR, beamResistance } from './armour';
 import type { SideId } from './battle';
 import { spotRadius } from './beams';
 import { componentSlots } from './components';
@@ -6,7 +6,7 @@ import type { ArmourType, SectionKind } from './design';
 import type { BattleEvent } from './events';
 import { DAMAGE_TEMPERATURE, thermalProperties } from './heat';
 import { HULLS } from './hull';
-import { penetrationDepth, type SlugHit } from './kinetic';
+import { holeArea, penetrationDepth, type SlugHit } from './kinetic';
 import { conjugate, rotate } from './quaternion';
 import type { Random } from './random';
 import { firstHit, shipShape, type ShapePart } from './shape';
@@ -100,7 +100,7 @@ const damageComponent = (ship: ShipState, slot: number, loss: number, ctx: Damag
   const held = ship.ammunition.find((m) => m.slot === slot);
   if (held) {
     ship.ammunition = ship.ammunition.map((m) =>
-      m.slot === slot ? { ...m, slugs: 0, missiles: 0 } : m,
+      m.slot === slot ? { ...m, slugs: 0, rounds: 0, missiles: 0 } : m,
     );
   }
   ctx.events.push({
@@ -297,6 +297,50 @@ export const impactKinetic = (
   } else {
     damageMount(ship, hit.part, energy, ctx);
   }
+};
+
+/** A burst of point defence rounds as it reaches a ship. */
+export interface RoundsBurst {
+  readonly rounds: number;
+  /** kg */
+  readonly roundMass: number;
+  /** Each round's kinetic energy relative to the ship, J. */
+  readonly roundEnergy: number;
+  /** Radius of the disc the rounds spread evenly over about the line of fire, m. */
+  readonly spread: number;
+}
+
+/**
+ * A burst of point defence rounds reaching a ship along the world unit vector `direction`, its
+ * line of fire aimed at the centre of mass. The part the line of fire meets first takes the
+ * rounds its silhouette covers of the disc they spread over (never less than the holes they
+ * punch); the rest miss. Spread out like that, they wear a section's armour by the energy they
+ * bring to each square metre, (energy / area) / (ρ·e) metres deep, e being what a slug spends on
+ * each kilogram (see `ARMOUR`), so they barely mark it unless fired from close in. A mounted
+ * component takes all the energy of the rounds that strike it. Returns the part struck, where in
+ * the body frame, and the energy delivered; null if every round missed.
+ */
+export const impactBurst = (
+  ship: ShipState,
+  direction: Vec3,
+  burst: RoundsBurst,
+  ctx: DamageContext,
+): { readonly part: ShapePart; readonly point: Vec3; readonly energy: number } | null => {
+  const body = rotate(conjugate(ship.orientation), direction);
+  const hit = firstHit(intactShape(ship), scale(body, -RAY_START), body);
+  if (!hit) return null;
+  const pattern = Math.max(Math.PI * burst.spread ** 2, burst.rounds * holeArea(burst.roundMass));
+  const total = burst.rounds * burst.roundEnergy;
+  const energy = total * Math.min(1, hit.projectedArea / pattern);
+  ship.ledger = { ...ship.ledger, hitEnergy: ship.ledger.hitEnergy + energy };
+  if (hit.part.mount === null) {
+    const depthIn = (armour: ArmourType) =>
+      total / pattern / (ARMOUR[armour].density * ARMOUR[armour].penetrationEnergy);
+    damageSection(ship, hit.part.section, energy, depthIn, ctx);
+  } else {
+    damageMount(ship, hit.part, energy, ctx);
+  }
+  return { part: hit.part, point: scale(body, hit.distance - RAY_START), energy };
 };
 
 /** What a nuclear burst delivered to one part of a ship. */
