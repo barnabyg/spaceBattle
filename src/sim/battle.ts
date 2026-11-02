@@ -193,6 +193,35 @@ interface Combatant {
   impacts: ImpactLanding[];
 }
 
+/**
+ * The battle as it was at the start of a step, which fire control, missile guidance and missile
+ * defence work from.
+ */
+interface Snapshot {
+  /** Each ship's motion, by side. */
+  readonly motions: ReadonlyMap<SideId, Motion>;
+  /** Each missile's motion, by id. */
+  readonly missileMotions: ReadonlyMap<number, Motion>;
+  /** The ids of the incoming missiles each side's automatic defence launches at. */
+  readonly defence: ReadonlyMap<SideId, readonly number[]>;
+  /** What each side's point defence may fire on. */
+  readonly pointDefenceTargets: ReadonlyMap<SideId, PointDefenceTargets>;
+}
+
+/** Where a ship will point in a step, and what its autopilot commands if it has a manoeuvre. */
+interface Plan {
+  readonly heading: Vec3 | null;
+  readonly command: ManoeuvreCommand | null;
+}
+
+/** Where each ship and munition was before it moved in a step. */
+interface Departures {
+  /** By side. */
+  readonly ships: ReadonlyMap<SideId, Vec3>;
+  /** By munition id. */
+  readonly munitions: ReadonlyMap<number, Vec3>;
+}
+
 const checkOrder = (order: Order): Order => {
   switch (order.type) {
     case 'burn':
@@ -782,15 +811,14 @@ export const createBattle = (setup: BattleSetup): Battle => {
     });
   };
 
-  const step = (): readonly BattleEvent[] => {
-    if (outcome) return [];
-    const start = steps * TIME_STEP;
-    // Fire control sees every ship as it was at the start of the step, so the order of sides
-    // never matters.
+  /**
+   * The battle as it was at the start of the step. Fire control, missile guidance and missile
+   * defence all work from it, so the order of sides never matters.
+   */
+  const snapshot = (): Snapshot => {
     const motions = new Map<SideId, Motion>(
       combatants.map(({ side, ship }) => [side.id, motionOf(ship)]),
     );
-    // So do missile guidance and missile defence, for missiles.
     const missileMotions = new Map<number, Motion>(missiles.map((m) => [m.id, motionOf(m)]));
     // Automatic defence launches at each incoming missile none of the ship's anti-missile
     // missiles is after yet.
@@ -807,8 +835,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
         return [c.side.id, incoming.flatMap((m) => (engaged.has(m.id) ? [] : [m.id]))];
       }),
     );
-    // Point defence sees the missiles aimed at its ship and its target as they were at the start
-    // of the step; it leaves anti-missile missiles, which threaten only missiles, alone.
+    // Point defence sees the missiles aimed at its ship and its target; it leaves anti-missile
+    // missiles, which threaten only missiles, alone.
     const pointDefenceTargets = new Map<SideId, PointDefenceTargets>(
       combatants.map((c) => {
         const target = targetOf(c);
@@ -822,97 +850,120 @@ export const createBattle = (setup: BattleSetup): Battle => {
         ];
       }),
     );
-    // Weapons choose whether to fire first, so the drive knows what power they will ask for.
+    return { motions, missileMotions, defence, pointDefenceTargets };
+  };
+
+  /** Weapons choose whether to fire first, so the drive knows what power they will ask for. */
+  const aim = (seen: Snapshot) => {
     combatants.forEach((c) => {
       const target = targetOf(c);
       aimWeapons(
         c.ship,
         target ? distance(c.ship.position, target.ship.position) : null,
-        pointDefenceTargets.get(c.side.id),
+        seen.pointDefenceTargets.get(c.side.id),
       );
     });
-    // Every ship plans from the same snapshot of positions, so the order of sides never matters.
-    const launches: BattleEvent[] = [];
-    const plans = combatants.map(
-      (c): { heading: Vec3 | null; command: ManoeuvreCommand | null } => {
-        const state = c.ship.manoeuvre;
-        if (!state) return { heading: attitudeTarget(c), command: null };
-        const command = manoeuvreCommand(c.ship, state, contactOf(c));
-        return { heading: command.heading, command };
-      },
-    );
-    combatants.forEach((combatant, i) => {
-      const { ship } = combatant;
-      const { heading, command } = plans[i] ?? { heading: null, command: null };
-      steer(ship, heading, TIME_STEP);
-      const coasting = ship.velocity;
-      if (command && ship.manoeuvre) {
-        ship.manoeuvre = { ...ship.manoeuvre, correcting: command.correcting };
-        fireDrive(ship, manoeuvreThrottle(ship, command, TIME_STEP), TIME_STEP);
-      } else {
-        burn(ship, TIME_STEP);
-      }
-      ship.acceleration = scale(sub(ship.velocity, coasting), 1 / TIME_STEP);
-      settlePowerAndHeat(ship, TIME_STEP);
-      const target = targetOf(combatant);
-      beams.push(
-        ...emitBeams(
-          ship,
-          combatant.side.id,
-          target ? { id: target.side.id, position: target.ship.position } : null,
-          start,
-        ),
-      );
-      const motion = target && motions.get(target.side.id);
-      slugs.push(
-        ...fireKineticGuns(
-          ship,
-          combatant.side.id,
-          target && motion ? { id: target.side.id, motion } : null,
-          TIME_STEP,
-          nextMunitionId,
-        ),
-      );
-      const defending = pointDefenceTargets.get(combatant.side.id);
-      if (defending) {
-        bursts.push(...firePointDefence(ship, combatant.side.id, defending, start, TIME_STEP));
-      }
-      const salvoTarget = ship.weapons.salvo?.target ?? null;
-      const launched = launchMissiles(
+  };
+
+  /**
+   * Where a ship will point and what its autopilot commands, if it has a manoeuvre. Every ship
+   * plans before any steers, from the same positions, so the order of sides never matters.
+   */
+  const plan = (c: Combatant): Plan => {
+    const state = c.ship.manoeuvre;
+    if (!state) return { heading: attitudeTarget(c), command: null };
+    const command = manoeuvreCommand(c.ship, state, contactOf(c));
+    return { heading: command.heading, command };
+  };
+
+  /** A ship steers and fires its drive to its plan, then settles its power and heat. */
+  const drive = ({ ship }: Combatant, { heading, command }: Plan) => {
+    steer(ship, heading, TIME_STEP);
+    const coasting = ship.velocity;
+    if (command && ship.manoeuvre) {
+      ship.manoeuvre = { ...ship.manoeuvre, correcting: command.correcting };
+      fireDrive(ship, manoeuvreThrottle(ship, command, TIME_STEP), TIME_STEP);
+    } else {
+      burn(ship, TIME_STEP);
+    }
+    ship.acceleration = scale(sub(ship.velocity, coasting), 1 / TIME_STEP);
+    settlePowerAndHeat(ship, TIME_STEP);
+  };
+
+  /**
+   * A ship fires at the start of the step: its beam weapons, kinetic guns, point defence and
+   * launchers. Returns an event for each missile it launched.
+   */
+  const fire = (combatant: Combatant, seen: Snapshot, start: number): BattleEvent[] => {
+    const { ship } = combatant;
+    const target = targetOf(combatant);
+    beams.push(
+      ...emitBeams(
         ship,
         combatant.side.id,
-        salvoTarget !== null && inBattle(salvoTarget) ? salvoTarget : null,
-        defence.get(combatant.side.id) ?? [],
+        target ? { id: target.side.id, position: target.ship.position } : null,
+        start,
+      ),
+    );
+    const motion = target && seen.motions.get(target.side.id);
+    slugs.push(
+      ...fireKineticGuns(
+        ship,
+        combatant.side.id,
+        target && motion ? { id: target.side.id, motion } : null,
         TIME_STEP,
         nextMunitionId,
-      );
-      for (const { missile, launcher } of launched) {
-        missiles.push(missile);
-        const slot = componentSlots(ship.design)[ship.weapons.launchers[launcher]?.slot ?? -1];
-        const place = { section: slot?.section ?? 'forward', mount: slot?.index ?? 0 };
-        launchedFrom.set(missile.id, place);
-        launches.push({
-          type: 'launch',
-          time: start,
-          attacker: combatant.side.id,
-          target: missile.target,
-          munition: missile.id,
-          ...place,
-        });
-      }
-    });
-    // Missiles steer by what their guidance sees of their targets at the start of the step.
+      ),
+    );
+    const defending = seen.pointDefenceTargets.get(combatant.side.id);
+    if (defending) {
+      bursts.push(...firePointDefence(ship, combatant.side.id, defending, start, TIME_STEP));
+    }
+    const salvoTarget = ship.weapons.salvo?.target ?? null;
+    const launched = launchMissiles(
+      ship,
+      combatant.side.id,
+      salvoTarget !== null && inBattle(salvoTarget) ? salvoTarget : null,
+      seen.defence.get(combatant.side.id) ?? [],
+      TIME_STEP,
+      nextMunitionId,
+    );
+    const launches: BattleEvent[] = [];
+    for (const { missile, launcher } of launched) {
+      missiles.push(missile);
+      const slot = componentSlots(ship.design)[ship.weapons.launchers[launcher]?.slot ?? -1];
+      const place = { section: slot?.section ?? 'forward', mount: slot?.index ?? 0 };
+      launchedFrom.set(missile.id, place);
+      launches.push({
+        type: 'launch',
+        time: start,
+        attacker: combatant.side.id,
+        target: missile.target,
+        munition: missile.id,
+        ...place,
+      });
+    }
+    return launches;
+  };
+
+  /** Missiles steer by what their guidance sees of their targets at the start of the step. */
+  const guideMissiles = (seen: Snapshot) => {
     missiles = missiles.map((missile) => {
       const { target } = missile;
       const motion = targetsMissile(target)
-        ? missileMotions.get(target.munition)
-        : motions.get(target);
+        ? seen.missileMotions.get(target.munition)
+        : seen.motions.get(target);
       return guideMissile(missile, motion ?? null, TIME_STEP);
     });
-    // Ships and munitions move after all have fired, so every beam, slug and missile leaves from
-    // the same snapshot.
-    const shipsBefore = new Map(combatants.map(({ side, ship }) => [side.id, ship.position]));
-    const munitionsBefore = new Map(
+  };
+
+  /**
+   * Ships and munitions move after all have fired, so every beam, slug and missile leaves from
+   * the same snapshot. Returns where each ship and munition was before it moved.
+   */
+  const move = (): Departures => {
+    const ships = new Map(combatants.map(({ side, ship }) => [side.id, ship.position]));
+    const munitions = new Map(
       [...slugs, ...missiles].map((munition) => [munition.id, munition.position]),
     );
     combatants.forEach(({ ship }) => {
@@ -926,36 +977,72 @@ export const createBattle = (setup: BattleSetup): Battle => {
       ...missile,
       position: add(missile.position, scale(missile.velocity, TIME_STEP)),
     }));
-    steps += 1;
+    return { ships, munitions };
+  };
 
-    // Beams that reach their targets by the end of the step strike them, in the order fired.
-    const time = steps * TIME_STEP;
-    const events: BattleEvent[] = [...launches];
+  /**
+   * What reaches its target by the end of the step strikes it: beams, then point defence bursts,
+   * each in the order fired, then slugs and missiles (see `resolveMunitions`). What landed on
+   * each ship in the step before is forgotten first.
+   */
+  const resolveArrivals = (before: Departures, ctx: Omit<DamageContext, 'side'>) => {
+    const { time } = ctx;
     const arriving = beams.filter((b) => b.arrival <= time + 1e-9);
     beams = beams.filter((b) => b.arrival > time + 1e-9);
     combatants.forEach((c) => {
       if (c.beamsLanding.length > 0) c.beamsLanding = [];
       if (c.impacts.length > 0) c.impacts = [];
     });
-    for (const beam of arriving) resolveBeam(beam, { time, random, events });
+    for (const beam of arriving) resolveBeam(beam, ctx);
     resolveBursts(
       bursts.filter((b) => b.arrival <= time + 1e-9),
-      { time, random, events },
+      ctx,
     );
     bursts = bursts.filter((b) => b.arrival > time + 1e-9);
-    resolveMunitions(munitionsBefore, shipsBefore, { time, random, events });
+    resolveMunitions(before.munitions, before.ships, ctx);
+  };
+
+  /** Each ship's heat damages it at the end of the step if it runs too hot (see `overheat`). */
+  const overheatShips = (ctx: Omit<DamageContext, 'side'>) => {
     combatants.forEach(({ side, ship }) => {
-      overheat(ship, TIME_STEP, { side: side.id, time, random, events });
+      overheat(ship, TIME_STEP, { ...ctx, side: side.id });
     });
-    // Ships that lost in this step lose together; if all of them did, nobody wins.
-    outcome = judge(
+  };
+
+  /**
+   * How the battle ended in the step, if it did. Ships that lost in it lose together; if all of
+   * them did, nobody wins. A side that loses in the step that reaches the time limit still loses.
+   */
+  const judgeStep = (time: number): BattleOutcome | null => {
+    const decided = judge(
       time,
       combatants.map(({ side, ship }) => ({ side: side.id, loss: lossOf(ship) })),
     );
-    // A side that loses in the step that reaches the time limit still loses.
-    if (!outcome && timeLimit !== undefined && time >= timeLimit - 1e-9) {
-      outcome = noResult(time, setup.sides);
-    }
+    if (decided) return decided;
+    return timeLimit !== undefined && time >= timeLimit - 1e-9 ? noResult(time, setup.sides) : null;
+  };
+
+  const step = (): readonly BattleEvent[] => {
+    if (outcome) return [];
+    const start = steps * TIME_STEP;
+    const seen = snapshot();
+    aim(seen);
+    const plans = combatants.map(plan);
+    const launches: BattleEvent[] = [];
+    combatants.forEach((c, i) => {
+      drive(c, plans[i] ?? { heading: null, command: null });
+      launches.push(...fire(c, seen, start));
+    });
+    guideMissiles(seen);
+    const before = move();
+    steps += 1;
+
+    const time = steps * TIME_STEP;
+    const events: BattleEvent[] = [...launches];
+    const ctx = { time, random, events };
+    resolveArrivals(before, ctx);
+    overheatShips(ctx);
+    outcome = judgeStep(time);
     if (outcome) events.push({ type: 'battle-ended', time, outcome });
     record(events);
     return events;
