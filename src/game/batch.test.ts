@@ -13,7 +13,7 @@ import {
 const KM = 1000;
 
 /** Two unarmed ships far apart: neither can lose, so every battle runs to the time limit. */
-const stalemate: BatchSetup = {
+const noResultSetup: BatchSetup = {
   sides: testSides(),
   scenario: testScenario,
   battles: 3,
@@ -33,7 +33,7 @@ const rout: BatchSetup = {
 describe('batch run', () => {
   it('reports an outcome for every battle, with no result at the time limit', () => {
     const reported: BatchBattle[] = [];
-    const summary = runBatch(stalemate, (battle) => reported.push(battle));
+    const summary = runBatch(noResultSetup, (battle) => reported.push(battle));
     expect(reported.map((b) => b.index)).toEqual([0, 1, 2]);
     for (const { outcome } of reported) {
       expect(outcome.time).toBeCloseTo(60);
@@ -71,22 +71,22 @@ describe('batch run', () => {
     expect(new Set(seeds).size).toBe(4);
     expect(batchBattleSeed(6, 0)).not.toBe(seeds[0]);
     const battles: BatchBattle[] = [];
-    runBatch(stalemate, (battle) => battles.push(battle));
+    runBatch(noResultSetup, (battle) => battles.push(battle));
     expect(battles.map((b) => b.seed)).toEqual(seeds.slice(0, 3));
     // Any one battle of a batch can be fought again on its own, with the same outcome.
-    expect(runBatchBattle(stalemate, 2)).toStrictEqual(battles[2]);
+    expect(runBatchBattle(noResultSetup, 2)).toStrictEqual(battles[2]);
   });
 
   it('summarises battles reported in any order', () => {
     const battles: BatchBattle[] = [];
-    runBatch(stalemate, (battle) => battles.push(battle));
-    expect(summariseBatch(stalemate, [...battles].reverse())).toStrictEqual(
-      summariseBatch(stalemate, battles),
+    runBatch(noResultSetup, (battle) => battles.push(battle));
+    expect(summariseBatch(noResultSetup, [...battles].reverse())).toStrictEqual(
+      summariseBatch(noResultSetup, battles),
     );
   });
 
   it('needs at least one battle and a time limit', () => {
-    expect(() => runBatch({ ...stalemate, battles: 0 })).toThrow(/battle/);
-    expect(() => runBatch({ ...stalemate, timeLimit: 0 })).toThrow(/time limit/i);
+    expect(() => runBatch({ ...noResultSetup, battles: 0 })).toThrow(/battle/);
+    expect(() => runBatch({ ...noResultSetup, timeLimit: 0 })).toThrow(/time limit/i);
   });
 });
