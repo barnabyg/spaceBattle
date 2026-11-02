@@ -3,7 +3,7 @@ import type { ManoeuvreGoal, ManoeuvreOrder } from './orders';
 import {
   availableThrust,
   deltaVOf,
-  massProperties,
+  shipMassProperties,
   noseOf,
   turnTime,
   type ShipState,
@@ -12,7 +12,10 @@ import { dot, length, normalize, scale, sub, ZERO, type Vec3 } from './vector';
 
 /** Fraction of the drive's acceleration the autopilot plans to brake with, leaving slack. */
 const BRAKING_MARGIN = 0.5;
-/** The speed the autopilot works up to towards a range, as a fraction of the delta-v left. */
+/**
+ * The speed the autopilot works up to towards a range unless ordered another, as a fraction of
+ * the delta-v left.
+ */
 const CRUISE_FRACTION = 0.1;
 /** Within this of the ordered range the autopilot only stops relative motion, m. */
 const RANGE_TOLERANCE = 1_000;
@@ -58,6 +61,8 @@ export interface ManoeuvreObservation {
   readonly goal: ManoeuvreGoal;
   /** The ordered separation, m; null for match velocity. */
   readonly range: number | null;
+  /** The ordered cruising speed, m/s; null for the autopilot's own, or match velocity. */
+  readonly speed: number | null;
   /** Separation minus the ordered range, m (positive when too far); null without a range. */
   readonly rangeError: number | null;
   /** The velocity change the autopilot still wants, world frame, m/s. */
@@ -84,7 +89,7 @@ interface Guidance {
 }
 
 const accelerationOf = (ship: ShipState): number =>
-  availableThrust(ship) / massProperties(ship.design, ship.propellantMass).mass;
+  availableThrust(ship) / shipMassProperties(ship).mass;
 
 /** The throttle (a fraction of full thrust) that gives all the thrust power and heat allow. */
 const fullAvailableThrottle = (ship: ShipState): number =>
@@ -123,7 +128,7 @@ const guidance = (
   if (order.goal !== 'match-velocity') {
     rangeError = length(offset) - order.range;
     const limit = stoppingSpeed(ship, Math.max(0, Math.abs(rangeError) - RANGE_TOLERANCE));
-    const cruise = Math.min(limit, CRUISE_FRACTION * deltaVOf(ship));
+    const cruise = Math.min(limit, order.speed ?? CRUISE_FRACTION * deltaVOf(ship));
     let direction = 0;
     if (rangeError > 0 && order.goal !== 'open') direction = -1;
     if (rangeError < 0 && order.goal !== 'close') direction = 1;
@@ -166,7 +171,7 @@ export const manoeuvreThrottle = (ship: ShipState, command: ManoeuvreCommand, dt
   if (!command.correcting) return 0;
   const along = dot(command.velocityError, noseOf(ship));
   if (along <= length(command.velocityError) * Math.cos(BURN_ANGLE)) return 0;
-  const { mass } = massProperties(ship.design, ship.propellantMass);
+  const { mass } = shipMassProperties(ship);
   const wanted = (along * mass) / Math.max(THROTTLE_TIME, dt);
   return Math.min(availableThrust(ship), wanted) / designComponent(ship.design, 'drive').thrust;
 };
@@ -216,10 +221,12 @@ export const observeManoeuvre = (
   contact: ContactMotion | null,
 ): ManoeuvreObservation => {
   const range = state.order.goal === 'match-velocity' ? null : state.order.range;
+  const speed = state.order.goal === 'match-velocity' ? null : (state.order.speed ?? null);
   if (!contact) {
     return {
       goal: state.order.goal,
       range,
+      speed,
       rangeError: null,
       velocityError: ZERO,
       phase: 'coasting',
@@ -232,6 +239,7 @@ export const observeManoeuvre = (
   return {
     goal: state.order.goal,
     range,
+    speed,
     rangeError: plan.rangeError,
     velocityError: plan.velocityError,
     phase: !correcting ? 'coasting' : aligned ? 'burning' : 'turning',

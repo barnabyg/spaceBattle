@@ -2,13 +2,16 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { projectBurns, projectPath } from '../game/projection';
-import type { SideId, SideObservation, SideSetup } from '../sim/battle';
+import type { MunitionObservation, SideId, SideObservation, SideSetup } from '../sim/battle';
 import { designComponent } from '../sim/design';
+import type { BeamKind } from '../sim/events';
 import { rotate, type Quat } from '../sim/quaternion';
 import { length, vec3, type Vec3 } from '../sim/vector';
+import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { formatDuration, formatKm, formatKmPerS } from './format';
+import { softGlowTexture } from './shipModel';
 
 /** Scene units are kilometres; the simulation works in metres. */
 const KM = 1000;
@@ -27,9 +30,34 @@ const PROJECTION_POINTS = 121;
 /** Planned burns shown on the map, in order. */
 const MAX_PLANNED_BURNS = 4;
 const PLANNED_BURN_COLOUR = '#ffb347';
-const BEAM_COLOUR = '#7dffb0';
+/** How the own ship's beams are drawn while firing: lasers solid green, particle beams apart. */
+const BEAM_STYLES: Readonly<
+  Record<BeamKind, { readonly colour: string; readonly dashed: boolean }>
+> = {
+  laser: { colour: '#7dffb0', dashed: false },
+  'charged-particle': { colour: '#c890ff', dashed: false },
+  'neutral-particle': { colour: '#7fe0ff', dashed: true },
+};
 /** Heading lines are this fraction of the camera's distance from the own ship. */
 const HEADING_SCALE = 0.06;
+/** Munitions in flight are drawn as dots this many pixels across. */
+const MUNITION_SIZE = 5;
+/** Missiles are drawn larger than slugs, px. */
+const MISSILE_SIZE = 9;
+/**
+ * Anti-missile missiles are drawn between the two, px, and paler: their side's colour this far
+ * towards white.
+ */
+const ANTI_MISSILE_SIZE = 7;
+const ANTI_MISSILE_PALENESS = 0.55;
+const WHITE = new THREE.Color('#ffffff');
+
+/** A nuclear burst's flash, at its brightest this share of the map's height across. */
+const BURST_FLASH_SIZE = 0.12;
+const BURST_COLOUR = '#fffbe8';
+/** A missile shot down flashes smaller, in amber. */
+const INTERCEPT_FLASH_SIZE = 0.04;
+const INTERCEPT_COLOUR = '#ffc24d';
 
 export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
 
@@ -187,13 +215,121 @@ export const createTacticalMap = (
   });
   const ownDrive = sides[0] ? designComponent(sides[0].design, 'drive') : undefined;
 
-  // The own ship's laser beam, while it is firing.
-  const beam = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-    new THREE.LineBasicMaterial({ color: BEAM_COLOUR, transparent: true, opacity: 0.8 }),
+  // The own ship's beams, one line for each kind while any of that kind is firing.
+  const beamLines = (Object.keys(BEAM_STYLES) as BeamKind[]).map((kind) => {
+    const { colour, dashed } = BEAM_STYLES[kind];
+    const material = dashed
+      ? new THREE.LineDashedMaterial({
+          color: colour,
+          transparent: true,
+          opacity: 0.8,
+          dashSize: 1_000,
+          gapSize: 600,
+        })
+      : new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 0.8 });
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+      material,
+    );
+    line.visible = false;
+    scene.add(line);
+    return { kind, line };
+  });
+
+  // Munitions in flight: a dot each, in the colour of the side that fired it; missiles larger,
+  // anti-missile missiles paler.
+  const munitionColours = new Map(
+    sides.map((side, index) => [side.id, new THREE.Color(colours[index] ?? '#ffffff')]),
   );
-  beam.visible = false;
-  scene.add(beam);
+  const munitionDots = (size: number, paleness = 0) => {
+    const tint = new THREE.Color();
+    const geometry = new THREE.BufferGeometry();
+    let capacity = 0;
+    const points = new THREE.Points(
+      geometry,
+      new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true }),
+    );
+    points.frustumCulled = false;
+    scene.add(points);
+    return (shown: readonly MunitionObservation[]) => {
+      if (shown.length > capacity) {
+        capacity = Math.max(256, 2 * shown.length);
+        geometry.setAttribute(
+          'position',
+          new THREE.BufferAttribute(new Float32Array(capacity * 3), 3),
+        );
+        geometry.setAttribute(
+          'color',
+          new THREE.BufferAttribute(new Float32Array(capacity * 3), 3),
+        );
+      }
+      if (capacity === 0) return;
+      const positions = geometry.getAttribute('position');
+      const tints = geometry.getAttribute('color');
+      shown.forEach((munition, i) => {
+        positions.setXYZ(
+          i,
+          munition.position.x / KM,
+          munition.position.y / KM,
+          munition.position.z / KM,
+        );
+        tint.copy(munitionColours.get(munition.attacker) ?? WHITE).lerp(WHITE, paleness);
+        tints.setXYZ(i, tint.r, tint.g, tint.b);
+      });
+      positions.needsUpdate = true;
+      tints.needsUpdate = true;
+      geometry.setDrawRange(0, shown.length);
+    };
+  };
+  /** A flash that keeps its size on screen, drawn over everything. */
+  const flashSprite = (colour: string) => {
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: softGlowTexture(),
+        color: colour,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        depthWrite: false,
+        sizeAttenuation: false,
+      }),
+    );
+    sprite.renderOrder = 2;
+    sprite.visible = false;
+    scene.add(sprite);
+    return sprite;
+  };
+  // A nuclear burst flashes where it went off, fading in a second or two.
+  const burst = flashSprite(BURST_COLOUR);
+  const burstFlash = createBurstFlash();
+  // So does a missile shot down, smaller and quicker.
+  const intercept = flashSprite(INTERCEPT_COLOUR);
+  const interceptFlash = createInterceptFlash();
+  const showIntercept = (observation: SideObservation) => {
+    const flash = interceptFlash(observation);
+    intercept.visible = flash !== null;
+    if (!flash) return;
+    intercept.position.copy(toScene(flash.intercept.position));
+    intercept.scale.setScalar(INTERCEPT_FLASH_SIZE * (0.4 + 0.6 * flash.strength));
+    intercept.material.opacity = flash.strength;
+  };
+  const showBurst = (observation: SideObservation) => {
+    const flash = burstFlash(observation);
+    burst.visible = flash !== null;
+    if (!flash) return;
+    burst.position.copy(toScene(flash.detonation.position));
+    burst.scale.setScalar(BURST_FLASH_SIZE * (0.4 + 0.6 * flash.strength));
+    burst.material.opacity = flash.strength;
+  };
+
+  const showSlugs = munitionDots(MUNITION_SIZE);
+  const showMissiles = munitionDots(MISSILE_SIZE);
+  const showAntiMissiles = munitionDots(ANTI_MISSILE_SIZE, ANTI_MISSILE_PALENESS);
+  const showMunitions = (observation: SideObservation) => {
+    const { munitions } = observation;
+    showSlugs(munitions.filter((m) => m.kind === 'slug'));
+    showMissiles(munitions.filter((m) => m.kind === 'missile' && m.role === 'anti-ship'));
+    showAntiMissiles(munitions.filter((m) => m.kind === 'missile' && m.role === 'anti-missile'));
+  };
 
   const resize = () => {
     const { clientWidth: width, clientHeight: height } = element;
@@ -299,10 +435,19 @@ export const createTacticalMap = (
         );
       }
       const target = observation.contacts.find((c) => c.sideId === own.weapons.target);
-      beam.visible = target !== undefined && own.weapons.lasers.some((l) => l.firing);
-      if (target && beam.visible) {
-        beam.geometry.setFromPoints([centre, toScene(target.position)]);
+      const firing = new Set<BeamKind>([
+        ...(own.weapons.lasers.some((l) => l.firing) ? (['laser'] as const) : []),
+        ...own.weapons.particleBeams.filter((b) => b.firing).map((b) => b.kind),
+      ]);
+      for (const { kind, line } of beamLines) {
+        line.visible = target !== undefined && firing.has(kind);
+        if (!target || !line.visible) continue;
+        line.geometry.setFromPoints([centre, toScene(target.position)]);
+        line.computeLineDistances();
       }
+      showMunitions(observation);
+      showBurst(observation);
+      showIntercept(observation);
 
       if (ownDrive) {
         const lastBurnEnd = Math.max(

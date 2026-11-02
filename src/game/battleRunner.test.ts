@@ -2,8 +2,25 @@ import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
 import { createBattle, type Battle, type BattleEvent } from '../sim/battle';
 import { IDENTITY } from '../sim/quaternion';
-import { armedTestDesign, duelSetup, testDesign, testSetup, testSides } from '../sim/testing';
-import { createBattleRunner, TIME_COMPRESSIONS, type TimeCompression } from './battleRunner';
+import {
+  antiMissileTestDesign,
+  armedTestDesign,
+  defendedTestDesign,
+  duelSetup,
+  gunnedTestDesign,
+  launchingTestDesign,
+  TEST_ANTI_MISSILE_MISSILE,
+  TEST_NUCLEAR_MISSILE,
+  testDesign,
+  testSetup,
+  testSides,
+} from '../sim/testing';
+import {
+  createBattleRunner,
+  TEST_TIME_COMPRESSIONS,
+  TIME_COMPRESSIONS,
+  type TimeCompression,
+} from './battleRunner';
 
 const runner = () => createBattleRunner(createBattle(testSetup()));
 
@@ -34,6 +51,29 @@ describe('battle runner', () => {
     expect(r.battle.time).toBeCloseTo(100);
   });
 
+  it('compresses time above 1000x only in test mode', () => {
+    const r = runner();
+    r.setTimeCompression(10_000);
+    expect(r.timeCompression).toBe(1);
+    const test = createBattleRunner(createBattle(testSetup()), { testMode: true });
+    TEST_TIME_COMPRESSIONS.forEach(() => {
+      test.faster();
+    });
+    expect(test.timeCompression).toBe(10_000);
+    test.update(0.02);
+    expect(test.battle.time).toBeCloseTo(200);
+    test.setTimeCompression(1000);
+    test.faster();
+    expect(test.timeCompression).toBe(2000);
+  });
+
+  it('runs at most 250 s of battle in one update, however compressed', () => {
+    const r = createBattleRunner(createBattle(testSetup()), { testMode: true });
+    r.setTimeCompression(10_000);
+    r.update(0.25);
+    expect(r.battle.time).toBeCloseTo(250);
+  });
+
   it('never goes below real time', () => {
     const r = runner();
     r.slower();
@@ -56,6 +96,92 @@ describe('battle runner', () => {
     expect(r.timeCompression).toBe(1);
     // The rest of the update's compressed time is not run.
     expect(r.battle.time).toBeLessThan(1);
+  });
+
+  it('drops to real time when a slug hits', () => {
+    // Red is left to an idle player: the computer would dodge a slug from this far off.
+    const setup = duelSetup(gunnedTestDesign(1), testDesign(), 1_000e3);
+    const battle = createBattle({
+      ...setup,
+      sides: setup.sides.map((side) => ({ ...side, commander: 'player' })),
+    });
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    const r = createBattleRunner(battle);
+    r.setTimeCompression(1000);
+    const events = r.update(0.1);
+    expect(events.map((e) => e.type)).toEqual(['impact']);
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeLessThan(100);
+  });
+
+  it('drops to real time when a missile is launched', () => {
+    const battle = createBattle(duelSetup(launchingTestDesign(1), testDesign(), 10_000e3));
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    const r = createBattleRunner(battle);
+    r.setTimeCompression(1000);
+    const events = r.update(0.1);
+    expect(events.map((e) => e.type)).toEqual(['launch']);
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeCloseTo(0.1, 9);
+  });
+
+  it('drops to real time when a nuclear warhead goes off', () => {
+    const battle = createBattle(
+      duelSetup(launchingTestDesign(1, { missile: TEST_NUCLEAR_MISSILE }), testDesign(), 1_000e3),
+    );
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    const r = createBattleRunner(battle);
+    r.update(0.1);
+    r.setTimeCompression(1000);
+    const events: BattleEvent[] = [];
+    for (let i = 0; i < 100 && !events.some((e) => e.type === 'detonation'); i++) {
+      events.push(...r.update(0.25));
+    }
+    const detonation = events.find((e) => e.type === 'detonation');
+    expect(detonation).toBeDefined();
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeCloseTo(detonation?.time ?? NaN, 9);
+  });
+
+  it('drops to real time when point defence shoots down a missile', () => {
+    const battle = createBattle(
+      duelSetup(launchingTestDesign(1), defendedTestDesign({ mounts: 4 }), 500e3),
+    );
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    const r = createBattleRunner(battle);
+    r.update(0.1);
+    r.setTimeCompression(1000);
+    const events: BattleEvent[] = [];
+    for (let i = 0; i < 100 && !events.some((e) => e.type === 'intercept'); i++) {
+      events.push(...r.update(0.25));
+    }
+    const intercept = events.find((e) => e.type === 'intercept');
+    expect(intercept).toBeDefined();
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeCloseTo(intercept?.time ?? NaN, 9);
+  });
+
+  it('drops to real time when an anti-missile missile misses', () => {
+    const { warhead } = TEST_ANTI_MISSILE_MISSILE;
+    const antiMissile = {
+      ...TEST_ANTI_MISSILE_MISSILE,
+      warhead: warhead.type === 'fragmentation' ? { ...warhead, fragments: 1 } : warhead,
+    };
+    const battle = createBattle(
+      duelSetup(launchingTestDesign(1), antiMissileTestDesign({ antiMissile }), 500e3),
+    );
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    battle.advance(1);
+    const r = createBattleRunner(battle);
+    r.setTimeCompression(1000);
+    const events: BattleEvent[] = [];
+    for (let i = 0; i < 100 && !events.some((e) => e.type === 'miss'); i++) {
+      events.push(...r.update(0.25));
+    }
+    const miss = events.find((e) => e.type === 'miss');
+    expect(miss).toBeDefined();
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeCloseTo(miss?.time ?? NaN, 9);
   });
 
   it('drops to real time when a component is lost', () => {

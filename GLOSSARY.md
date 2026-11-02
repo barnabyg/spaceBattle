@@ -140,6 +140,10 @@ A weapon firing a beam of uncharged particles; it stays tight over long range an
 A weapon that fires solid slugs accelerated electromagnetically; it needs power and ammunition, and its slugs are slow enough to dodge at long range.
 _Avoid_: Railgun, coilgun, mass driver (as the class name)
 
+**Slug**:
+A solid round fired by a kinetic gun. It flies in a straight line, and the kinetic energy it carries into the target does the damage.
+_Avoid_: Shell, bullet, projectile
+
 **Missile**:
 A self-propelled, guided munition with its own propellant, launched at enemy ships.
 _Avoid_: Torpedo
@@ -148,19 +152,23 @@ _Avoid_: Torpedo
 A mounted component that fires missiles.
 _Avoid_: Tube, missile bay
 
+**Salvo**:
+The missiles a captain orders launched together at one target; each launcher fires as soon as it is loaded until the salvo is done.
+_Avoid_: Volley, wave
+
 **Magazine**:
 A component inside a section that stores ammunition; how much it holds is a design choice, and a hit on a full magazine can be catastrophic.
 _Avoid_: Ammo store, munitions bay
 
 **Ammunition**:
-The missiles and kinetic gun slugs a ship carries, used up in battle and bought again between battles.
+The missiles, kinetic gun slugs and point defence rounds a ship carries, used up in battle and bought again between battles.
 _Avoid_: Munitions, ordnance, ammo
 
 **Kinetic warhead**:
 A missile warhead that destroys its target by hitting it directly at speed.
 
 **Nuclear warhead**:
-A low-yield nuclear missile warhead that detonates near its target, damaging it with radiation and heat that weaken sharply with distance.
+A low-yield nuclear missile warhead that detonates near its target, damaging it with radiation and heat that weaken sharply with distance. A near miss strips the mounts and radiators facing it but barely marks armour. A magazine of them that is wrecked may set some off, destroying the section around it.
 _Avoid_: Nuke
 
 **Fragmentation warhead**:
@@ -171,7 +179,7 @@ A short-range, rapid-fire gun that shoots down incoming missiles.
 _Avoid_: PDC, CIWS, flak
 
 **Anti-missile missile**:
-A missile launched to intercept enemy missiles rather than ships.
+A missile launched to intercept enemy missiles rather than ships, by order or automatically at each incoming missile. It cannot harm a ship.
 _Avoid_: Interceptor, counter-missile
 
 ## Play
@@ -185,7 +193,7 @@ The role the commander of a side plays: they give orders to their ship rather th
 _Avoid_: Pilot
 
 **Order**:
-An instruction from the captain, such as a heading, a burn, a range to hold, a target priority or a power allocation.
+An instruction from the captain, such as a heading, a burn, a range to hold, a target priority, a power allocation or raising the shields.
 _Avoid_: Command
 
 **Autopilot**:
@@ -196,7 +204,7 @@ Running the battle faster than real time; it drops back to normal speed automati
 _Avoid_: Fast forward, speed-up
 
 **Battle**:
-A single engagement between sides. It has no time limit.
+A single engagement between sides. It has no time limit outside test mode.
 _Avoid_: Fight, match, encounter
 
 **Tactical map**:
@@ -224,6 +232,10 @@ A section's own structure being broken through, so that the section and everythi
 The player ending a battle early with the "End battle" option. It counts as a loss and the ship is treated as destroyed.
 _Avoid_: Concede, surrender, quit
 
+**No result**:
+The end of a battle in which no side lost, so nobody wins: a battle between computer sides ended with "End battle", or a test mode battle that reached its time limit.
+_Avoid_: Stalemate, timeout
+
 **Disabled**:
 A ship with no working weapons or no working drive; it has lost the battle.
 
@@ -245,6 +257,10 @@ _Avoid_: Skirmish, quick battle, test bench
 **Test mode**:
 A setting for testing the game itself rather than playing it. It adds things that don't belong in real play, such as a battle time limit and extra logging.
 _Avoid_: Debug mode, test bench
+
+**Batch run**:
+In test mode, a number of battles between the same two designs, each commanded by the computer, fought without graphics from seeds derived from one batch seed, and summed up as each side's wins, draws and no results.
+_Avoid_: Simulation run, sweep
 
 **Credits**:
 The money spent on designs, components and repairs, earned by winning battles.

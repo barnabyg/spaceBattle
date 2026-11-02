@@ -114,3 +114,126 @@ test('End battle asks first, then shows the player forfeited', async ({ page }) 
   await page.waitForTimeout(1_200);
   await expect(page.getByLabel('Battle time')).toHaveText(clock ?? '');
 });
+
+test('a ship with kinetic guns shows its guns, magazine and ammunition', async ({ page }) => {
+  await startFreeBattle(page, { blue: { design: 'Sling' } });
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Ammunition')).toHaveText('600 of 600 slugs');
+  await expect(page.getByLabel('Slugs in flight')).toHaveText('0 ours · 0 incoming');
+  const damage = page.getByRole('region', { name: 'Damage' });
+  await expect(damage.getByText('Kinetic gun (mount)')).toHaveCount(2);
+  await expect(damage.getByText('Magazine', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Fire freely' }).click();
+  // The opening pass starts beyond the guns' reach.
+  await expect(page.getByLabel('Weapons state')).toHaveText('Out of range · reach 30,000 km');
+});
+
+test('ships with particle beams show their beams, the charged one short-ranged', async ({
+  page,
+}) => {
+  await startFreeBattle(page, { blue: { design: 'Torch' }, red: { design: 'Needle' } });
+  await page.keyboard.press(' ');
+  const damage = page.getByRole('region', { name: 'Damage' });
+  await expect(damage.getByText('Charged particle beam (mount)')).toBeVisible();
+  await expect(page.getByLabel('Beam power')).toHaveText('Charged particle beam 0 MW');
+
+  await page.getByRole('button', { name: 'Fire freely' }).click();
+  // The opening pass starts far beyond the charged beam's reach.
+  const weapons = page.getByLabel('Weapons state');
+  await expect(weapons).toContainText('Out of range · reach');
+  expect(kmOf((await weapons.textContent())?.split('reach')[1] ?? null)).toBeLessThan(50_000);
+});
+
+test('a ship with launchers launches missiles by order, dropping to real time', async ({
+  page,
+}) => {
+  await startFreeBattle(page, { blue: { design: 'Quiver' } });
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Ammunition')).toHaveText('12 of 12 missiles');
+  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
+    '0 ours · 0 incoming',
+  );
+  await expect(
+    page.getByRole('region', { name: 'Damage' }).getByText('Launcher (mount)'),
+  ).toHaveCount(2);
+  const launch = page.getByLabel('Launch state');
+  await expect(launch).toContainText('12 missiles ready · reach');
+
+  await page.getByLabel('Missiles', { exact: true }).fill('2');
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  await expect(launch).toHaveText('Launching · 2 to go · 12 missiles left');
+  for (let i = 0; i < 9; i++) await page.keyboard.press('+');
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
+    '2 ours · 0 incoming',
+  );
+  await expect(page.getByLabel('Time compression')).toHaveText('1×');
+  await expect(page.getByLabel('Ammunition')).toHaveText('10 of 12 missiles');
+  await expect(page.getByRole('list', { name: 'Battle log' })).toContainText('Missile launched');
+});
+
+test('a ship with anti-missile missiles shows them apart, and takes missile defence orders', async ({
+  page,
+}) => {
+  await startFreeBattle(page, { blue: { design: 'Bulwark' }, red: { design: 'Quiver' } });
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Ammunition')).toHaveText(
+    '6 of 6 missiles · 16 of 16 anti-missile missiles',
+  );
+  await expect(page.getByLabel('Anti-missile missiles in flight')).toHaveText(
+    '0 ours · 0 incoming',
+  );
+  await expect(page.getByLabel('Launch state')).toContainText('6 missiles ready · reach');
+  const state = page.getByLabel('Anti-missile state');
+  await expect(state).toHaveText('Automatic · 16 left');
+  // No enemy missile is on its way yet.
+  await expect(page.getByRole('button', { name: 'Launch at nearest missile' })).toBeDisabled();
+
+  const automatic = page.getByRole('button', { name: 'Automatic', exact: true });
+  const byOrder = page.getByRole('button', { name: 'By order only' });
+  await expect(automatic).toHaveClass(/active/);
+  await byOrder.click();
+  await expect(byOrder).toHaveClass(/active/);
+  await expect(automatic).not.toHaveClass(/active/);
+  await expect(state).toHaveText('By order only · 16 left');
+});
+
+test('a ship with point defence shows its guns and rounds, and takes priority orders', async ({
+  page,
+}) => {
+  await startFreeBattle(page, { blue: { design: 'Rampart' }, red: { design: 'Quiver' } });
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Ammunition')).toHaveText('40,000 of 40,000 rounds');
+  await expect(page.getByLabel('Point defence', { exact: true })).toHaveText(
+    '0 of 2 firing · 0 shot down',
+  );
+  await expect(
+    page.getByRole('region', { name: 'Damage' }).getByText('Point defence (mount)'),
+  ).toHaveCount(2);
+  const state = page.getByLabel('Point defence state');
+  await expect(state).toHaveText('Ready · reach 25 km · 0 shot down');
+
+  const missilesOnly = page.getByRole('button', { name: 'Missiles only' });
+  const thenShip = page.getByRole('button', { name: 'Missiles, then ship' });
+  await expect(missilesOnly).toHaveClass(/active/);
+  await thenShip.click();
+  await expect(thenShip).toHaveClass(/active/);
+  await expect(missilesOnly).not.toHaveClass(/active/);
+});
+
+test('a shielded ship shows its shields, and they can be lowered and raised', async ({ page }) => {
+  await startFreeBattle(page, { blue: { design: 'Rime' } });
+  await page.keyboard.press(' ');
+  const shields = page.getByLabel('Shields', { exact: true });
+  await expect(shields).toContainText('Raised');
+  await expect(shields).toContainText('coolant 300 MW forward, 300 MW engine');
+  await expect(
+    page.getByRole('region', { name: 'Damage' }).getByText('Coolant shield', { exact: true }),
+  ).toHaveCount(2);
+
+  await page.getByRole('button', { name: 'Shields down' }).click();
+  await expect(shields).toHaveText('Lowered');
+  await page.getByRole('button', { name: 'Shields up' }).click();
+  await expect(shields).toContainText('Raised');
+});

@@ -10,7 +10,8 @@ const CAUSE_TEXT = {
   'no-working-drive': 'no working drive',
 } as const;
 
-const describeLoss = (name: string, loss: Loss): string => {
+/** How a side lost, in a few words. */
+export const describeLoss = (name: string, loss: Loss): string => {
   switch (loss.result) {
     case 'destroyed':
     case 'disabled':
@@ -46,6 +47,8 @@ export const createResultScreen = (
   sides: readonly SideSetup[],
   onContinue: () => void,
   continueLabel = 'New battle',
+  /** Test mode: fights the battle again from the same seed. */
+  onReplay?: () => void,
 ) => {
   const headline = el('h2', { className: 'result-headline' });
   const details = el('ul', { className: 'result-details' });
@@ -55,15 +58,21 @@ export const createResultScreen = (
     text: continueLabel,
     attrs: { type: 'button' },
   });
+  const replay = el('button', {
+    className: 'order-button result-continue',
+    text: 'Replay',
+    attrs: { type: 'button', title: 'Fight this battle again from the same seed' },
+  });
   const element = el(
     'dialog',
     { className: 'battle-dialog result-screen', attrs: { 'aria-label': 'Battle result' } },
     headline,
     details,
     time,
-    button,
+    el('div', { className: 'order-row' }, button, ...(onReplay ? [replay] : [])),
   );
   button.addEventListener('click', onContinue);
+  if (onReplay) replay.addEventListener('click', onReplay);
   // The result stays up until the captain goes on, and its keys never reach the battle.
   element.addEventListener('cancel', (event) => {
     event.preventDefault();

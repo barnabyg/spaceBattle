@@ -548,3 +548,95 @@ h3 {
   gap: 1.5rem;
   margin-top: 1rem;
 }
+
+/* Test mode: its switch on the main menu, its settings on setup, and its extras in battle. */
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 14rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.switch input {
+  width: 1.3rem;
+  height: 1.3rem;
+  accent-color: var(--accent);
+}
+
+.test-mode-switch {
+  margin-top: 1.5rem;
+  max-width: 70rem;
+}
+
+.setup-test {
+  width: calc(88rem + 3rem);
+  padding: 1.2rem 2rem;
+  background: var(--panel);
+  border: 1px dashed var(--panel-border);
+  border-radius: 10px;
+}
+
+.setup-test .field input {
+  width: 10em;
+}
+
+.setup-test .menu-note {
+  margin: 0;
+}
+
+.test-mode-info {
+  color: #ffb347;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.test-log {
+  max-height: 30rem;
+  overflow-y: auto;
+}
+
+.test-log__count {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.batch-progress {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.batch-progress progress {
+  width: 40rem;
+  height: 1.2rem;
+  accent-color: var(--accent);
+}
+
+.batch-status {
+  min-width: 20rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-summary {
+  width: 70rem;
+  padding: 1.5rem 2rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+}
+
+.batch-battles {
+  margin-top: 1rem;
+}
+
+.batch-battles summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.batch-battles ol {
+  max-height: 24rem;
+  overflow-y: auto;
+}

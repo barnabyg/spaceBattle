@@ -1,12 +1,34 @@
 import type { Design, MountedComponentDesign, SectionKind } from './design';
 import { HULLS } from './hull';
-import { massProperties } from './ship';
+import {
+  massProperties,
+  NO_AMMUNITION_SPENT,
+  type AmmunitionSpent,
+  type MassProperties,
+} from './ship';
 import { vec3, type Vec3 } from './vector';
 
 /** Thickness of a radiator panel, m. */
 const RADIATOR_THICKNESS = 0.2;
 /** A laser turret is a box this much wider than its mirror, m. */
 const TURRET_MARGIN = 1;
+/** A kinetic gun is a box this wide and high round its barrel, m... */
+const GUN_GIRTH = 3;
+/** ...and at most this long, its barrel along the ship, m. */
+const GUN_LENGTH = 16;
+/**
+ * A particle beam is a box round its accelerator, lying along the ship: this much wider and higher
+ * than its emitter...
+ */
+const ACCELERATOR_MARGIN = 2;
+/** ...and at most this long, m. */
+const ACCELERATOR_LENGTH = 24;
+/** A launcher is a box this wide and high round its rail... */
+const LAUNCHER_GIRTH = 2.5;
+/** ...and at most this long, along the ship, m. */
+const LAUNCHER_LENGTH = 8;
+/** A point defence gun is a turret, a cube this size, m. */
+const POINT_DEFENCE_TURRET = 2.5;
 
 /**
  * One box of a ship's outline, in its body frame with the centre of mass at the origin and the
@@ -52,14 +74,35 @@ const mountBox = (
   let width: number;
   let lo: number;
   let hi: number;
-  if (component.type === 'laser') {
-    // A turret: a cube around the mirror, centred in its slot.
-    const side = component.aperture + TURRET_MARGIN;
+  if (component.type === 'laser' || component.type === 'point-defence') {
+    // A turret: a cube around the mirror or gun, centred in its slot.
+    const side =
+      component.type === 'laser' ? component.aperture + TURRET_MARGIN : POINT_DEFENCE_TURRET;
     const centre = (slot[0] + slot[1]) / 2;
     lo = centre - side / 2;
     hi = centre + side / 2;
     outward = side;
     width = side;
+  } else if (
+    component.type === 'charged-particle-beam' ||
+    component.type === 'neutral-particle-beam'
+  ) {
+    // An accelerator lying along the ship, centred in its slot, its emitter at the front.
+    const half = Math.min(ACCELERATOR_LENGTH, length) / 2;
+    const centre = (slot[0] + slot[1]) / 2;
+    lo = centre - half;
+    hi = centre + half;
+    outward = component.aperture + ACCELERATOR_MARGIN;
+    width = outward;
+  } else if (component.type === 'kinetic-gun' || component.type === 'launcher') {
+    // A gun or launch rail lying along the ship, centred in its slot.
+    const gun = component.type === 'kinetic-gun';
+    const half = Math.min(gun ? GUN_LENGTH : LAUNCHER_LENGTH, length) / 2;
+    const centre = (slot[0] + slot[1]) / 2;
+    lo = centre - half;
+    hi = centre + half;
+    outward = gun ? GUN_GIRTH : LAUNCHER_GIRTH;
+    width = outward;
   } else if (deployed) {
     // A fin standing straight out from the face, edge-on to the nose; both faces radiate.
     lo = slot[0];
@@ -91,9 +134,31 @@ export const shipShape = (
   design: Design,
   propellantMass: number,
   radiatorsDeployed: boolean,
+  ammunitionSpent: AmmunitionSpent = NO_AMMUNITION_SPENT,
+): readonly ShapePart[] => {
+  const mass = massProperties(design, propellantMass, ammunitionSpent);
+  // The same load gives the same mass properties object, and so the same shape.
+  const cached = shapes.get(mass)?.[radiatorsDeployed ? 1 : 0];
+  if (cached) return cached;
+  const parts = computeShipShape(design, mass.centreOfMass, radiatorsDeployed);
+  const both = shapes.get(mass) ?? [null, null];
+  both[radiatorsDeployed ? 1 : 0] = parts;
+  shapes.set(mass, both);
+  return parts;
+};
+
+/** Ship shapes worked out for a design at a load, retracted and deployed. */
+const shapes = new WeakMap<
+  MassProperties,
+  [readonly ShapePart[] | null, readonly ShapePart[] | null]
+>();
+
+const computeShipShape = (
+  design: Design,
+  centreOfMass: number,
+  radiatorsDeployed: boolean,
 ): readonly ShapePart[] => {
   const hull = HULLS[design.hullSize];
-  const { centreOfMass } = massProperties(design, propellantMass);
   const parts: ShapePart[] = [];
   let front = centreOfMass;
   hull.sections.forEach((shape) => {

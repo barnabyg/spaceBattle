@@ -1,8 +1,15 @@
-import type { SideObservation, WeaponsObservation } from '../sim/battle';
+import type {
+  MissileDesignObservation,
+  MissileObservation,
+  SideObservation,
+  WeaponsObservation,
+} from '../sim/battle';
+import type { MissileRole } from '../sim/design';
 import type { ManoeuvreObservation } from '../sim/manoeuvre';
-import type { FireMode, ManoeuvreGoal, Order } from '../sim/orders';
+import { targetsMissile } from '../sim/missile';
+import type { FireMode, ManoeuvreGoal, Order, PointDefencePriority } from '../sim/orders';
 import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/power';
-import { length, vec3 } from '../sim/vector';
+import { distance, length, vec3 } from '../sim/vector';
 import { el } from './el';
 import { formatDuration, formatKm, formatMetresPerS, formatMW } from './format';
 
@@ -52,20 +59,125 @@ const describePlan = (m: ManoeuvreObservation): string => {
   return `Coasting · next burn in ${formatDuration(next.start)} for ${formatDuration(next.duration)}`;
 };
 
-/** What the lasers are doing, e.g. "Firing · 500 MW" or "Out of range · reach 165,000 km". */
+/**
+ * What the weapons are doing, e.g. "Firing 1 of 1 · 500 MW", "Firing 2 of 2 · 412 slugs left" or
+ * "Out of range · reach 165,000 km".
+ */
 const describeWeapons = (weapons: WeaponsObservation): string => {
-  const { lasers, target, mode } = weapons;
-  if (lasers.length === 0) return 'No weapons';
-  if (lasers.every((l) => l.integrity === 0)) return 'All lasers lost';
+  const { lasers, particleBeams, kineticGuns, launchers, ammunition, target, mode } = weapons;
+  const beams = [...lasers, ...particleBeams];
+  const all = [...beams, ...kineticGuns];
+  if (all.length + launchers.length === 0) return 'No weapons';
+  if ([...all, ...launchers].every((w) => w.integrity === 0)) return 'All weapons lost';
+  if (all.length === 0) return 'Missiles only · launch by order';
   if (mode === 'hold-fire') return target ? 'Holding fire · enemy targeted' : 'Holding fire';
   if (!target) return 'No target';
-  const firing = lasers.filter((l) => l.firing);
+  const working = [
+    ...beams.filter((b) => b.integrity > 0),
+    ...(ammunition.slugs > 0 ? kineticGuns.filter((g) => g.integrity > 0) : []),
+  ];
+  if (working.length === 0) return 'Out of slugs';
+  const firing = all.filter((w) => w.firing);
   if (firing.length > 0) {
-    const power = firing.reduce((total, l) => total + l.beamPower, 0);
-    return `Firing ${firing.length} of ${lasers.length} · ${formatMW(power)}`;
+    const power = beams.reduce((total, b) => total + b.beamPower, 0);
+    const parts = [`Firing ${firing.length} of ${all.length}`];
+    if (power > 0) parts.push(formatMW(power));
+    if (kineticGuns.some((g) => g.firing)) {
+      parts.push(`${ammunition.slugs.toLocaleString('en-GB')} slugs left`);
+    }
+    return parts.join(' · ');
   }
-  const reach = Math.max(...lasers.filter((l) => l.integrity > 0).map((l) => l.effectiveRange));
+  const reach = Math.max(...working.map((w) => w.effectiveRange));
   return `Out of range · reach ${formatKm(reach)}`;
+};
+
+/** The missile designs the ship carries in a role, and how many of them are left. */
+const missilesIn = (weapons: WeaponsObservation, role: MissileRole) => {
+  const designs: readonly MissileDesignObservation[] = weapons.ammunition.missileDesigns.filter(
+    (d) => d.role === role,
+  );
+  return { designs, left: designs.reduce((n, d) => n + d.missiles, 0) };
+};
+
+/**
+ * What the launchers are doing with anti-ship missiles, e.g. "Launching · 2 to go · 10 missiles
+ * left" or "12 missiles ready · reach 52,960 km".
+ */
+const describeLaunch = (weapons: WeaponsObservation): string => {
+  const { launchers, salvo } = weapons;
+  if (launchers.length === 0) return 'No launchers';
+  if (launchers.every((l) => l.integrity === 0)) return 'Launchers lost';
+  const { designs, left } = missilesIn(weapons, 'anti-ship');
+  if (designs.length === 0) return 'No anti-ship missiles';
+  const missiles = `${left.toLocaleString('en-GB')} missiles`;
+  if (salvo && !targetsMissile(salvo.target)) {
+    return `Launching · ${salvo.remaining.toLocaleString('en-GB')} to go · ${missiles} left`;
+  }
+  if (left === 0) return 'Out of missiles';
+  const reach = Math.max(0, ...designs.map((m) => m.reach));
+  return `${missiles} ready · reach ${formatKm(reach)}`;
+};
+
+/**
+ * What the anti-missile missiles are doing, e.g. "Automatic · 2 in flight · 14 left" or
+ * "By order only · launching at missile 7 · 16 left".
+ */
+const describeAntiMissile = (weapons: WeaponsObservation): string => {
+  const { launchers, salvo, antiMissile } = weapons;
+  const { designs, left } = missilesIn(weapons, 'anti-missile');
+  if (designs.length === 0) return 'No anti-missile missiles';
+  if (launchers.every((l) => l.integrity === 0)) return 'Launchers lost';
+  const parts = [antiMissile.automatic ? 'Automatic' : 'By order only'];
+  if (salvo && typeof salvo.target !== 'string') {
+    parts.push(`launching at missile ${salvo.target.munition}`);
+  }
+  if (antiMissile.engagements.length > 0) parts.push(`${antiMissile.engagements.length} in flight`);
+  parts.push(left === 0 ? 'none left' : `${left.toLocaleString('en-GB')} left`);
+  return parts.join(' · ');
+};
+
+/**
+ * The enemy missile aimed at the ship that is nearest to it and none of its anti-missile missiles
+ * is after yet, if any.
+ */
+const nearestIncoming = (observation: SideObservation): MissileObservation | null => {
+  const ship = observation.ownShip;
+  const engaged = new Set(ship.weapons.antiMissile.engagements.map((e) => e.target));
+  let nearest: MissileObservation | null = null;
+  for (const munition of observation.munitions) {
+    if (munition.kind !== 'missile' || munition.target !== ship.sideId) continue;
+    if (engaged.has(munition.id)) continue;
+    if (
+      !nearest ||
+      distance(munition.position, ship.position) < distance(nearest.position, ship.position)
+    ) {
+      nearest = munition;
+    }
+  }
+  return nearest;
+};
+
+/**
+ * What the point defence is doing, e.g. "Firing on 2 missiles · 3,960 rounds left",
+ * "Firing on enemy ship · 3,960 rounds left" or "Ready · reach 25 km · 3 shot down".
+ */
+const describePointDefence = (weapons: WeaponsObservation): string => {
+  const { pointDefence, ammunition, intercepts } = weapons;
+  if (pointDefence.length === 0) return 'No point defence';
+  if (pointDefence.every((g) => g.integrity === 0)) return 'Point defence lost';
+  if (ammunition.rounds === 0) return 'Out of rounds';
+  const left = `${ammunition.rounds.toLocaleString('en-GB')} rounds left`;
+  const missiles = new Set(
+    pointDefence.flatMap((g) => (g.engaging?.kind === 'missile' ? [g.engaging.munition] : [])),
+  ).size;
+  if (missiles > 0)
+    return `Firing on ${missiles} ${missiles === 1 ? 'missile' : 'missiles'} · ${left}`;
+  if (pointDefence.some((g) => g.engaging?.kind === 'ship'))
+    return `Firing on enemy ship · ${left}`;
+  const reach = Math.max(
+    ...pointDefence.filter((g) => g.integrity > 0).map((g) => g.effectiveRange),
+  );
+  return `Ready · reach ${formatKm(reach)} · ${intercepts.toLocaleString('en-GB')} shot down`;
 };
 
 /** The captain's orders to their own ship. Orders can be given while running or paused. */
@@ -169,6 +281,15 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   const deployRadiators = button('Deploy radiators');
   const retractRadiators = button('Retract radiators');
 
+  const raiseShields = button('Shields up');
+  const lowerShields = button('Shields down');
+  raiseShields.addEventListener('click', () => {
+    giveOrder({ type: 'shields', raised: true });
+  });
+  lowerShields.addEventListener('click', () => {
+    giveOrder({ type: 'shields', raised: false });
+  });
+
   const targetEnemy = button('Target enemy');
   const noTarget = button('No target');
   const fireFreely = button('Fire freely');
@@ -176,6 +297,45 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   const weaponsState = el('p', {
     className: 'order-state',
     attrs: { 'aria-label': 'Weapons state' },
+  });
+  const salvoSize = numberInput('Missiles', 2, { min: '1', step: '1' });
+  const launch = button('Launch');
+  const callOff = button('Call off');
+  const launchState = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Launch state' },
+  });
+  const automaticDefence = button('Automatic');
+  const byOrderOnly = button('By order only');
+  const launchAtNearest = button('Launch at nearest missile');
+  const antiMissileState = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Anti-missile state' },
+  });
+  automaticDefence.addEventListener('click', () => {
+    giveOrder({ type: 'anti-missile', automatic: true });
+  });
+  byOrderOnly.addEventListener('click', () => {
+    giveOrder({ type: 'anti-missile', automatic: false });
+  });
+  // The incoming missile the button launches at, as of the latest update.
+  let nearest: number | null = null;
+  launchAtNearest.addEventListener('click', () => {
+    if (nearest === null) return;
+    giveOrder({ type: 'launch', target: { munition: nearest }, missiles: 1 });
+  });
+  const pointDefenceButtons = {
+    missiles: button('Missiles only'),
+    'missiles-then-ship': button('Missiles, then ship'),
+  } satisfies Record<PointDefencePriority, HTMLButtonElement>;
+  for (const [priority, priorityButton] of Object.entries(pointDefenceButtons)) {
+    priorityButton.addEventListener('click', () => {
+      giveOrder({ type: 'point-defence', priority: priority as PointDefencePriority });
+    });
+  }
+  const pointDefenceState = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Point defence state' },
   });
   // The latest weapons order and contact, so each button changes only its own part.
   let weapons: { target: string | null; mode: FireMode } = { target: null, mode: 'hold-fire' };
@@ -191,6 +351,15 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   });
   holdFire.addEventListener('click', () => {
     giveOrder({ type: 'weapons', target: weapons.target, mode: 'hold-fire' });
+  });
+  launch.addEventListener('click', () => {
+    const missiles = salvoSize.input.valueAsNumber;
+    if (!enemy || !(Number.isInteger(missiles) && missiles > 0)) return;
+    giveOrder({ type: 'launch', target: enemy, missiles });
+  });
+  callOff.addEventListener('click', () => {
+    if (!enemy) return;
+    giveOrder({ type: 'launch', target: enemy, missiles: 0 });
   });
 
   deployRadiators.addEventListener('click', () => {
@@ -267,10 +436,25 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     priorityList,
     el('h3', { text: 'Radiators' }),
     el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
+    el('h3', { text: 'Shields' }),
+    el('div', { className: 'order-row' }, raiseShields, lowerShields),
     el('h3', { text: 'Weapons' }),
     el('div', { className: 'order-row' }, targetEnemy, noTarget),
     el('div', { className: 'order-row' }, fireFreely, holdFire),
     weaponsState,
+    el('div', { className: 'order-row' }, salvoSize.element, launch, callOff),
+    launchState,
+    el('h3', { text: 'Anti-missile missiles' }),
+    el('div', { className: 'order-row' }, automaticDefence, byOrderOnly, launchAtNearest),
+    antiMissileState,
+    el('h3', { text: 'Point defence' }),
+    el(
+      'div',
+      { className: 'order-row' },
+      pointDefenceButtons.missiles,
+      pointDefenceButtons['missiles-then-ship'],
+    ),
+    pointDefenceState,
   );
 
   return {
@@ -311,6 +495,11 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       });
       deployRadiators.classList.toggle('active', ship.heat.radiatorsDeployed);
       retractRadiators.classList.toggle('active', !ship.heat.radiatorsDeployed);
+      const shielded = ship.shields.shields.length > 0;
+      raiseShields.disabled = !shielded;
+      lowerShields.disabled = !shielded;
+      raiseShields.classList.toggle('active', shielded && ship.shields.raised);
+      lowerShields.classList.toggle('active', shielded && !ship.shields.raised);
 
       weapons = { target: ship.weapons.target, mode: ship.weapons.mode };
       enemy = observation.contacts[0]?.sideId ?? null;
@@ -319,6 +508,34 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       fireFreely.classList.toggle('active', weapons.mode === 'fire-freely');
       holdFire.classList.toggle('active', weapons.mode === 'hold-fire');
       weaponsState.textContent = describeWeapons(ship.weapons);
+      const canLaunch = ship.weapons.launchers.some((l) => l.integrity > 0);
+      const { salvo } = ship.weapons;
+      launch.disabled = !canLaunch || missilesIn(ship.weapons, 'anti-ship').left === 0;
+      callOff.disabled = salvo === null;
+      launch.classList.toggle('active', salvo !== null && !targetsMissile(salvo.target));
+      launchState.textContent = describeLaunch(ship.weapons);
+      const antiMissiles = missilesIn(ship.weapons, 'anti-missile');
+      const defending = antiMissiles.designs.length > 0;
+      automaticDefence.disabled = !defending;
+      byOrderOnly.disabled = !defending;
+      automaticDefence.classList.toggle('active', defending && ship.weapons.antiMissile.automatic);
+      byOrderOnly.classList.toggle('active', defending && !ship.weapons.antiMissile.automatic);
+      nearest = nearestIncoming(observation)?.id ?? null;
+      launchAtNearest.disabled = !canLaunch || antiMissiles.left === 0 || nearest === null;
+      launchAtNearest.classList.toggle(
+        'active',
+        salvo !== null && typeof salvo.target !== 'string',
+      );
+      antiMissileState.textContent = describeAntiMissile(ship.weapons);
+      const defended = ship.weapons.pointDefence.length > 0;
+      for (const [priority, priorityButton] of Object.entries(pointDefenceButtons)) {
+        priorityButton.disabled = !defended;
+        priorityButton.classList.toggle(
+          'active',
+          defended && ship.weapons.pointDefencePriority === priority,
+        );
+      }
+      pointDefenceState.textContent = describePointDefence(ship.weapons);
     },
   };
 };

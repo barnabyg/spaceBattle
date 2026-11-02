@@ -15,6 +15,7 @@ test('a free battle goes from the main menu through setup and the battle to its 
   await expect(blue.getByLabel('Hull size')).toHaveText('Frigate');
   await expect(red.getByLabel('Hull size')).toHaveText('Cruiser');
   await expect(blue.getByLabel('Lasers')).toContainText('reach');
+  await expect(blue.getByLabel('Charged particle beams')).toHaveText('None');
   await chooseSide(page, 'Blue', { design: 'Bastion' });
   await chooseSide(page, 'Red', { design: 'Lance' });
   await expect(blue.getByLabel('Hull size')).toHaveText('Cruiser');

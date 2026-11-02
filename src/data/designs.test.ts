@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseDesign } from '../sim/design';
+import { KILOTON, missileRole, parseDesign } from '../sim/design';
 import { HAND_MADE_DESIGNS } from './designs';
 
 describe('hand-made designs', () => {
@@ -8,11 +8,85 @@ describe('hand-made designs', () => {
     expect(new Set(HAND_MADE_DESIGNS.map((d) => d.id)).size).toBe(HAND_MADE_DESIGNS.length);
   });
 
-  it('carry armour on every section and at least one laser', () => {
+  it('carry armour on every section and at least one weapon', () => {
     for (const design of HAND_MADE_DESIGNS) {
       for (const section of design.sections) expect(section.armour.thickness).toBeGreaterThan(0);
-      expect(design.sections.flatMap((s) => s.mounts).some((m) => m.type === 'laser')).toBe(true);
+      expect(design.sections.flatMap((s) => s.mounts).some((m) => m.type !== 'radiator')).toBe(
+        true,
+      );
     }
+  });
+
+  it('include one carrying kinetic guns and a magazine for them', () => {
+    const gunned = HAND_MADE_DESIGNS.find((d) =>
+      d.sections.some((s) => s.mounts.some((m) => m.type === 'kinetic-gun')),
+    );
+    expect(gunned?.sections.flatMap((s) => s.components).some((c) => c.type === 'magazine')).toBe(
+      true,
+    );
+  });
+
+  it.each(['charged-particle-beam', 'neutral-particle-beam'] as const)(
+    'include one carrying a %s',
+    (type) => {
+      expect(
+        HAND_MADE_DESIGNS.some((d) =>
+          d.sections.some((s) => s.mounts.some((m) => m.type === type)),
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each(['magnetic-shield', 'coolant-shield'] as const)('include one carrying a %s', (type) => {
+    expect(
+      HAND_MADE_DESIGNS.some((d) =>
+        d.sections.some((s) => s.components.some((c) => c.type === type)),
+      ),
+    ).toBe(true);
+  });
+
+  it('include one carrying launchers and a magazine of missiles with kinetic warheads', () => {
+    const launching = HAND_MADE_DESIGNS.find((d) =>
+      d.sections.some((s) => s.mounts.some((m) => m.type === 'launcher')),
+    );
+    const magazines = launching?.sections
+      .flatMap((s) => s.components)
+      .flatMap((c) => (c.type === 'magazine' && c.missile ? [c.missile] : []));
+    expect(magazines?.map((missile) => missile.warhead.type)).toContain('kinetic');
+  });
+
+  it('include one carrying point defence and a magazine of rounds for it', () => {
+    const defended = HAND_MADE_DESIGNS.find((d) =>
+      d.sections.some((s) => s.mounts.some((m) => m.type === 'point-defence')),
+    );
+    const components = defended?.sections.flatMap((s) => s.components) ?? [];
+    expect(components.some((c) => c.type === 'magazine' && c.rounds > 0)).toBe(true);
+  });
+
+  it('include one carrying anti-missile missiles beside anti-ship missiles', () => {
+    const missilesOf = (design: (typeof HAND_MADE_DESIGNS)[number]) =>
+      design.sections
+        .flatMap((s) => s.components)
+        .flatMap((c) => (c.type === 'magazine' && c.missile ? [c.missile] : []));
+    const defending = HAND_MADE_DESIGNS.find((d) =>
+      missilesOf(d).some((m) => m.warhead.type === 'fragmentation'),
+    );
+    expect(defending).toBeDefined();
+    const roles = defending ? missilesOf(defending).map(missileRole) : [];
+    expect(roles).toContain('anti-missile');
+    expect(roles).toContain('anti-ship');
+  });
+
+  it('include one carrying missiles with nuclear warheads, kept out of its middle section', () => {
+    const nuclear = HAND_MADE_DESIGNS.find((d) =>
+      d.sections.some((s) =>
+        s.components.some((c) => c.type === 'magazine' && c.missile?.warhead.type === 'nuclear'),
+      ),
+    );
+    expect(nuclear).toBeDefined();
+    // A magazine of nuclear missiles that blows up takes its section with it.
+    const middle = nuclear?.sections.find((s) => s.kind === 'middle');
+    expect(middle?.components.some((c) => c.type === 'magazine')).toBe(false);
   });
 });
 
@@ -134,6 +208,240 @@ describe('parseDesign', () => {
         sections: [{ ...forward, armour: { type: 'heavy', thickness: -1 } }, middle, engine],
       }),
     ).toThrow(/thickness/);
+  });
+
+  it('reads charged and neutral particle beams on mounts', () => {
+    const neutral = {
+      type: 'neutral-particle-beam',
+      mass: 1,
+      beamPower: 1,
+      efficiency: 0.5,
+      aperture: 1,
+      divergence: 1e-7,
+    };
+    const charged = { ...neutral, type: 'charged-particle-beam', particleEnergy: 3e-9 };
+    const design = parseDesign(withMiddle([thrusters, reactor], [charged, neutral]));
+    expect(design.sections[1]?.mounts).toEqual([charged, neutral]);
+    expect(() => parseDesign(withMiddle([thrusters, reactor, neutral]))).toThrow(/mount/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor], [{ ...charged, particleEnergy: undefined }])),
+    ).toThrow(/particleEnergy/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor], [{ ...neutral, divergence: 0 }])),
+    ).toThrow(/divergence/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor], [{ ...neutral, efficiency: 1.5 }])),
+    ).toThrow(/efficiency/);
+  });
+
+  it('reads kinetic guns on mounts and magazines inside, and needs a magazine for the guns', () => {
+    const gun = {
+      type: 'kinetic-gun',
+      mass: 1,
+      slugMass: 1,
+      muzzleVelocity: 1,
+      efficiency: 0.5,
+      rateOfFire: 1,
+    };
+    const magazine = { type: 'magazine', mass: 100, slugs: 10 };
+    const design = parseDesign(withMiddle([thrusters, reactor, magazine], [gun]));
+    expect(design.sections[1]?.components[2]).toEqual({
+      ...magazine,
+      rounds: 0,
+      missiles: 0,
+      missile: null,
+    });
+    expect(design.sections[1]?.mounts).toEqual([gun]);
+    expect(() => parseDesign(withMiddle([thrusters, reactor], [gun]))).toThrow(/magazine/);
+    expect(() => parseDesign(withMiddle([thrusters, reactor, magazine, gun]))).toThrow(/mount/);
+    expect(() => parseDesign(withMiddle([thrusters, reactor], [magazine]))).toThrow(
+      /inside a section/,
+    );
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, magazine], [{ ...gun, efficiency: 0 }])),
+    ).toThrow(/efficiency/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, magazine], [{ ...gun, muzzleVelocity: -1 }])),
+    ).toThrow(/muzzleVelocity/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, { ...magazine, slugs: 2.5 }], [gun])),
+    ).toThrow(/slugs/);
+    // A magazine weighs more than the slugs it holds.
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, magazine], [{ ...gun, slugMass: 10 }])),
+    ).toThrow(/mass/);
+  });
+
+  it('reads launchers on mounts and magazines of missiles, and needs missiles for the launchers', () => {
+    const launcher = { type: 'launcher', mass: 1, reloadTime: 10 };
+    const missile = {
+      name: 'Dart',
+      dryMass: 1_000,
+      propellantMass: 1_000,
+      thrust: 50e3,
+      exhaustVelocity: 20e3,
+      warhead: { type: 'kinetic' },
+    };
+    const magazine = { type: 'magazine', mass: 10e3, missiles: 4, missile };
+    const design = parseDesign(withMiddle([thrusters, reactor, magazine], [launcher]));
+    expect(design.sections[1]?.components[2]).toEqual({ ...magazine, slugs: 0, rounds: 0 });
+    expect(design.sections[1]?.mounts).toEqual([launcher]);
+    const slugs = { type: 'magazine', mass: 100, slugs: 10 };
+    const launching = (...components: unknown[]) =>
+      parseDesign(withMiddle([thrusters, reactor, ...components], [launcher]));
+    expect(() => launching()).toThrow(/launchers need a magazine of missiles/);
+    expect(() => launching(slugs)).toThrow(/launchers need a magazine of missiles/);
+    expect(() => launching({ ...magazine, slugs: 10 })).toThrow(/not more/);
+    expect(() => launching({ ...magazine, missile: undefined })).toThrow(/missile/);
+    expect(() => launching({ ...magazine, mass: 8_000 })).toThrow(/mass/);
+    expect(() => launching({ ...magazine, missiles: 1.5 })).toThrow(/missiles/);
+    expect(() => launching({ ...magazine, missile: { ...missile, thrust: 0 } })).toThrow(/thrust/);
+    expect(() =>
+      launching({ ...magazine, missile: { ...missile, warhead: { type: 'antimatter' } } }),
+    ).toThrow(/type/);
+    expect(() => launching({ type: 'magazine', mass: 100 })).toThrow(/slugs, rounds or missiles/);
+    expect(() => parseDesign(withMiddle([thrusters, reactor, launcher]))).toThrow(/mount/);
+  });
+
+  it('reads point defence on mounts and magazines of rounds, and needs rounds for it', () => {
+    const gun = {
+      type: 'point-defence',
+      mass: 1,
+      roundMass: 0.05,
+      muzzleVelocity: 5e3,
+      efficiency: 0.5,
+      roundsPerBurst: 20,
+      burstRate: 5,
+      dispersion: 2e-3,
+    };
+    const magazine = { type: 'magazine', mass: 100, rounds: 1_000 };
+    const defended = (...components: unknown[]) =>
+      parseDesign(withMiddle([thrusters, reactor, ...components], [gun]));
+    const design = defended(magazine);
+    expect(design.sections[1]?.components[2]).toEqual({
+      ...magazine,
+      slugs: 0,
+      missiles: 0,
+      missile: null,
+    });
+    expect(design.sections[1]?.mounts).toEqual([gun]);
+    expect(() => defended()).toThrow(/point defence needs a magazine/);
+    expect(() => defended({ type: 'magazine', mass: 100, slugs: 10 })).toThrow(/point defence/);
+    expect(() => defended({ ...magazine, slugs: 10 })).toThrow(/not more/);
+    // A magazine weighs more than the rounds it holds.
+    expect(() => defended({ ...magazine, mass: 50 })).toThrow(/mass/);
+    expect(() => parseDesign(withMiddle([thrusters, reactor, magazine, gun]))).toThrow(/mount/);
+    for (const [key, value] of [
+      ['roundMass', 0],
+      ['muzzleVelocity', -1],
+      ['efficiency', 1.5],
+      ['roundsPerBurst', 2.5],
+      ['burstRate', 0],
+      ['dispersion', 0],
+    ] as const) {
+      expect(() =>
+        parseDesign(withMiddle([thrusters, reactor, magazine], [{ ...gun, [key]: value }])),
+      ).toThrow(new RegExp(key));
+    }
+  });
+
+  it('reads nuclear warheads of up to 10 kt, with a detonation distance', () => {
+    const launcher = { type: 'launcher', mass: 1, reloadTime: 10 };
+    const warhead = { type: 'nuclear', yield: 10 * KILOTON, detonationDistance: 2_000 };
+    const armed = (nuclear: unknown) =>
+      parseDesign(
+        withMiddle(
+          [
+            thrusters,
+            reactor,
+            {
+              type: 'magazine',
+              mass: 10e3,
+              missiles: 4,
+              missile: {
+                name: 'Ember',
+                dryMass: 1_000,
+                propellantMass: 1_000,
+                thrust: 50e3,
+                exhaustVelocity: 20e3,
+                warhead: nuclear,
+              },
+            },
+          ],
+          [launcher],
+        ),
+      );
+    const magazine = armed(warhead).sections[1]?.components[2];
+    expect(magazine?.type === 'magazine' && magazine.missile?.warhead).toEqual(warhead);
+    expect(() => armed({ ...warhead, yield: 10.01 * KILOTON })).toThrow(/yield.*10 kt/);
+    expect(() => armed({ ...warhead, yield: 0 })).toThrow(/yield/);
+    expect(() => armed({ ...warhead, yield: undefined })).toThrow(/yield/);
+    expect(armed({ ...warhead, detonationDistance: 0 })).toBeDefined();
+    expect(() => armed({ ...warhead, detonationDistance: -1 })).toThrow(/detonationDistance/);
+  });
+
+  it('reads fragmentation warheads, whose fragments weigh less than their missile', () => {
+    const launcher = { type: 'launcher', mass: 1, reloadTime: 10 };
+    const warhead = {
+      type: 'fragmentation',
+      fragments: 8_000,
+      fragmentMass: 0.004,
+      burstDistance: 100,
+      spread: 0.25,
+    };
+    const missile = {
+      name: 'Wasp',
+      dryMass: 150,
+      propellantMass: 150,
+      thrust: 60e3,
+      exhaustVelocity: 20e3,
+      warhead,
+    };
+    const armed = (...magazines: unknown[]) =>
+      parseDesign(withMiddle([thrusters, reactor, ...magazines], [launcher]));
+    const magazine = (fragmentation: unknown, name = 'Wasp') => ({
+      type: 'magazine',
+      mass: 10e3,
+      missiles: 4,
+      missile: { ...missile, name, warhead: fragmentation },
+    });
+    const parsed = armed(magazine(warhead)).sections[1]?.components[2];
+    expect(parsed?.type === 'magazine' && parsed.missile?.warhead).toEqual(warhead);
+    expect(parsed?.type === 'magazine' && parsed.missile && missileRole(parsed.missile)).toBe(
+      'anti-missile',
+    );
+    expect(() => armed(magazine({ ...warhead, fragments: 2.5 }))).toThrow(/fragments/);
+    expect(() => armed(magazine({ ...warhead, fragmentMass: 0 }))).toThrow(/fragmentMass/);
+    expect(() => armed(magazine({ ...warhead, burstDistance: 0 }))).toThrow(/burstDistance/);
+    expect(() => armed(magazine({ ...warhead, spread: Math.PI / 2 }))).toThrow(/spread/);
+    expect(() => armed(magazine({ ...warhead, fragmentMass: 0.02 }))).toThrow(/dryMass/);
+    // A name stands for one missile design, as launch orders name the missiles to launch.
+    expect(armed(magazine(warhead), magazine(warhead))).toBeDefined();
+    expect(() => armed(magazine(warhead), magazine({ ...warhead, fragments: 10 }))).toThrow(
+      /two different missiles are named "Wasp"/,
+    );
+  });
+
+  it('reads magnetic and coolant shields inside a section, not on mounts', () => {
+    const magnetic = { type: 'magnetic-shield', mass: 1, power: 1, maxParticleEnergy: 3e-9 };
+    const coolant = { type: 'coolant-shield', mass: 1, power: 1, capacity: 10 };
+    const design = parseDesign(withMiddle([thrusters, reactor, magnetic, coolant]));
+    expect(design.sections[1]?.components.slice(2)).toEqual([magnetic, coolant]);
+    expect(() => parseDesign(withMiddle([thrusters, reactor], [magnetic]))).toThrow(
+      /inside a section/,
+    );
+    expect(() => parseDesign(withMiddle([thrusters, reactor], [coolant]))).toThrow(
+      /inside a section/,
+    );
+    expect(() => parseDesign(withMiddle([thrusters, reactor, { ...magnetic, power: 0 }]))).toThrow(
+      /power/,
+    );
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, { ...magnetic, maxParticleEnergy: undefined }])),
+    ).toThrow(/maxParticleEnergy/);
+    expect(() =>
+      parseDesign(withMiddle([thrusters, reactor, { ...coolant, capacity: -1 }])),
+    ).toThrow(/capacity/);
   });
 
   it('rejects power and heat numbers outside their range', () => {
