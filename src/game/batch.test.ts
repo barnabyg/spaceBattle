@@ -57,7 +57,7 @@ describe('batch run', () => {
     expect(blue?.losses).toEqual([]);
     expect(red?.wins).toBe(0);
     expect(red?.losses).toEqual([
-      { loss: { result: 'disabled', cause: 'no-working-drive' }, count: 2 },
+      { loss: { result: 'destroyed', cause: 'reactor-breach' }, count: 2 },
     ]);
   }, 20_000);
 

@@ -87,9 +87,7 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
   await expect(page.getByRole('region', { name: 'Test mode' })).toHaveCount(0);
 });
 
-test('a nuclear warhead going off near the enemy strips its radiators and mounts', async ({
-  page,
-}) => {
+test('a nuclear warhead going off near the enemy strips the mounts facing it', async ({ page }) => {
   await setUpInTestMode(page);
   await page.getByLabel('Seed').fill('1');
   await chooseSide(page, 'Blue', { design: 'Pyre' });
@@ -106,13 +104,14 @@ test('a nuclear warhead going off near the enemy strips its radiators and mounts
   await fastest(page);
 
   // A near miss: the warhead goes off by its proximity fuse 1 km from the Lance, and its X-rays
-  // wreck the radiator and laser facing the burst while the armour holds.
+  // wreck the laser facing the burst while the armour holds. The computer captain pulled the
+  // Lance's radiators in against the hull as the missile closed, and they come through.
   const testLog = page.getByRole('region', { name: 'Test log' });
   await expect(testLog).toContainText(/Blue missile \d+ detonated 10 kt 1\.00 km from Red/, {
     timeout: 30_000,
   });
-  await expect(testLog).toContainText('Red radiator lost (middle mount');
   await expect(testLog).toContainText('Red laser lost (middle mount');
+  await expect(testLog).not.toContainText('Red radiator lost');
   await expect(testLog).not.toContainText('armour breached');
   await expect(page.getByRole('list', { name: 'Battle log' })).toContainText(
     'Nuclear warhead hit enemy · 10 kt at 1.0 km',

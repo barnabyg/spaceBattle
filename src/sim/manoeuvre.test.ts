@@ -98,6 +98,27 @@ describe('manoeuvre orders', () => {
     expect(own(battle, 'red').deltaV).toBeGreaterThan(0.95 * start.red);
   });
 
+  it('closes faster when ordered a speed above its cruise speed, and still stops there', () => {
+    const closing = (speed?: number) => {
+      const battle = battleWith();
+      const range = 50_000 * KM;
+      battle.giveOrder('blue', {
+        type: 'manoeuvre',
+        goal: 'close',
+        range,
+        ...(speed !== undefined && { speed }),
+      });
+      expect(battle.observe('blue').ownShip.manoeuvre?.speed).toBe(speed ?? null);
+      battle.advance(HOUR);
+      return { battle, range, speed: relativeSpeed(battle) };
+    };
+    const cruising = closing();
+    const fast = closing(20_000);
+    expect(fast.speed).toBeGreaterThan(1.5 * cruising.speed);
+    fast.battle.advance(4 * HOUR);
+    expect(worstRangeError(fast.battle, fast.range, HOUR)).toBeLessThan(TOLERANCE);
+  }, 20_000);
+
   it('opens the range out to the ordered range', () => {
     const battle = battleWith();
     const range = 300_000 * KM;
@@ -183,6 +204,9 @@ describe('manoeuvre orders', () => {
     }).toThrow();
     expect(() => {
       battle.giveOrder('blue', { type: 'manoeuvre', goal: 'close', range: Number.NaN });
+    }).toThrow();
+    expect(() => {
+      battle.giveOrder('blue', { type: 'manoeuvre', goal: 'close', range: 1e6, speed: 0 });
     }).toThrow();
   });
 });

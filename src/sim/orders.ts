@@ -22,11 +22,17 @@ export type ManoeuvreGoal = 'close' | 'hold' | 'open' | 'match-velocity';
 /**
  * A standing order: the autopilot plans turns and burns towards a goal relative to the enemy
  * until another manoeuvre, an attitude or burn order, or the goal 'none' replaces it. Close,
- * hold and open work towards a separation (`range`, m); match velocity towards zero relative
- * velocity.
+ * hold and open work towards a separation (`range`, m), building up to a cruising speed on the
+ * way (`speed`, m/s; left out, a tenth of the delta-v left) and never faster than the ship can
+ * still stop from on arrival; match velocity works towards zero relative velocity.
  */
 export type ManoeuvreOrder =
-  | { readonly type: 'manoeuvre'; readonly goal: 'close' | 'hold' | 'open'; readonly range: number }
+  | {
+      readonly type: 'manoeuvre';
+      readonly goal: 'close' | 'hold' | 'open';
+      readonly range: number;
+      readonly speed?: number;
+    }
   | { readonly type: 'manoeuvre'; readonly goal: 'match-velocity' }
   | { readonly type: 'manoeuvre'; readonly goal: 'none' };
 

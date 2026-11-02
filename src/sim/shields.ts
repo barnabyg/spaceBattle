@@ -23,17 +23,38 @@ export type CoolantLoad = Readonly<Record<SectionKind, number>>;
 
 export const NO_COOLANT_LOAD: CoolantLoad = { forward: 0, middle: 0, engine: 0 };
 
+/** Each design's shield slots by type, as `componentSlots` numbers them. */
+const shieldSlots = new WeakMap<Design, ReadonlyMap<string, readonly number[]>>();
+
+const slotsOfShields = (design: Design, type: string): readonly number[] => {
+  let byType = shieldSlots.get(design);
+  if (!byType) {
+    const slots = componentSlots(design);
+    byType = new Map(
+      (['magnetic-shield', 'coolant-shield'] as const).map((t) => [
+        t,
+        slots.flatMap((slot, i) => (slot.component.type === t ? [i] : [])),
+      ]),
+    );
+    shieldSlots.set(design, byType);
+  }
+  return byType.get(type) ?? [];
+};
+
 /** Each working shield of a type with its integrity, and the section it is in. */
 const working = <T extends MagneticShieldDesign | CoolantShieldDesign>(
   ship: ShipState,
   type: T['type'],
-): { readonly shield: T; readonly section: SectionKind; readonly integrity: number }[] =>
-  componentSlots(ship.design).flatMap((slot, i) => {
+): { readonly shield: T; readonly section: SectionKind; readonly integrity: number }[] => {
+  const slots = componentSlots(ship.design);
+  return slotsOfShields(ship.design, type).flatMap((i) => {
+    const slot = slots[i];
     const integrity = ship.integrity[i] ?? 0;
-    return slot.component.type === type && integrity > 0
+    return slot && integrity > 0
       ? [{ shield: slot.component as T, section: slot.section, integrity }]
       : [];
   });
+};
 
 /** What the shields draw at full power, each in proportion to its integrity, W. */
 const fullShieldPower = (ship: ShipState): number =>

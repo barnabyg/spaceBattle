@@ -12,7 +12,17 @@ import { createComputerCaptain } from './captain';
 import { DECISION_INTERVAL, runBattle, withComputerCaptains } from './command';
 import { designComponentsOfType, type Design } from './design';
 import type { Order } from './orders';
-import { defendedTestDesign, duelSetup, TEST_LASER, testDesign, withSection } from './testing';
+import {
+  antiMissileTestDesign,
+  defendedTestDesign,
+  duelSetup,
+  launchingTestDesign,
+  TEST_LASER,
+  TEST_NUCLEAR_MISSILE,
+  testDesign,
+  withComponent,
+  withSection,
+} from './testing';
 import { distance } from './vector';
 import { effectiveRange } from './beams';
 
@@ -150,16 +160,41 @@ describe('computer captain', () => {
     expect(range(battle.observe('red'))).toBeLessThan(BASTION_REACH);
   }, 20_000); // Simulates hours of battle; takes a few seconds.
 
-  it('fires its kinetic guns at the enemy when its design has them', () => {
-    const battle = againstIdlePlayer(testDesign(), handMadeDesign('sling'), 20_000 * KM);
-    const events = battle.advance(1_800);
-    const red = battle.observe('red').ownShip;
-    // It counts its guns' reach: unanswered, it stands off just inside it.
+  it('holds its kinetic guns until the enemy is too close to dodge their slugs, then hits', () => {
+    const battle = againstIdlePlayer(testDesign(), handMadeDesign('sling'), 5_000 * KM);
+    battle.advance(10);
+    let red = battle.observe('red').ownShip;
+    const reach = red.weapons.kineticGuns[0]?.effectiveRange ?? 0;
+    expect(reach).toBeGreaterThan(5_000 * KM);
+    // In its guns' reach but far enough off for slugs to be dodged, it holds fire and closes.
+    expect(red.weapons.mode).toBe('hold-fire');
     expect(red.manoeuvre?.goal).toBe('hold');
-    expect(red.manoeuvre?.range).toBeLessThan(red.weapons.kineticGuns[0]?.effectiveRange ?? 0);
-    expect(red.weapons.ammunition.slugs).toBeLessThan(red.weapons.ammunition.slugCapacity);
-    expect(events.some((e) => e.type === 'impact' && e.attacker === 'red')).toBe(true);
-  });
+    expect(red.manoeuvre?.range).toBeLessThan(1_000 * KM);
+    const events: BattleEvent[] = [];
+    while (red.weapons.ammunition.slugs === red.weapons.ammunition.slugCapacity) {
+      if (battle.time > 6 * HOUR) throw new Error('Red never fired');
+      events.push(...battle.advance(60));
+      red = battle.observe('red').ownShip;
+    }
+    expect(range(battle.observe('red'))).toBeLessThan(1_000 * KM);
+    events.push(...battle.advance(600));
+    red = battle.observe('red').ownShip;
+    const fired = red.weapons.ammunition.slugCapacity - red.weapons.ammunition.slugs;
+    const hits = events.filter((e) => e.type === 'impact' && e.munition === 'slug').length;
+    expect(hits).toBeGreaterThan(0.8 * (fired - battle.observe('red').munitions.length));
+  }, 20_000);
+
+  it('dodges slugs fired from too far off to hit a ship that moves', () => {
+    // A player in the Sling fires at the computer's Torch from 25,000 km, inside its guns' reach.
+    const battle = againstIdlePlayer(handMadeDesign('sling'), handMadeDesign('torch'), 25_000 * KM);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    const events = battle.advance(1_800);
+    const blue = battle.observe('blue').ownShip;
+    const fired = blue.weapons.ammunition.slugCapacity - blue.weapons.ammunition.slugs;
+    expect(fired).toBeGreaterThan(100);
+    const hits = events.filter((e) => e.type === 'impact' && e.munition === 'slug').length;
+    expect(hits).toBeLessThan(0.1 * fired);
+  }, 20_000);
 
   it('closes within the short reach of its charged particle beam and fires it', () => {
     const battle = againstIdlePlayer(testDesign(), handMadeDesign('torch'), 60_000 * KM);
@@ -280,6 +315,153 @@ describe('computer captain', () => {
     }
     const intercept = events.find((e) => e.type === 'intercept');
     expect(intercept).toMatchObject({ side: 'blue', attacker: 'red', weapon: 'point-defence' });
+  }, 20_000);
+
+  /** A player in blue's `blue` who launches `missiles` at red at once, and the computer in red. */
+  const underMissileAttack = (blue: Design, red: Design, at: number, missiles: number): Battle => {
+    const battle = createBattle(duelSetup(blue, red, at));
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles });
+    return battle;
+  };
+
+  /** Advances the battle until an event turns up, failing if none has by `limit` seconds. */
+  const until = (
+    battle: Battle,
+    found: (e: BattleEvent) => boolean,
+    limit: number,
+  ): BattleEvent[] => {
+    const events: BattleEvent[] = [];
+    while (!events.some(found)) {
+      if (battle.time > limit || battle.outcome) throw new Error('It never happened');
+      events.push(...battle.advance(10));
+    }
+    return events;
+  };
+
+  it.each([
+    ['laser', 'lance', 50_000, (e: BattleEvent) => e.type === 'hit' && e.attack === 'laser'],
+    [
+      'kinetic gun',
+      'sling',
+      1_000,
+      (e: BattleEvent) => e.type === 'impact' && e.munition === 'slug',
+    ],
+    [
+      'missile with a kinetic warhead',
+      'quiver',
+      30_000,
+      (e: BattleEvent) => e.type === 'impact' && e.munition === 'missile',
+    ],
+    ['missile with a nuclear warhead', 'pyre', 30_000, (e: BattleEvent) => e.type === 'detonation'],
+    [
+      'charged particle beam',
+      'torch',
+      10_000,
+      (e: BattleEvent) => e.type === 'hit' && e.attack === 'charged-particle',
+    ],
+    [
+      'neutral particle beam',
+      'needle',
+      50_000,
+      (e: BattleEvent) => e.type === 'hit' && e.attack === 'neutral-particle',
+    ],
+  ])('fires its %s at the enemy ship', (_, design, at, landed) => {
+    const battle = againstIdlePlayer(testDesign(), handMadeDesign(design), at * KM);
+    const events = until(battle, (e) => 'attacker' in e && e.attacker === 'red' && landed(e), HOUR);
+    expect(events.find(landed)).toMatchObject({ attacker: 'red', target: 'blue' });
+  });
+
+  it.each([
+    ['point defence', defendedTestDesign(), 'point-defence'],
+    ['anti-missile missiles', antiMissileTestDesign(), 'anti-missile-missile'],
+  ] as const)('fires its %s at incoming missiles', (_, red, weapon) => {
+    const battle = withComputerCaptains(
+      underMissileAttack(launchingTestDesign(2), red, 20_000 * KM, 2),
+    );
+    const events = until(battle, (e) => e.type === 'intercept', HOUR);
+    expect(events.find((e) => e.type === 'intercept')).toMatchObject({ side: 'red', weapon });
+  });
+
+  it('under missile attack, keeps its launchers for anti-missile missiles and its power for the weapons', () => {
+    // Both sides are in reach of each other's anti-ship missiles; blue launches first.
+    const battle = underMissileAttack(
+      launchingTestDesign(4, { launchers: 2 }),
+      antiMissileTestDesign({ antiMissiles: 8, missiles: 4, launchers: 2 }),
+      20_000 * KM,
+      4,
+    );
+    battle.advance(15);
+    const commanded = withComputerCaptains(battle);
+    const inbound = () =>
+      commanded.observe('red').munitions.some((m) => m.kind === 'missile' && m.attacker === 'blue');
+    expect(inbound()).toBe(true);
+    const events: BattleEvent[] = [];
+    while (inbound()) {
+      if (commanded.time > HOUR || commanded.outcome) throw new Error('Missiles still inbound');
+      events.push(...commanded.advance(1));
+      const red = commanded.observe('red').ownShip;
+      expect(red.power.priorities[0]).toBe('weapons');
+      expect(red.weapons.pointDefencePriority).toBe('missiles');
+    }
+    const launches = events.filter((e) => e.type === 'launch' && e.attacker === 'red');
+    expect(launches.length).toBeGreaterThan(0);
+    // Every missile it launched while under attack went after an incoming missile.
+    for (const launch of launches) {
+      expect(launch.type === 'launch' && typeof launch.target).toBe('object');
+    }
+    // Once they are dealt with, it launches at the enemy ship.
+    const after = until(commanded, (e) => e.type === 'launch' && e.attacker === 'red', HOUR);
+    expect(after.find((e) => e.type === 'launch')).toMatchObject({ target: 'blue' });
+  }, 20_000);
+
+  it('sends a second anti-missile missile at each nuclear missile', () => {
+    const battle = withComputerCaptains(
+      underMissileAttack(
+        launchingTestDesign(1, { missile: TEST_NUCLEAR_MISSILE }),
+        antiMissileTestDesign({ antiMissiles: 4, launchers: 2 }),
+        20_000 * KM,
+        1,
+      ),
+    );
+    let most = 0;
+    while (battle.observe('red').munitions.some((m) => m.attacker === 'blue') || battle.time < 60) {
+      if (battle.time > HOUR || battle.outcome) break;
+      battle.advance(1);
+      const { engagements } = battle.observe('red').ownShip.weapons.antiMissile;
+      most = Math.max(most, engagements.length);
+    }
+    expect(most).toBe(2);
+  }, 20_000);
+
+  it('retracts its radiators as a nuclear missile closes in', () => {
+    // Unarmed against nuclear missiles, the computer has its radiators out for the fight.
+    const battle = withComputerCaptains(
+      underMissileAttack(
+        launchingTestDesign(2, { missile: TEST_NUCLEAR_MISSILE }),
+        testDesign(),
+        20_000 * KM,
+        1,
+      ),
+    );
+    battle.advance(10);
+    expect(battle.observe('red').ownShip.heat.radiatorsDeployed).toBe(true);
+    const events = until(battle, (e) => e.type === 'detonation', HOUR);
+    expect(events.some((e) => e.type === 'detonation')).toBe(true);
+    expect(battle.observe('red').ownShip.heat.radiatorsDeployed).toBe(false);
+  }, 20_000);
+
+  it('with nothing left to fight with, stops where it is rather than run', () => {
+    const empty = withComponent(handMadeDesign('sling'), 'magazine', { slugs: 0 });
+    const battle = againstIdlePlayer(handMadeDesign('lance'), empty, 100_000 * KM);
+    battle.advance(10);
+    expect(battle.observe('red').ownShip.manoeuvre?.goal).toBe('match-velocity');
+  });
+
+  it('heads for its fighting range from far off faster than its autopilot would', () => {
+    // At the autopilot's own cruising speed it would take over nine hours to get there.
+    const battle = againstIdlePlayer(testDesign(), handMadeDesign('torch'), 200_000 * KM);
+    until(battle, (e) => e.type === 'hit' && e.attacker === 'red', 7 * HOUR);
+    expect(battle.observe('red').ownShip.deltaV).toBeGreaterThan(0);
   }, 20_000);
 
   it('deploys its radiators when it runs hot, and retracts them once cool', () => {

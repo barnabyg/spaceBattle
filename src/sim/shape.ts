@@ -1,6 +1,11 @@
 import type { Design, MountedComponentDesign, SectionKind } from './design';
 import { HULLS } from './hull';
-import { massProperties, NO_AMMUNITION_SPENT, type AmmunitionSpent } from './ship';
+import {
+  massProperties,
+  NO_AMMUNITION_SPENT,
+  type AmmunitionSpent,
+  type MassProperties,
+} from './ship';
 import { vec3, type Vec3 } from './vector';
 
 /** Thickness of a radiator panel, m. */
@@ -131,8 +136,29 @@ export const shipShape = (
   radiatorsDeployed: boolean,
   ammunitionSpent: AmmunitionSpent = NO_AMMUNITION_SPENT,
 ): readonly ShapePart[] => {
+  const mass = massProperties(design, propellantMass, ammunitionSpent);
+  // The same load gives the same mass properties object, and so the same shape.
+  const cached = shapes.get(mass)?.[radiatorsDeployed ? 1 : 0];
+  if (cached) return cached;
+  const parts = computeShipShape(design, mass.centreOfMass, radiatorsDeployed);
+  const both = shapes.get(mass) ?? [null, null];
+  both[radiatorsDeployed ? 1 : 0] = parts;
+  shapes.set(mass, both);
+  return parts;
+};
+
+/** Ship shapes worked out for a design at a load, retracted and deployed. */
+const shapes = new WeakMap<
+  MassProperties,
+  [readonly ShapePart[] | null, readonly ShapePart[] | null]
+>();
+
+const computeShipShape = (
+  design: Design,
+  centreOfMass: number,
+  radiatorsDeployed: boolean,
+): readonly ShapePart[] => {
   const hull = HULLS[design.hullSize];
-  const { centreOfMass } = massProperties(design, propellantMass, ammunitionSpent);
   const parts: ShapePart[] = [];
   let front = centreOfMass;
   hull.sections.forEach((shape) => {

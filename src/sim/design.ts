@@ -390,27 +390,49 @@ export interface Design {
   readonly propellantMass: number;
 }
 
+const componentsOf = new WeakMap<
+  Design,
+  readonly { component: ComponentDesign; section: SectionKind }[]
+>();
+
 /** Every component of a design, inside sections and on mounts, with the section it belongs to. */
 export const designComponents = (
   design: Design,
-): readonly { component: ComponentDesign; section: SectionKind }[] =>
-  design.sections.flatMap((section) =>
+): readonly { component: ComponentDesign; section: SectionKind }[] => {
+  // Designs never change, and the battle asks for their components many times a step.
+  const cached = componentsOf.get(design);
+  if (cached) return cached;
+  const components = design.sections.flatMap((section) =>
     [...section.components, ...section.mounts].map((component) => ({
       component,
       section: section.kind,
     })),
   );
+  componentsOf.set(design, components);
+  return components;
+};
+
+const componentsOfType = new WeakMap<Design, Map<ComponentType, readonly ComponentDesign[]>>();
 
 /** All of a design's components of one type. */
 export const designComponentsOfType = <T extends ComponentType>(
   design: Design,
   type: T,
-): readonly Extract<ComponentDesign, { type: T }>[] =>
-  designComponents(design)
-    .map(({ component }) => component)
-    .filter(
-      (component): component is Extract<ComponentDesign, { type: T }> => component.type === type,
-    );
+): readonly Extract<ComponentDesign, { type: T }>[] => {
+  let byType = componentsOfType.get(design);
+  if (!byType) {
+    byType = new Map();
+    componentsOfType.set(design, byType);
+  }
+  let found = byType.get(type);
+  if (!found) {
+    found = designComponents(design)
+      .map(({ component }) => component)
+      .filter((component) => component.type === type);
+    byType.set(type, found);
+  }
+  return found as readonly Extract<ComponentDesign, { type: T }>[];
+};
 
 /** The design's single component of a type that every design has exactly one of. */
 export const designComponent = <T extends 'drive' | 'thrusters' | 'reactor'>(

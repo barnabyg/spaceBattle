@@ -124,15 +124,19 @@ export interface MassProperties {
   readonly inertia: Vec3;
 }
 
-/** The last result for each design: a ship asks many times per step at the same load. */
-const lastMassProperties = new WeakMap<
-  Design,
-  {
-    readonly propellantMass: number;
-    readonly spent: AmmunitionSpent;
-    readonly result: MassProperties;
-  }
->();
+interface CachedMassProperties {
+  readonly propellantMass: number;
+  readonly spent: AmmunitionSpent;
+  readonly result: MassProperties;
+}
+
+/**
+ * The last results for each design, newest first: a ship asks many times per step at the same
+ * load, and two ships of the same design take turns asking.
+ */
+const lastMassProperties = new WeakMap<Design, readonly CachedMassProperties[]>();
+/** How many recent results each design keeps. */
+const MASS_PROPERTIES_KEPT = 2;
 
 const sameSpent = (a: AmmunitionSpent, b: AmmunitionSpent): boolean =>
   a === b || SECTION_KINDS.every((kind) => a[kind] === b[kind]);
@@ -146,10 +150,16 @@ export const massProperties = (
   propellantMass: number,
   spent: AmmunitionSpent = NO_AMMUNITION_SPENT,
 ): MassProperties => {
-  const last = lastMassProperties.get(design);
-  if (last?.propellantMass === propellantMass && sameSpent(last.spent, spent)) return last.result;
+  const kept = lastMassProperties.get(design) ?? [];
+  const hit = kept.find(
+    (last) => last.propellantMass === propellantMass && sameSpent(last.spent, spent),
+  );
+  if (hit) return hit.result;
   const result = computeMassProperties(design, propellantMass, spent);
-  lastMassProperties.set(design, { propellantMass, spent, result });
+  lastMassProperties.set(design, [
+    { propellantMass, spent, result },
+    ...kept.slice(0, MASS_PROPERTIES_KEPT - 1),
+  ]);
   return result;
 };
 
@@ -157,23 +167,39 @@ export const massProperties = (
 export const shipMassProperties = (ship: ShipState): MassProperties =>
   massProperties(ship.design, ship.propellantMass, ship.ammunitionSpent);
 
+/** A design's hull section volumes and what each section holds before propellant and spending. */
+const loadOf = new WeakMap<
+  Design,
+  { readonly volumes: readonly number[]; readonly contents: ReadonlyMap<SectionKind, number> }
+>();
+
+const designLoad = (design: Design) => {
+  const cached = loadOf.get(design);
+  if (cached) return cached;
+  const volumes = HULLS[design.hullSize].sections.map((s) => s.length * s.width * s.height);
+  const contents = new Map<SectionKind, number>();
+  for (const { component, section } of designComponents(design)) {
+    contents.set(section, (contents.get(section) ?? 0) + component.mass);
+  }
+  for (const section of design.sections) {
+    contents.set(section.kind, (contents.get(section.kind) ?? 0) + armourMass(design, section));
+  }
+  const load = { volumes, contents };
+  loadOf.set(design, load);
+  return load;
+};
+
 const computeMassProperties = (
   design: Design,
   propellantMass: number,
   spent: AmmunitionSpent,
 ): MassProperties => {
   const hull = HULLS[design.hullSize];
-  const volumes = hull.sections.map((s) => s.length * s.width * s.height);
+  const { volumes, contents: designContents } = designLoad(design);
   const totalVolume = volumes.reduce((a, b) => a + b, 0);
   const contents = new Map<SectionKind, number>();
-  for (const { component, section } of designComponents(design)) {
-    contents.set(section, (contents.get(section) ?? 0) + component.mass);
-  }
-  for (const section of design.sections) {
-    contents.set(
-      section.kind,
-      (contents.get(section.kind) ?? 0) + armourMass(design, section) - spent[section.kind],
-    );
+  for (const kind of SECTION_KINDS) {
+    contents.set(kind, (designContents.get(kind) ?? 0) - spent[kind]);
   }
   // Propellant tanks sit in the middle section.
   contents.set('middle', (contents.get('middle') ?? 0) + propellantMass);

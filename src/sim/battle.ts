@@ -624,6 +624,9 @@ const checkOrder = (order: Order): Order => {
       if (!(order.range > 0 && Number.isFinite(order.range))) {
         throw new Error('A manoeuvre range must be a positive number of metres');
       }
+      if (order.speed !== undefined && !(order.speed > 0 && Number.isFinite(order.speed))) {
+        throw new Error('A manoeuvre speed must be a positive number of metres per second');
+      }
       return order;
     case 'power': {
       const { priorities } = order;
@@ -1411,7 +1414,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
     // missiles is after yet.
     const defence = new Map<SideId, number[]>(
       combatants.map((c) => {
-        if (!c.ship.weapons.automaticDefence) return [c.side.id, []];
+        if (!c.ship.weapons.automaticDefence || missiles.length === 0) return [c.side.id, []];
         const engaged = new Set(
           missiles.flatMap(({ attacker, target }) =>
             attacker === c.side.id && targetsMissile(target) ? [target.munition] : [],

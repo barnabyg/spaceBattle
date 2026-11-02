@@ -99,7 +99,12 @@ describe('battle runner', () => {
   });
 
   it('drops to real time when a slug hits', () => {
-    const battle = createBattle(duelSetup(gunnedTestDesign(1), testDesign(), 1_000e3));
+    // Red is left to an idle player: the computer would dodge a slug from this far off.
+    const setup = duelSetup(gunnedTestDesign(1), testDesign(), 1_000e3);
+    const battle = createBattle({
+      ...setup,
+      sides: setup.sides.map((side) => ({ ...side, commander: 'player' })),
+    });
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
     const r = createBattleRunner(battle);
     r.setTimeCompression(1000);
