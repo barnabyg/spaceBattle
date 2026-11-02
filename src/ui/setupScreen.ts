@@ -1,4 +1,5 @@
 import { HAND_MADE_DESIGNS, handMadeDesign } from '../data/designs';
+import { DEFAULT_TIME_LIMIT } from '../game/batch';
 import { FREE_BATTLE_SIDES, type FreeBattleSetup, type FreeBattleSide } from '../game/freeBattle';
 import type { Commander } from '../sim/battle';
 import { designSummary } from './designSummary';
@@ -27,10 +28,9 @@ export interface TestSettings {
   readonly battles: number;
 }
 
-/** Twelve hours is well beyond how long battles between the hand-made designs last. */
 export const DEFAULT_TEST_SETTINGS: TestSettings = {
   seed: null,
-  timeLimit: 12 * 3_600,
+  timeLimit: DEFAULT_TIME_LIMIT,
   battles: 100,
 };
 

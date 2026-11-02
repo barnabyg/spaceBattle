@@ -1,5 +1,5 @@
 import { HAND_MADE_DESIGNS } from '../data/designs';
-import { runBatch, type BatchSummary } from './batch';
+import { DEFAULT_TIME_LIMIT, runBatch, type BatchSummary } from './batch';
 import { freeBattleBatch } from './freeBattle';
 
 /** Test helpers for the game around the simulation. Not used by the game itself. */
@@ -26,6 +26,6 @@ export const handMadeBatch = (blue: string, red: string, seed = 1): BatchSummary
           { designId: red, commander: 'computer' },
         ],
       },
-      { battles: 1, seed, timeLimit: 12 * 3_600 },
+      { battles: 1, seed, timeLimit: DEFAULT_TIME_LIMIT },
     ),
   );

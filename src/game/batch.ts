@@ -58,6 +58,9 @@ const checkBatch = (batch: BatchSetup) => {
   }
 };
 
+/** Twelve hours, s: well beyond how long battles between the hand-made designs last. */
+export const DEFAULT_TIME_LIMIT = 12 * 3_600;
+
 /** The seed battle `index` of a batch is fought from: the same for the same batch seed. */
 export const batchBattleSeed = (batchSeed: number, index: number): number =>
   Math.floor(createRandom((batchSeed ^ Math.imul(index + 1, 0x9e3779b9)) >>> 0)() * 2 ** 32);
