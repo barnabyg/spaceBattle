@@ -237,3 +237,68 @@ test('a shielded ship shows its shields, and they can be lowered and raised', as
   await page.getByRole('button', { name: 'Shields up' }).click();
   await expect(shields).toContainText('Raised');
 });
+
+test('toggle orders show which is selected, to sight and to assistive tech', async ({ page }) => {
+  await startFreeBattle(page, { blue: { design: 'Rime' } });
+  await page.keyboard.press(' ');
+  const up = page.getByRole('button', { name: 'Shields up' });
+  const down = page.getByRole('button', { name: 'Shields down' });
+  const state = page.getByLabel('Shields state');
+  await expect(up).toHaveAttribute('aria-pressed', 'true');
+  await expect(down).toHaveAttribute('aria-pressed', 'false');
+  await expect(state).toHaveText('Shields raised');
+
+  await down.click();
+  await expect(down).toHaveAttribute('aria-pressed', 'true');
+  await expect(up).toHaveAttribute('aria-pressed', 'false');
+  await expect(state).toHaveText('Shields lowered');
+  // With the pointer over the button not selected, it still looks unlike the selected one.
+  await up.hover();
+  const look = (button: typeof up) =>
+    button.evaluate((b) => {
+      const style = getComputedStyle(b);
+      return [style.backgroundColor, style.color, style.fontWeight].join(' ');
+    });
+  expect(await look(up)).not.toBe(await look(down));
+  // Not by colour alone: the selected one is ticked, and the tick stays out of its name.
+  const tick = (button: typeof up) =>
+    button.evaluate((b) => getComputedStyle(b, '::before').content);
+  expect(await tick(down)).toContain('✓');
+  expect(await tick(up)).not.toContain('✓');
+  await expect(down).toHaveAccessibleName('Shields down');
+
+  await up.click();
+  await expect(up).toHaveAttribute('aria-pressed', 'true');
+  await expect(down).toHaveAttribute('aria-pressed', 'false');
+  await expect(state).toHaveText('Shields raised');
+
+  const deploy = page.getByRole('button', { name: 'Deploy radiators' });
+  const retract = page.getByRole('button', { name: 'Retract radiators' });
+  await expect(retract).toHaveAttribute('aria-pressed', 'true');
+  await expect(deploy).toHaveAttribute('aria-pressed', 'false');
+  await deploy.click();
+  await expect(deploy).toHaveAttribute('aria-pressed', 'true');
+  await expect(retract).toHaveAttribute('aria-pressed', 'false');
+
+  const atEnemy = page.getByRole('button', { name: 'Point at enemy' });
+  const away = page.getByRole('button', { name: 'Point away' });
+  await atEnemy.click();
+  await expect(atEnemy).toHaveAttribute('aria-pressed', 'true');
+  await expect(away).toHaveAttribute('aria-pressed', 'false');
+  await away.click();
+  await expect(away).toHaveAttribute('aria-pressed', 'true');
+  await expect(atEnemy).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('a ship without shields takes no shield orders and shows no shields state', async ({
+  page,
+}) => {
+  await startFreeBattle(page);
+  await page.keyboard.press(' ');
+  for (const name of ['Shields up', 'Shields down']) {
+    const button = page.getByRole('button', { name });
+    await expect(button).toBeDisabled();
+    await expect(button).toHaveAttribute('aria-pressed', 'false');
+  }
+  await expect(page.getByLabel('Shields state')).toBeHidden();
+});
