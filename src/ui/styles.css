@@ -1005,3 +1005,15 @@ h3 {
 .field--inline input {
   width: 4.5em;
 }
+
+.campaign-over {
+  padding: 1rem 2rem;
+  text-align: center;
+  border: 1px solid #ff8a7a;
+  border-radius: 10px;
+}
+
+.campaign-over p {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+}

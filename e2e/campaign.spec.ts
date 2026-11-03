@@ -62,3 +62,26 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
   await expect(condition).toContainText('full');
   expect(await credits(page)).toBeLessThan(beforeRestock);
 });
+
+test('a forfeited ship leaves the hangar, and with nothing left to afford the campaign is over', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Campaign' }).click();
+  await page.getByRole('button', { name: 'Build Lance' }).click();
+  const left = await credits(page);
+  await page.getByRole('button', { name: 'Fight tier 1' }).click();
+  await page.getByRole('button', { name: 'End battle' }).click();
+  await page.getByRole('button', { name: 'Forfeit' }).click();
+  await page.getByRole('button', { name: 'Back to campaign' }).click();
+
+  await expect(page.getByRole('status')).toHaveText('Lost, and Ship 1 with it: no pay.');
+  expect(await credits(page)).toBe(left);
+  await expect(page.getByRole('region', { name: 'Hangar' })).toContainText('No ships yet');
+  await expect(page.getByRole('alert')).toContainText('Campaign over');
+  await expect(page.getByRole('button', { name: 'Fight tier 1' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'New campaign' }).click();
+  await expect(page.getByLabel('Credits', { exact: true })).toHaveText('9,000,000 cr');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});

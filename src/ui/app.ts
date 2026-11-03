@@ -142,6 +142,10 @@ export const createApp = (root: HTMLElement) => {
             showShipyard();
           },
           onMainMenu: showMainMenu,
+          onNewCampaign: () => {
+            campaign = newCampaign(newSeed());
+            showCampaign('A new campaign.');
+          },
         },
         message,
       ),
@@ -166,10 +170,13 @@ export const createApp = (root: HTMLElement) => {
             outcome,
             condition: battle.observe(PLAYER_SIDE).ownShip.condition,
           });
+          const shipLost = outcome.sides.find((s) => s.side === PLAYER_SIDE)?.shipLost;
           showCampaign(
             outcome.winner === PLAYER_SIDE
               ? `Won: paid ${formatCredits(tierOf(pending.tier).reward)}.`
-              : 'Lost: no pay.',
+              : shipLost
+                ? `Lost, and ${setup.sides[0]?.name ?? 'the ship'} with it: no pay.`
+                : 'Lost: no pay.',
           );
         },
         ...(testMode && {

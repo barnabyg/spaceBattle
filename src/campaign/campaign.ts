@@ -6,7 +6,10 @@ import type { BattleSetup } from '../sim/battle';
 import type { Design } from '../sim/design';
 import type { BattleOutcome } from '../sim/outcome';
 import { createRandom } from '../sim/random';
-import { fullCondition, type ShipCondition } from '../sim/ship';
+import { lossOf } from '../sim/outcome';
+import { IDENTITY } from '../sim/quaternion';
+import { createShip, deltaVOf, fullCondition, type ShipCondition } from '../sim/ship';
+import { ZERO } from '../sim/vector';
 import { designCost } from '../shipyard/cost';
 import { refitPrice, refittedCondition } from './refit';
 import {
@@ -166,21 +169,28 @@ const withShip = (
 });
 
 /**
- * Settles a battle fought: a win pays the tier's reward, anything else pays nothing. The ship
- * keeps whatever damage it took and whatever it used until repaired and restocked.
+ * Settles a battle fought: a win pays the tier's reward, anything else pays nothing. A ship lost
+ * in it (destroyed, stranded or forfeited) leaves the hangar; one that survives keeps whatever
+ * damage it took and whatever it used until repaired and restocked.
  */
 export const recordBattle = (
   campaign: Campaign,
   battle: CampaignBattle,
   { outcome, condition }: CampaignBattleResult,
-): Campaign => ({
-  ...withShip(campaign, battle.shipId, (ship) => ({
-    ...ship,
-    condition: condition ?? ship.condition,
-  })),
-  credits: campaign.credits + (outcome.winner === PLAYER_SIDE ? tierOf(battle.tier).reward : 0),
-  battles: campaign.battles + 1,
-});
+): Campaign => {
+  const lost = outcome.sides.find((s) => s.side === PLAYER_SIDE)?.shipLost ?? false;
+  const hangar = lost
+    ? { ...campaign, hangar: campaign.hangar.filter((ship) => ship.id !== battle.shipId) }
+    : withShip(campaign, battle.shipId, (ship) => ({
+        ...ship,
+        condition: condition ?? ship.condition,
+      }));
+  return {
+    ...hangar,
+    credits: campaign.credits + (outcome.winner === PLAYER_SIDE ? tierOf(battle.tier).reward : 0),
+    battles: campaign.battles + 1,
+  };
+};
 
 /** What repairing all of a ship's damage costs, credits (see `conditionRepairCost`). */
 export const repairCost = (ship: CampaignShip): number =>
@@ -262,4 +272,30 @@ export const sellShip = (campaign: Campaign, shipId: string): Campaign => {
     credits: campaign.credits + saleValue(ship),
     hangar: campaign.hangar.filter((s) => s.id !== shipId),
   };
+};
+
+/**
+ * Whether a ship could go into a battle as it is and fight: the battle would not count it lost
+ * at the start, and it has delta-v beyond its reserve.
+ */
+export const canFight = (ship: CampaignShip): boolean => {
+  const state = createShip(ship.design, ZERO, ZERO, IDENTITY, ship.condition);
+  return lossOf(state) === null && deltaVOf(state) > ship.design.reserve;
+};
+
+/**
+ * Whether the campaign is over: no ship in the hangar can fight, none can be put right (repaired
+ * and restocked) with the credits there are and what selling the others would raise, and no
+ * design can be built with the credits and what selling every ship would raise.
+ */
+export const campaignOver = (campaign: Campaign): boolean => {
+  if (campaign.hangar.some(canFight)) return false;
+  const sales = campaign.hangar.reduce((total, ship) => total + saleValue(ship), 0);
+  const putRight = (ship: CampaignShip) =>
+    canFight({
+      ...ship,
+      condition: restockedCondition(ship.design, repairedCondition(ship.design, ship.condition, 1)),
+    }) && repairCost(ship) + restockCost(ship) <= campaign.credits + sales - saleValue(ship);
+  if (campaign.hangar.some(putRight)) return false;
+  return !campaign.designs.some((design) => designCost(design) <= campaign.credits + sales);
 };

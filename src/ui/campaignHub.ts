@@ -5,6 +5,8 @@ import {
   restockCost,
   saleValue,
   type Campaign,
+  campaignOver,
+  canFight,
   type CampaignShip,
 } from '../campaign/campaign';
 import type { Design } from '../sim/design';
@@ -31,6 +33,8 @@ export interface CampaignHubActions {
   readonly onShipyard: () => void;
   /** Leaves for the main menu; the campaign is kept until the page closes. */
   readonly onMainMenu: () => void;
+  /** Gives up this campaign for a new one. */
+  readonly onNewCampaign: () => void;
 }
 
 const region = (label: string, ...children: Node[]) =>
@@ -61,6 +65,7 @@ export const createCampaignHub = (
   /** What the last action or battle came to, if anything. */
   message = '',
 ) => {
+  const over = campaignOver(campaign);
   /**
    * A ship in the hangar: its design, what its damage would cost to repair and its used propellant
    * and ammunition to restock, and the buttons to pay for them; a share of the repair can be paid.
@@ -194,16 +199,17 @@ export const createCampaignHub = (
   const ship = el(
     'select',
     { attrs: { 'aria-label': 'Ship to fight' } },
-    ...campaign.hangar.map((s) =>
-      el('option', { text: `${s.name} · ${s.design.name}`, attrs: { value: s.id } }),
-    ),
+    // Only a ship able to fight is offered: one that would lose at once must be put right first.
+    ...campaign.hangar
+      .filter(canFight)
+      .map((s) => el('option', { text: `${s.name} · ${s.design.name}`, attrs: { value: s.id } })),
   );
   const tiers = el(
     'ul',
     { className: 'campaign-list' },
     ...BALANCE.tiers.map((tier) => {
       const fight = button(`Fight tier ${tier.tier}`, `Fight tier ${tier.tier}`);
-      fight.disabled = campaign.hangar.length === 0;
+      fight.disabled = !campaign.hangar.some(canFight);
       fight.addEventListener('click', () => {
         actions.onFight(ship.value, tier.tier);
       });
@@ -219,6 +225,21 @@ export const createCampaignHub = (
     }),
   );
 
+  const newCampaign = el('button', {
+    className: over ? 'menu-button menu-button--primary' : 'menu-button',
+    text: 'New campaign',
+    attrs: { type: 'button' },
+  });
+  let confirmNew = over;
+  newCampaign.addEventListener('click', () => {
+    // Giving up a campaign under way takes a second click.
+    if (confirmNew) {
+      actions.onNewCampaign();
+      return;
+    }
+    confirmNew = true;
+    newCampaign.textContent = 'Give up this campaign';
+  });
   const mainMenu = el('button', {
     className: 'menu-button',
     text: 'Main menu',
@@ -241,6 +262,18 @@ export const createCampaignHub = (
       }),
     ),
     el('p', { className: 'menu-note', text: message, attrs: { role: 'status' } }),
+    ...(over
+      ? [
+          el(
+            'div',
+            { className: 'campaign-over', attrs: { role: 'alert' } },
+            el('h2', { text: 'Campaign over' }),
+            el('p', {
+              text: 'No ship in the hangar can fight, none can be put right, and no new one can be afforded.',
+            }),
+          ),
+        ]
+      : []),
     el(
       'div',
       { className: 'campaign' },
@@ -252,7 +285,7 @@ export const createCampaignHub = (
         tiers,
       ),
     ),
-    el('div', { className: 'setup-actions' }, mainMenu),
+    el('div', { className: 'setup-actions' }, mainMenu, newCampaign),
   );
 
   return {
