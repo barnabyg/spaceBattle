@@ -1,9 +1,15 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { handMadeDesign } from '../data/designs';
+import { HAND_MADE_DESIGNS, handMadeDesign } from '../data/designs';
 import type { Design } from '../sim/design';
 import { shipShape } from '../sim/shape';
-import { createShipModel, heatGlow, updateShipModel, type ShipModelPartData } from './shipModel';
+import {
+  createShipModel,
+  disposeShipModel,
+  heatGlow,
+  updateShipModel,
+  type ShipModelPartData,
+} from './shipModel';
 
 const meshesOf = (model: THREE.Object3D, kind: ShipModelPartData['kind']) => {
   const found: THREE.Object3D[] = [];
@@ -21,6 +27,16 @@ const meshesOf = (model: THREE.Object3D, kind: ShipModelPartData['kind']) => {
 const mountCount = (design: Design) =>
   design.sections.reduce((total, section) => total + section.mounts.length, 0);
 
+/** Section fittings are visual only; their core is the simulation's hit envelope. */
+const coreBounds = (object: THREE.Object3D): THREE.Box3 => {
+  if (object instanceof THREE.Mesh && object.userData.kind === 'section') {
+    const geometry = object.geometry as THREE.BufferGeometry;
+    geometry.computeBoundingBox();
+    return (geometry.boundingBox?.clone() ?? new THREE.Box3()).applyMatrix4(object.matrixWorld);
+  }
+  return new THREE.Box3().setFromObject(object);
+};
+
 describe('ship model', () => {
   it.each(['lance', 'bastion'])('gives one mesh per section and per mount for %s', (id) => {
     const design = handMadeDesign(id);
@@ -30,24 +46,135 @@ describe('ship model', () => {
     expect(meshesOf(model, 'nozzle')).toHaveLength(1);
   });
 
-  it('matches the shape the simulation hits, with radiators folded or deployed', () => {
-    const design = handMadeDesign('bastion');
-    for (const radiatorsDeployed of [false, true]) {
-      const model = createShipModel(design, { radiatorsDeployed });
-      model.updateMatrixWorld();
-      const shape = shipShape(design, design.propellantMass, radiatorsDeployed);
-      const boxes = [...meshesOf(model, 'section'), ...meshesOf(model, 'mount')].map((mesh) =>
-        new THREE.Box3().setFromObject(mesh),
-      );
-      for (const part of shape) {
-        const match = boxes.find(
-          (box) =>
-            box.min.distanceTo(new THREE.Vector3(part.min.x, part.min.y, part.min.z)) < 1e-3 &&
-            box.max.distanceTo(new THREE.Vector3(part.max.x, part.max.y, part.max.z)) < 1e-3,
+  it('keeps the core hit envelopes with radiators folded or deployed, independently of decoration', () => {
+    for (const design of HAND_MADE_DESIGNS) {
+      for (const radiatorsDeployed of [false, true]) {
+        const model = createShipModel(design, { radiatorsDeployed });
+        model.updateMatrixWorld();
+        const shape = shipShape(design, design.propellantMass, radiatorsDeployed);
+        const boxes = [...meshesOf(model, 'section'), ...meshesOf(model, 'mount')].map((mesh) =>
+          coreBounds(mesh),
         );
-        expect(match, `${part.section} ${String(part.mount)}`).toBeDefined();
+        for (const part of shape) {
+          const match = boxes.find(
+            (box) =>
+              box.min.distanceTo(new THREE.Vector3(part.min.x, part.min.y, part.min.z)) < 1e-3 &&
+              box.max.distanceTo(new THREE.Vector3(part.max.x, part.max.y, part.max.z)) < 1e-3,
+          );
+          expect(match, `${part.section} ${String(part.mount)}`).toBeDefined();
+        }
+        disposeShipModel(model);
       }
     }
+  });
+
+  it('keeps detail attached to its mount and section as parts are lost and the centre of mass moves', () => {
+    const design = handMadeDesign('lance');
+    const model = createShipModel(design);
+    const mounts = meshesOf(model, 'mount');
+    const detailed = mounts.find((mount) => mount.children.length > 0);
+    expect(detailed).toBeDefined();
+    const data = detailed?.userData as ShipModelPartData;
+    const look = {
+      propellantMass: design.propellantMass / 2,
+      radiatorsDeployed: false,
+      temperature: 1000,
+      thrust: 0,
+      parts: shipShape(design, design.propellantMass / 2, false).filter(
+        (part) => !(part.section === data.section && part.mount === data.mount),
+      ),
+    };
+    updateShipModel(model, look);
+    model.updateMatrixWorld(true);
+    const visible: THREE.Object3D[] = [];
+    model.traverseVisible((object) => {
+      visible.push(object);
+    });
+    expect(visible).not.toContain(detailed);
+    for (const child of detailed?.children ?? []) expect(visible).not.toContain(child);
+    const remainingShape = look.parts.find((part) => part.mount === null);
+    const remainingModel = meshesOf(model, 'section').find(
+      (mesh) => mesh.userData.section === remainingShape?.section,
+    );
+    expect(coreBounds(remainingModel ?? model).min.x).toBeCloseTo(remainingShape?.min.x ?? 0, 3);
+    disposeShipModel(model);
+  });
+
+  it('adds exterior fittings that disappear with their section and leave mounts clear', () => {
+    for (const design of HAND_MADE_DESIGNS) {
+      const model = createShipModel(design);
+      model.updateMatrixWorld(true);
+      const shapes = [false, true].flatMap((deployed) =>
+        shipShape(design, design.propellantMass, deployed),
+      );
+      for (const section of meshesOf(model, 'section')) {
+        const fittings = section.getObjectByName('Decorative hull fittings');
+        expect(fittings?.children.length).toBeGreaterThan(0);
+        expect(fittings?.children.length).toBeLessThanOrEqual(4);
+        const bounds = new THREE.Box3().setFromObject(fittings ?? section);
+        expect(coreBounds(section).containsBox(bounds)).toBe(false);
+        for (const child of fittings?.children ?? []) {
+          if (!(child instanceof THREE.Mesh)) continue;
+          const vertices = (child.geometry as THREE.BufferGeometry).getAttribute('position');
+          const point = new THREE.Vector3();
+          for (let i = 0; i < vertices.count; i++) {
+            point.fromBufferAttribute(vertices, i).applyMatrix4(child.matrixWorld);
+            expect(
+              shapes.some(
+                (part) =>
+                  part.mount !== null &&
+                  part.section === section.userData.section &&
+                  point.x > part.min.x &&
+                  point.x < part.max.x &&
+                  point.y > part.min.y &&
+                  point.y < part.max.y &&
+                  point.z > part.min.z &&
+                  point.z < part.max.z,
+              ),
+            ).toBe(false);
+          }
+        }
+      }
+      const section = meshesOf(model, 'section')[0];
+      updateShipModel(model, {
+        propellantMass: design.propellantMass,
+        radiatorsDeployed: false,
+        temperature: 300,
+        thrust: 0,
+        parts: shipShape(design, design.propellantMass, false).filter(
+          (part) => part.section !== section?.userData.section,
+        ),
+      });
+      const visible: THREE.Object3D[] = [];
+      model.traverseVisible((object) => {
+        visible.push(object);
+      });
+      expect(visible).not.toContain(section?.getObjectByName('Decorative hull fittings'));
+      disposeShipModel(model);
+    }
+  });
+
+  it('disposes each model resource once while keeping shared surface textures usable', () => {
+    const model = createShipModel(handMadeDesign('bastion'));
+    const resources = new Set<THREE.BufferGeometry | THREE.Material>();
+    const textures = new Set<THREE.Texture>();
+    model.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        resources.add(object.geometry as THREE.BufferGeometry);
+        const material = object.material as THREE.MeshStandardMaterial;
+        resources.add(material);
+        if (material.map) textures.add(material.map);
+      } else if (object instanceof THREE.Sprite) resources.add(object.material);
+    });
+    const disposed = new Map<unknown, number>();
+    for (const resource of [...resources, ...textures]) {
+      resource.addEventListener('dispose', () => {
+        disposed.set(resource, (disposed.get(resource) ?? 0) + 1);
+      });
+    }
+    disposeShipModel(model);
+    for (const resource of resources) expect(disposed.get(resource)).toBe(1);
+    for (const texture of textures) expect(disposed.has(texture)).toBe(false);
   });
 
   it('sizes the drive nozzle by thrust', () => {

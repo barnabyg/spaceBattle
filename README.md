@@ -42,6 +42,8 @@ In battle, the captain of a player side hears only what reaches their own hull, 
 
 Before each campaign battle an intelligence report shows what the ship's **intelligence components** learned about the enemy: a **long-range scanner** shows its whole design, and a **signal interceptor** cracks a random selection of facts about it (hull size, drive thrust, reactor, delta-v, each section's armour, weapons, missiles and shields), as many as its quality allows (3 of 10 for the basic one, 7 for the advanced). Without either the ship goes in blind. The computer's side gathers intelligence by the same rules. Both are in the shipyard's catalogue; a damaged one works less well, and a wrecked one not at all.
 
+Ship models in the shipyard and instrument view have a faceted prow, broad forward and aft armour housings, and a quieter central hull with an exposed structural spine. Conduits, vents, aerials and manoeuvring nozzles sit around the larger structures. These exterior fittings are decorative: they add no armour, mass or components, and disappear with their section. Installed weapons, sensors and radiators remain visible and operate as before. The [visual reference notes](docs/research/ship-visual-references.md) explain the design inspiration.
+
 ## Layout
 
 - `src/sim/` — the battle simulation: fixed time step, deterministic, SI units, no rendering or DOM (ADR-0001). Lint and a DOM-free type check enforce this. Computer captains command their sides here, through the same orders as the player.
