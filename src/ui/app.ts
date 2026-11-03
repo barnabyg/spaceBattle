@@ -6,10 +6,24 @@ import {
   type FreeBattleSetup,
 } from '../game/freeBattle';
 import type { RecordedAction } from '../game/orderLog';
+import {
+  buildShip,
+  newCampaign,
+  PLAYER_SIDE,
+  prepareBattle,
+  recordBattle,
+  tierOf,
+  type Campaign,
+  type CampaignBattle,
+} from '../campaign/campaign';
 import { HAND_MADE_DESIGNS } from '../data/designs';
+import { createBattleRunner } from '../game/battleRunner';
+import { createBattle } from '../sim/battle';
 import type { Design } from '../sim/design';
 import { createBatchScreen } from './batchScreen';
 import { createBattleScreen } from './battleScreen';
+import { createCampaignHub } from './campaignHub';
+import { formatCredits } from './format';
 import { createMainMenu } from './mainMenu';
 import { createDesignLibrary, localStore } from './designLibrary';
 import { createSetupScreen, DEFAULT_TEST_SETTINGS, type TestSettings } from './setupScreen';
@@ -37,6 +51,12 @@ export const createApp = (root: HTMLElement) => {
   const library = createDesignLibrary(localStore());
   /** Every design a free battle may use: the hand-made ones and those saved from the shipyard. */
   const designs = (): readonly Design[] => [...HAND_MADE_DESIGNS, ...library.designs()];
+  // The campaign under way, kept until the page closes.
+  let campaign: Campaign | null = null;
+  // Where the shipyard's Back button goes: the main menu, or the campaign hub it was opened from.
+  let shipyardReturn = () => {
+    showMainMenu();
+  };
 
   const show = (screen: Screen) => {
     current?.dispose?.();
@@ -49,7 +69,14 @@ export const createApp = (root: HTMLElement) => {
     show(
       createMainMenu({
         onFreeBattle: showSetup,
-        onShipyard: showShipyard,
+        onShipyard: () => {
+          shipyardReturn = showMainMenu;
+          showShipyard();
+        },
+        onCampaign: () => {
+          campaign ??= newCampaign(newSeed());
+          showCampaign();
+        },
         testMode,
         onTestModeChange: (on) => {
           testMode = on;
@@ -59,7 +86,73 @@ export const createApp = (root: HTMLElement) => {
   };
 
   const showShipyard = () => {
-    show(createShipyardScreen(library, { onBack: showMainMenu }));
+    show(createShipyardScreen(library, { onBack: shipyardReturn }));
+  };
+
+  const showCampaign = (message = '') => {
+    if (!campaign) return;
+    show(
+      createCampaignHub(
+        campaign,
+        library.designs(),
+        {
+          onBuild: (design) => {
+            if (!campaign) return;
+            try {
+              campaign = buildShip(campaign, design);
+              showCampaign(`Built a ${design.name}; ${formatCredits(campaign.credits)} left.`);
+            } catch (error) {
+              showCampaign(error instanceof Error ? error.message : String(error));
+            }
+          },
+          onFight: (shipId, tier) => {
+            if (campaign) showCampaignBattle(prepareBattle(campaign, shipId, tier));
+          },
+          onShipyard: () => {
+            shipyardReturn = () => {
+              showCampaign();
+            };
+            showShipyard();
+          },
+          onMainMenu: showMainMenu,
+        },
+        message,
+      ),
+    );
+  };
+
+  /**
+   * Fights a campaign battle, then settles it and goes back to the hub; in test mode `replay`
+   * gives the orders of an earlier try again.
+   */
+  const showCampaignBattle = (pending: CampaignBattle, replay?: readonly RecordedAction[]) => {
+    const { setup } = pending;
+    const battle = createBattle(testMode ? { ...setup, timeLimit: testSettings.timeLimit } : setup);
+    const runner = createBattleRunner(battle, { testMode, ...(replay && { replay }) });
+    show(
+      createBattleScreen(runner, {
+        continueLabel: 'Back to campaign',
+        onContinue: () => {
+          const { outcome } = battle;
+          if (!campaign || !outcome) return;
+          campaign = recordBattle(campaign, pending, { outcome });
+          showCampaign(
+            outcome.winner === PLAYER_SIDE
+              ? `Won: paid ${formatCredits(tierOf(pending.tier).reward)}.`
+              : 'Lost: no pay.',
+          );
+        },
+        ...(testMode && {
+          test: {
+            seed: setup.seed,
+            timeLimit: testSettings.timeLimit,
+            onReplay: () => {
+              showCampaignBattle(pending, runner.orders);
+            },
+          },
+        }),
+      }),
+    );
   };
 
   const showSetup = () => {

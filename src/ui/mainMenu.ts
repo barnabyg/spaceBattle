@@ -3,6 +3,8 @@ import { el } from './el';
 export interface MainMenuActions {
   readonly onFreeBattle: () => void;
   readonly onShipyard: () => void;
+  /** Goes to the campaign under way, or starts a new one. */
+  readonly onCampaign: () => void;
   /** Whether test mode is on now. */
   readonly testMode: boolean;
   /** Test mode is switched on and off here, and nowhere else. */
@@ -13,6 +15,7 @@ export interface MainMenuActions {
 export const createMainMenu = ({
   onFreeBattle,
   onShipyard,
+  onCampaign,
   testMode,
   onTestModeChange,
 }: MainMenuActions) => {
@@ -24,8 +27,9 @@ export const createMainMenu = ({
   const campaign = el('button', {
     className: 'menu-button',
     text: 'Campaign',
-    attrs: { type: 'button', disabled: '', 'aria-describedby': 'campaign-note' },
+    attrs: { type: 'button' },
   });
+  campaign.addEventListener('click', onCampaign);
   freeBattle.addEventListener('click', onFreeBattle);
   const shipyard = el('button', {
     className: 'menu-button',
@@ -76,8 +80,7 @@ export const createMainMenu = ({
         campaign,
         el('span', {
           className: 'menu-note',
-          text: 'Coming later.',
-          attrs: { id: 'campaign-note' },
+          text: 'Build ships, fight ever more capable opponents and earn credits.',
         }),
       ),
     ),

@@ -6,7 +6,6 @@ test('a free battle goes from the main menu through setup and the battle to its 
 }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Space Battle' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Campaign' })).toBeDisabled();
   await page.getByRole('button', { name: 'Free battle' }).click();
 
   // Setup: a design and a commander for each side, with the design's key numbers.

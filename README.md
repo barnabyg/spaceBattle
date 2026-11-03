@@ -38,10 +38,13 @@ In battle, the captain of a player side hears only what reaches their own hull, 
 
 **Shipyard** on the main menu designs ships. Name the class, choose a hull size, add components from the catalogue, and set each section's armour, the propellant and the reserve. The shipyard places the components itself (the reactor buried in the middle, weapons spread over the sections, radiators along the middle's sides); choose a section for any component to place it there by hand, or **Place all automatically** to undo that. It shows each section's volume used, the mass, cost, delta-v and acceleration, anything that makes the design invalid, and a model of it. **Save design** keeps a valid design, as "<name> class", in the browser; free battle setup offers saved designs beside the hand-made ones. **Export** saves a design to a file to keep or share, and **Import design** reads one back, from this or an older version of the game.
 
+**Campaign** on the main menu starts a campaign, or goes back to the one under way until the page is closed. It starts with 9,000,000 credits, enough for one modest frigate, and three ready-made designs (Lance, Sling and Quiver). The hub shows the credits, the **hangar** of ships owned, the designs to build (the campaign's own and any saved in the shipyard, which **Shipyard** opens) and the three **tiers** to fight: each sets the opponent's design budget and captain skill, and what a win pays. Choose a ship and **Fight tier** _n_ to fight an opponent of that tier, picked with the starting scenario by the campaign; a win pays the tier's reward and a loss pays nothing.
+
 ## Layout
 
 - `src/sim/` — the battle simulation: fixed time step, deterministic, SI units, no rendering or DOM (ADR-0001). Lint and a DOM-free type check enforce this. Computer captains command their sides here, through the same orders as the player.
 - `src/game/` — headless glue around the simulation, such as the battle runner (pause and time compression) and test mode batch runs.
+- `src/campaign/` — the campaign: actions in (build, fight, …), campaign state out. Headless.
 - `src/shipyard/` — the shipyard: a specification in, a design out, with its volume, mass, cost and validation. Headless, like the simulation.
 - `src/data/` — hand-made designs (JSON data files), scenarios, the shipyard's component catalogue, the campaign's opponents and the balance numbers (prices, tiers).
 - `src/ui/` — the browser UI: menus in HTML/CSS, views in Three.js. It reads simulation state and gives orders; it never changes state directly.

@@ -1,0 +1,56 @@
+import { expect, test, type Page } from '@playwright/test';
+import { timeCompressionButtons } from './freeBattle';
+
+/** The credits the hub shows, as a number. */
+const credits = async (page: Page): Promise<number> =>
+  Number((await page.getByLabel('Credits', { exact: true }).textContent())?.replace(/\D/g, ''));
+
+/**
+ * Fights the battle on screen as a missile frigate's captain who closes in, fires freely and
+ * launches every missile, at the highest time compression, until it ends. Hits and launches drop
+ * time compression back to 1×, so it is raised again until the result shows.
+ */
+const fightToTheEnd = async (page: Page) => {
+  await page.getByRole('button', { name: 'Fire freely' }).click();
+  await page.getByLabel('Range km').fill('2000');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByLabel('Missiles', { exact: true }).fill('12');
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  const result = page.getByRole('dialog', { name: 'Battle result' });
+  await expect(async () => {
+    if (!(await result.isVisible())) await timeCompressionButtons(page).last().click();
+    await expect(result).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 150_000 });
+  return result;
+};
+
+test('a new campaign builds its first ship, fights tier 1 and is paid for the win', async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await page.goto('/');
+  // Test mode for its faster time compression; the campaign plays the same.
+  await page.getByRole('checkbox', { name: 'Test mode' }).check();
+  await page.getByRole('button', { name: 'Campaign' }).click();
+  await expect(page.getByRole('heading', { name: 'Campaign' })).toBeVisible();
+  await expect(page.getByLabel('Credits', { exact: true })).toHaveText('9,000,000 cr');
+  await expect(page.getByRole('region', { name: 'Hangar' })).toContainText('No ships yet');
+  await expect(page.getByRole('button', { name: 'Fight tier 1' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Build Quiver' }).click();
+  const afterBuilding = await credits(page);
+  expect(afterBuilding).toBeLessThan(9_000_000);
+  await expect(page.getByRole('region', { name: 'Hangar' })).toContainText('Ship 1');
+  // Too little is left for a second frigate.
+  await expect(page.getByRole('button', { name: 'Build Lance' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Fight tier 1' }).click();
+  await expect(page.getByLabel('Own ship')).toContainText('Ship 1 · Quiver');
+  const result = await fightToTheEnd(page);
+  await expect(result.getByRole('heading')).toHaveText('Ship 1 wins');
+
+  await result.getByRole('button', { name: 'Back to campaign' }).click();
+  await expect(page.getByRole('status')).toHaveText('Won: paid 3,000,000 cr.');
+  expect(await credits(page)).toBe(afterBuilding + 3_000_000);
+  await expect(page.getByText('1 battle fought')).toBeVisible();
+});

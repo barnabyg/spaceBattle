@@ -24,6 +24,8 @@ export const BALANCE = {
     { tier: 2, budget: 10e6, skill: 'medium', reward: 5e6 },
     { tier: 3, budget: 26e6, skill: 'high', reward: 12e6 },
   ] satisfies readonly Tier[],
+  /** What a new campaign starts with, credits: enough for a modest frigate and a little over. */
+  startingCredits: 9e6,
   /** Price of each type of component, per kg of it; a magazine's ammunition is extra. */
   componentPrice: {
     drive: 30,
