@@ -32,7 +32,8 @@ test('a free battle goes from the main menu through setup and the battle to its 
   const map = page.getByRole('region', { name: 'Tactical map' });
   await expect(map.locator('canvas')).toBeVisible();
   await expect(page.getByLabel('Own ship')).toContainText('Blue · Bastion');
-  await expect(page.getByLabel('Contact through telescope')).toContainText('Red · Lance');
+  // The telescope names only what the sensors make out of the contact, not its design.
+  await expect(page.getByLabel('Contact through telescope')).toContainText('Red · frigate');
 
   await page.getByRole('button', { name: 'End battle' }).click();
   await page
