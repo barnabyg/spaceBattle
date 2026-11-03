@@ -5,6 +5,6 @@
     "lib": ["ES2023"],
     "types": []
   },
-  "include": ["src/sim", "src/game"],
+  "include": ["src/sim", "src/game", "src/shipyard", "src/campaign"],
   "exclude": ["src/**/*.test.ts"]
 }

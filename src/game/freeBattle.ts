@@ -1,13 +1,14 @@
-import { handMadeDesign } from '../data/designs';
+import { HAND_MADE_DESIGNS } from '../data/designs';
 import { OPENING_PASS, startingScenario, type StartingScenario } from '../data/scenarios';
 import { createBattle, type CaptainSkill, type Commander, type SideSetup } from '../sim/battle';
+import type { Design } from '../sim/design';
 import type { BatchSetup } from './batch';
 import { createBattleRunner, type BattleRunner } from './battleRunner';
 import type { RecordedAction } from './orderLog';
 
 /** One side of a free battle as chosen on the setup screen. */
 export interface FreeBattleSide {
-  /** A hand-made design's id. */
+  /** The id of a hand-made design or one saved from the shipyard. */
   readonly designId: string;
   readonly commander: Commander;
   /** The skill of its captain when the computer commands it; medium if left out. */
@@ -36,11 +37,16 @@ export const DEFAULT_FREE_BATTLE: FreeBattleSetup = {
   scenarioId: OPENING_PASS.id,
 };
 
-/** The battle's sides for a free battle's choices. */
-export const freeBattleSides = (setup: FreeBattleSetup): readonly SideSetup[] =>
+/** The battle's sides for a free battle's choices, their designs found among `designs`. */
+export const freeBattleSides = (
+  setup: FreeBattleSetup,
+  designs: readonly Design[] = HAND_MADE_DESIGNS,
+): readonly SideSetup[] =>
   FREE_BATTLE_SIDES.map((side, i) => {
     const { designId, commander, skill } = setup.sides[i] ?? DEFAULT_FREE_BATTLE.sides[0];
-    return { ...side, commander, design: handMadeDesign(designId), ...(skill && { skill }) };
+    const design = designs.find((d) => d.id === designId);
+    if (!design) throw new Error(`No design "${designId}" for a free battle`);
+    return { ...side, commander, design, ...(skill && { skill }) };
   });
 
 /** The starting scenario a free battle's choices name. */
@@ -59,20 +65,22 @@ export interface FreeBattleTestMode {
 export const newSeed = (): number => Math.floor(Math.random() * 2 ** 32);
 
 /**
- * Sets up a free battle in its chosen scenario and returns it ready to run. The same choices and
- * seed fight the same battle, given the same orders. Test mode adds a time limit, time
- * compression above 1000× and replay: the orders another battle recorded, given again.
+ * Sets up a free battle in its chosen scenario, between designs found among `designs`, and
+ * returns it ready to run. The same choices and seed fight the same battle, given the same
+ * orders. Test mode adds a time limit, time compression above 1000× and replay: the orders
+ * another battle recorded, given again.
  */
 export const startFreeBattle = (
   setup: FreeBattleSetup,
   seed = newSeed(),
   testMode?: FreeBattleTestMode,
+  designs: readonly Design[] = HAND_MADE_DESIGNS,
 ): BattleRunner =>
   createBattleRunner(
     createBattle({
       seed,
       scenario: freeBattleScenario(setup),
-      sides: freeBattleSides(setup),
+      sides: freeBattleSides(setup, designs),
       ...(testMode && { timeLimit: testMode.timeLimit }),
     }),
     { testMode: testMode !== undefined, ...(testMode?.replay && { replay: testMode.replay }) },
@@ -85,8 +93,9 @@ export const startFreeBattle = (
 export const freeBattleBatch = (
   setup: FreeBattleSetup,
   options: Pick<BatchSetup, 'battles' | 'seed' | 'timeLimit'>,
+  designs: readonly Design[] = HAND_MADE_DESIGNS,
 ): BatchSetup => ({
-  sides: freeBattleSides(setup),
+  sides: freeBattleSides(setup, designs),
   scenario: freeBattleScenario(setup),
   ...options,
 });

@@ -36,6 +36,18 @@ _Avoid_: Hardpoint, turret slot
 Any installable part of a ship: reactor, capacitor, drive, thrusters, radiator, armour, shield, sensor, weapon or intelligence component.
 _Avoid_: Module, part, system
 
+**Shipyard**:
+Where the player designs ships: they choose a hull size, components, armour and a reserve, and the shipyard places the components and checks that the design is valid.
+_Avoid_: Designer, editor, ship builder
+
+**Specification**:
+What the player asks the shipyard for: a hull size, components, armour for each section, propellant and a reserve. The shipyard builds it into a design, placing each component in a section unless the player placed it by hand.
+_Avoid_: Blueprint, loadout
+
+**Volume**:
+The room a component or propellant takes inside a section. Each section of a hull holds only so much; a mounted component's machinery takes room inside too.
+_Avoid_: Space, capacity, slots
+
 **Hangar**:
 The ships the player owns in a campaign. Only one of them fights in each battle.
 _Avoid_: Fleet, roster

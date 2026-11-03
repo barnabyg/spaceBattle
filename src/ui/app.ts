@@ -6,10 +6,14 @@ import {
   type FreeBattleSetup,
 } from '../game/freeBattle';
 import type { RecordedAction } from '../game/orderLog';
+import { HAND_MADE_DESIGNS } from '../data/designs';
+import type { Design } from '../sim/design';
 import { createBatchScreen } from './batchScreen';
 import { createBattleScreen } from './battleScreen';
 import { createMainMenu } from './mainMenu';
+import { createDesignLibrary, localStore } from './designLibrary';
 import { createSetupScreen, DEFAULT_TEST_SETTINGS, type TestSettings } from './setupScreen';
+import { createShipyardScreen } from './shipyardScreen';
 
 /** A screen the app can show: its element, and anything it must release when it goes. */
 interface Screen {
@@ -30,6 +34,9 @@ export const createApp = (root: HTMLElement) => {
   let setup: FreeBattleSetup = DEFAULT_FREE_BATTLE;
   let testMode = false;
   let testSettings: TestSettings = DEFAULT_TEST_SETTINGS;
+  const library = createDesignLibrary(localStore());
+  /** Every design a free battle may use: the hand-made ones and those saved from the shipyard. */
+  const designs = (): readonly Design[] => [...HAND_MADE_DESIGNS, ...library.designs()];
 
   const show = (screen: Screen) => {
     current?.dispose?.();
@@ -42,6 +49,7 @@ export const createApp = (root: HTMLElement) => {
     show(
       createMainMenu({
         onFreeBattle: showSetup,
+        onShipyard: showShipyard,
         testMode,
         onTestModeChange: (on) => {
           testMode = on;
@@ -50,10 +58,20 @@ export const createApp = (root: HTMLElement) => {
     );
   };
 
+  const showShipyard = () => {
+    show(createShipyardScreen(library, { onBack: showMainMenu }));
+  };
+
   const showSetup = () => {
+    const available = designs();
+    // A design saved earlier may have been deleted in the shipyard since.
+    if (!setup.sides.every((side) => available.some((d) => d.id === side.designId))) {
+      setup = DEFAULT_FREE_BATTLE;
+    }
     show(
       createSetupScreen(
         setup,
+        available,
         {
           onStart: (chosen) => {
             setup = chosen;
@@ -83,11 +101,13 @@ export const createApp = (root: HTMLElement) => {
   /** Starts a battle; in test mode `replay` gives the orders of an earlier one again. */
   const showBattle = (seed: number, replay?: readonly RecordedAction[]) => {
     const runner = testMode
-      ? startFreeBattle(setup, seed, {
-          timeLimit: testSettings.timeLimit,
-          ...(replay && { replay }),
-        })
-      : startFreeBattle(setup, seed);
+      ? startFreeBattle(
+          setup,
+          seed,
+          { timeLimit: testSettings.timeLimit, ...(replay && { replay }) },
+          designs(),
+        )
+      : startFreeBattle(setup, seed, undefined, designs());
     show(
       createBattleScreen(runner, {
         onContinue: showSetup,
@@ -106,11 +126,15 @@ export const createApp = (root: HTMLElement) => {
   };
 
   const showBatch = (settings: TestSettings) => {
-    const batch = freeBattleBatch(setup, {
-      battles: settings.battles,
-      seed: settings.seed ?? newSeed(),
-      timeLimit: settings.timeLimit,
-    });
+    const batch = freeBattleBatch(
+      setup,
+      {
+        battles: settings.battles,
+        seed: settings.seed ?? newSeed(),
+        timeLimit: settings.timeLimit,
+      },
+      designs(),
+    );
     show(createBatchScreen(batch, { onBack: showSetup }));
   };
 

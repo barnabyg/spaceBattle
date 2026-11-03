@@ -723,7 +723,9 @@ const parseMagazine = (data: Record<string, unknown>, mass: number, where: strin
   if (kinds > 1) throw new Error(`${where}: a magazine holds slugs, rounds or missiles, not more`);
   if (kinds === 0) throw new Error(`${where}: a magazine needs slugs, rounds or missiles`);
   if (missiles === 0) {
-    if (data.missile !== undefined) throw new Error(`${where}: "missile" needs "missiles"`);
+    if (data.missile !== undefined && data.missile !== null) {
+      throw new Error(`${where}: "missile" needs "missiles"`);
+    }
     return { type: 'magazine', mass, slugs, rounds, missiles, missile: null } as const;
   }
   const missile = parseMissile(data.missile, `${where} missile`);

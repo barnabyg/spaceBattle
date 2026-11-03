@@ -1,4 +1,3 @@
-import { HAND_MADE_DESIGNS, handMadeDesign } from '../data/designs';
 import { STARTING_SCENARIOS, startingScenario } from '../data/scenarios';
 import { DEFAULT_TIME_LIMIT } from '../game/batch';
 import {
@@ -8,6 +7,7 @@ import {
   type FreeBattleSide,
 } from '../game/freeBattle';
 import type { CaptainSkill, Commander } from '../sim/battle';
+import type { Design } from '../sim/design';
 import { CAPTAIN_SKILLS } from '../sim/captain';
 import { designSummary } from './designSummary';
 import { el } from './el';
@@ -179,9 +179,10 @@ const createSideChoice = (
   side: (typeof FREE_BATTLE_SIDES)[number],
   colour: string,
   initial: FreeBattleSide,
+  designs: readonly Design[],
 ) => {
   const design = select(
-    HAND_MADE_DESIGNS.map((d) => [d.id, d.name]),
+    designs.map((d) => [d.id, d.name]),
     initial.designId,
   );
   const commander = select(COMMANDERS, initial.commander);
@@ -200,8 +201,10 @@ const createSideChoice = (
   showSkill();
   const summary = el('dl', { className: 'status-list design-summary' });
   const showSummary = () => {
+    const chosen = designs.find((d) => d.id === design.value);
+    if (!chosen) return;
     summary.replaceChildren(
-      ...designSummary(handMadeDesign(design.value)).flatMap(([label, value]) => [
+      ...designSummary(chosen).flatMap(([label, value]) => [
         el('dt', { text: label }),
         el('dd', { text: value, attrs: { 'aria-label': label } }),
       ]),
@@ -240,17 +243,18 @@ const createSideChoice = (
 };
 
 /**
- * The free battle setup: a starting scenario, and a design and a commander for each of the two
- * sides; in test mode, test settings and batch runs too.
+ * The free battle setup: a starting scenario, and a design (hand-made or saved from the
+ * shipyard) and a commander for each of the two sides; in test mode, test settings and batch runs too.
  */
 export const createSetupScreen = (
   initial: FreeBattleSetup,
+  designs: readonly Design[],
   actions: SetupScreenActions,
   testMode?: SetupScreenTestMode,
 ) => {
   const [blueSide, redSide] = FREE_BATTLE_SIDES;
-  const blue = createSideChoice(blueSide, SIDE_COLOURS[0], initial.sides[0]);
-  const red = createSideChoice(redSide, SIDE_COLOURS[1], initial.sides[1]);
+  const blue = createSideChoice(blueSide, SIDE_COLOURS[0], initial.sides[0], designs);
+  const red = createSideChoice(redSide, SIDE_COLOURS[1], initial.sides[1], designs);
   const scenario = createScenarioChoice(freeBattleScenario(initial).id);
   const setup = (): FreeBattleSetup => ({
     sides: [blue.value(), red.value()],
