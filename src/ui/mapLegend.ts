@@ -24,6 +24,8 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const WIDTH = 40;
 const HEIGHT = 16;
 const DASHED = '3 2';
+/** The map's scene units are km; formatting takes metres. */
+const KM = 1_000;
 
 const svg = (tag: string, attrs: Record<string, string | number>): SVGElement => {
   const element = document.createElementNS(SVG_NS, tag);
@@ -42,17 +44,24 @@ const line = (
     y1,
     x2,
     y2,
-    stroke: colour,
+    style: `stroke: ${colour}`,
     'stroke-width': width,
     'stroke-opacity': opacity,
     ...(dashed ? { 'stroke-dasharray': DASHED } : {}),
   });
 
-/** A solid arrow along the sample, from `x1` to its head at `x2`. */
-const arrow = (x1: number, x2: number, y: number, colour: string) => [
-  line([x1, y], [x2 - 4, y], colour),
-  svg('polygon', { points: `${x2},${y} ${x2 - 5},${y - 3} ${x2 - 5},${y + 3}`, fill: colour }),
+/** An arrow along the sample, from `x1` to its head at `x2`. */
+const arrow = (x1: number, x2: number, y: number, colour: string, { dashed = false } = {}) => [
+  line([x1, y], [x2 - 4, y], colour, { dashed }),
+  svg('polygon', {
+    points: `${x2},${y} ${x2 - 5},${y - 3} ${x2 - 5},${y + 3}`,
+    style: `fill: ${colour}`,
+  }),
 ];
+
+/** `colour` paled by `share` towards white, mixed in linear colour as the map's three.js does. */
+const pale = (colour: string, share: number) =>
+  `color-mix(in srgb-linear, ${colour}, #ffffff ${share * 100}%)`;
 
 const dot = (cx: number, size: number, fill: string) =>
   svg('circle', { cx, cy: HEIGHT / 2, r: size / 2, style: `fill: ${fill}` });
@@ -85,20 +94,8 @@ const ENTRIES: Readonly<Record<MapLayer, LegendEntry>> = {
     name: 'Relative velocity',
     description: `Where the contact will be relative to your ship in ${formatDuration(VECTOR_SECONDS)}, on the velocity arrows' scale. Pointing at your ship means closing; none means the ships are not moving relative to each other.`,
     sample: ([, contact = '#ffffff']) => {
-      // The map pales it by mixing in linear colour, as three.js does.
-      const colour = `color-mix(in srgb-linear, ${contact}, #ffffff ${RELATIVE_VELOCITY_PALENESS * 100}%)`;
-      return [
-        svg('line', {
-          x1: 4,
-          y1: 8,
-          x2: 31,
-          y2: 8,
-          style: `stroke: ${colour}`,
-          'stroke-width': 1.5,
-          'stroke-dasharray': DASHED,
-        }),
-        svg('polygon', { points: '36,8 31,5 31,11', style: `fill: ${colour}` }),
-      ];
+      const colour = pale(contact, RELATIVE_VELOCITY_PALENESS);
+      return arrow(4, 36, HEIGHT / 2, colour, { dashed: true });
     },
   },
   heading: {
@@ -172,7 +169,7 @@ const ENTRIES: Readonly<Record<MapLayer, LegendEntry>> = {
   },
   'range-rings': {
     name: 'Range rings',
-    description: `Range from your ship in its plane, a ring every ${formatKm(RING_SPACING_KM * 1000)}.`,
+    description: `Range from your ship in its plane, a ring every ${formatKm(RING_SPACING_KM * KM)}.`,
     sample: () => [
       line([2, 15], [38, 15], RING_COLOURS.spokes),
       line([2, 15], [26, 1], RING_COLOURS.spokes),
@@ -202,12 +199,7 @@ const ENTRIES: Readonly<Record<MapLayer, LegendEntry>> = {
     sample: ([colour = '#ffffff']) => [
       dot(7, MUNITION_SIZE, colour),
       dot(19, MISSILE_SIZE, colour),
-      // The map pales them by mixing in linear colour, as three.js does.
-      dot(
-        32,
-        ANTI_MISSILE_SIZE,
-        `color-mix(in srgb-linear, ${colour}, #ffffff ${ANTI_MISSILE_PALENESS * 100}%)`,
-      ),
+      dot(32, ANTI_MISSILE_SIZE, pale(colour, ANTI_MISSILE_PALENESS)),
     ],
   },
   flashes: {

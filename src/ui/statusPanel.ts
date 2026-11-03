@@ -108,10 +108,19 @@ const describeClosing = (closingSpeed: number): string => {
 const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] = [
   [
     'Separation',
-    (o) => (o.contacts[0] ? formatKm(distance(o.ownShip.position, o.contacts[0].position)) : '—'),
+    (o) => {
+      const contact = followedContact(o);
+      return contact ? formatKm(distance(o.ownShip.position, contact.position)) : '—';
+    },
   ],
   ['Own speed', (o) => formatKmPerS(length(o.ownShip.velocity))],
-  ['Contact speed', (o) => (o.contacts[0] ? formatKmPerS(length(o.contacts[0].velocity)) : '—')],
+  [
+    'Contact speed',
+    (o) => {
+      const contact = followedContact(o);
+      return contact ? formatKmPerS(length(contact.velocity)) : '—';
+    },
+  ],
   [
     'Closing speed',
     (o) => {

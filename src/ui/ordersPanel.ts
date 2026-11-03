@@ -630,7 +630,8 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       const { salvo } = ship.weapons;
       launch.disabled = !canLaunch || missilesIn(ship.weapons, 'anti-ship').left === 0;
       callOff.disabled = salvo === null;
-      setPressed(launch, salvo !== null && !targetsMissile(salvo.target));
+      // Launch buttons are actions, not toggles: they only light up while their salvo flies.
+      launch.classList.toggle('active', salvo !== null && !targetsMissile(salvo.target));
       launchState.textContent = describeLaunch(ship.weapons);
       const antiMissiles = missilesIn(ship.weapons, 'anti-missile');
       const defending = antiMissiles.designs.length > 0;
@@ -640,7 +641,10 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       setPressed(byOrderOnly, defending && !ship.weapons.antiMissile.automatic);
       nearest = nearestIncoming(observation)?.id ?? null;
       launchAtNearest.disabled = !canLaunch || antiMissiles.left === 0 || nearest === null;
-      setPressed(launchAtNearest, salvo !== null && typeof salvo.target !== 'string');
+      launchAtNearest.classList.toggle(
+        'active',
+        salvo !== null && typeof salvo.target !== 'string',
+      );
       antiMissileState.textContent = describeAntiMissile(ship.weapons);
       const defended = ship.weapons.pointDefence.length > 0;
       for (const [priority, priorityButton] of Object.entries(pointDefenceButtons)) {

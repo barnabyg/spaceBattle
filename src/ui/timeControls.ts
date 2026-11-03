@@ -66,18 +66,13 @@ export const createTimeControls = (runner: BattleRunner) => {
       case '[':
         runner.slower();
         break;
-      case '1':
-      case '2':
-      case '3':
-      case '4':
-      case '5': {
-        const compression = runner.compressions[Number(event.key) - 1];
+      default: {
+        // Number keys 1 to NUMBERED choose a time compression directly.
+        const index = /^[1-9]$/.test(event.key) ? Number(event.key) - 1 : NUMBERED;
+        const compression = index < NUMBERED ? runner.compressions[index] : undefined;
         if (compression === undefined) return;
         runner.setTimeCompression(compression);
-        break;
       }
-      default:
-        return;
     }
     event.preventDefault();
   };

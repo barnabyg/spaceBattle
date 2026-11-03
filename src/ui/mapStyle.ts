@@ -26,7 +26,6 @@ export const PLANNED_BURN_COLOUR = '#ffb347';
 /** Range rings around the own ship: the spokes and rings, every this many km. */
 export const RING_SPACING_KM = 50_000;
 export const RING_COLOURS = { spokes: '#2b3d5a', rings: '#1a2638' } as const;
-export const RANGE_LABEL_COLOUR = '#4d6488';
 
 /** How the own ship's beams are drawn while firing: lasers solid green, particle beams apart. */
 export const BEAM_STYLES: Readonly<

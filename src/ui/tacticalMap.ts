@@ -28,7 +28,6 @@ import {
   MUNITION_SIZE,
   PLANNED_BURN_COLOUR,
   PROJECTION_COLOUR,
-  RANGE_LABEL_COLOUR,
   RELATIVE_VELOCITY_DASH,
   RELATIVE_VELOCITY_PALENESS,
   RING_COLOURS,
@@ -160,7 +159,6 @@ export const createTacticalMap = (
       el('span', {
         className: 'range-label',
         text: formatKm(ring * RING_SPACING_KM * KM),
-        attrs: { style: `color: ${RANGE_LABEL_COLOUR}` },
       }),
     );
     label.position.set(ring * RING_SPACING_KM, 0, 0);

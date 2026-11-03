@@ -90,12 +90,24 @@ test('a manoeuvre order shows its goal and planned burns on the map', async ({ p
   await page.getByLabel('Range km').fill('150000');
   await page.getByRole('button', { name: 'Hold', exact: true }).click();
   await expect(page.getByLabel('Manoeuvre state')).toContainText('Holding 150,000 km · error');
+  await expect(page.getByRole('button', { name: 'Hold', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('button', { name: 'Manual' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
   const burns = page.getByRole('region', { name: 'Tactical map' }).locator('.planned-burn');
   await expect(burns.first()).toBeVisible();
   await expect(burns.first()).toContainText('Burn');
 
   await page.getByRole('button', { name: 'Manual' }).click();
   await expect(page.getByLabel('Manoeuvre state')).toHaveText('Manual control');
+  await expect(page.getByRole('button', { name: 'Manual' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await expect(burns.filter({ visible: true })).toHaveCount(0);
 });
 
