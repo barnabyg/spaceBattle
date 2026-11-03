@@ -43,6 +43,6 @@ In battle, the captain of a player side hears only what reaches their own hull, 
 - `src/sim/` — the battle simulation: fixed time step, deterministic, SI units, no rendering or DOM (ADR-0001). Lint and a DOM-free type check enforce this. Computer captains command their sides here, through the same orders as the player.
 - `src/game/` — headless glue around the simulation, such as the battle runner (pause and time compression) and test mode batch runs.
 - `src/shipyard/` — the shipyard: a specification in, a design out, with its volume, mass, cost and validation. Headless, like the simulation.
-- `src/data/` — hand-made designs (JSON data files), scenarios, the shipyard's component catalogue and the balance numbers (prices).
+- `src/data/` — hand-made designs (JSON data files), scenarios, the shipyard's component catalogue, the campaign's opponents and the balance numbers (prices, tiers).
 - `src/ui/` — the browser UI: menus in HTML/CSS, views in Three.js. It reads simulation state and gives orders; it never changes state directly.
 - `e2e/` — Playwright tests in Firefox.

@@ -1,10 +1,29 @@
+import type { CaptainSkill } from '../sim/captain';
 import type { ArmourType, ComponentType } from '../sim/design';
 
+/** A level of opponent difficulty in the campaign. */
+export interface Tier {
+  /** 1 for the easiest. */
+  readonly tier: number;
+  /** The most an opponent's design may cost, credits. */
+  readonly budget: number;
+  /** How skilled the opponent's computer captain is. */
+  readonly skill: CaptainSkill;
+  /** What a win pays, credits. */
+  readonly reward: number;
+}
+
 /**
- * The game's balance numbers in one place: what things cost. Prices are in credits; a modest
- * frigate costs about 8 million.
+ * The game's balance numbers in one place: what things cost, and what the campaign's tiers field
+ * and pay. Prices are in credits; a modest frigate costs about 8 million.
  */
 export const BALANCE = {
+  /** The campaign's tiers, easiest first. */
+  tiers: [
+    { tier: 1, budget: 8.5e6, skill: 'low', reward: 3e6 },
+    { tier: 2, budget: 10e6, skill: 'medium', reward: 5e6 },
+    { tier: 3, budget: 26e6, skill: 'high', reward: 12e6 },
+  ] satisfies readonly Tier[],
   /** Price of each type of component, per kg of it; a magazine's ammunition is extra. */
   componentPrice: {
     drive: 30,
