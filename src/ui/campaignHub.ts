@@ -13,9 +13,7 @@ import {
 import type { Design } from '../sim/design';
 import { designCost } from '../shipyard/cost';
 import { el } from './el';
-import { formatCredits } from './format';
-
-const SKILL_TEXT = { low: 'Low', medium: 'Medium', high: 'High' } as const;
+import { capitalise, formatCredits, SKILL_TEXT } from './format';
 
 export interface CampaignHubActions {
   /** Builds a ship of a design into the hangar. */
@@ -69,10 +67,6 @@ export const createCampaignHub = (
   message = '',
 ) => {
   const over = campaignOver(campaign);
-  /**
-   * A ship in the hangar: its design, what its damage would cost to repair and its used propellant
-   * and ammunition to restock, and the buttons to pay for them; a share of the repair can be paid.
-   */
   const buildable = [
     ...campaign.designs,
     ...libraryDesigns.filter((d) => !campaign.designs.some((known) => known.id === d.id)),
@@ -118,6 +112,10 @@ export const createCampaignHub = (
     return sell;
   };
 
+  /**
+   * A ship in the hangar: its design, what its damage would cost to repair and its used propellant
+   * and ammunition to restock, and the buttons to pay for them; a share of the repair can be paid.
+   */
   const hangarEntry = (ship: CampaignShip) => {
     const repair = repairCost(ship);
     const restock = restockCost(ship);
@@ -192,7 +190,7 @@ export const createCampaignHub = (
         {},
         el('span', { className: 'campaign-list__name', text: design.name }),
         el('span', {
-          text: `${design.hullSize.charAt(0).toUpperCase()}${design.hullSize.slice(1)} · ${formatCredits(cost)}`,
+          text: `${capitalise(design.hullSize)} · ${formatCredits(cost)}`,
         }),
         build,
       );

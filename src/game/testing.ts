@@ -1,4 +1,4 @@
-import { BALANCE } from '../data/balance';
+import { tierOf } from '../campaign/campaign';
 import { HAND_MADE_DESIGNS } from '../data/designs';
 import { OPPONENTS, type Opponent } from '../data/opponents';
 import { startingScenario } from '../data/scenarios';
@@ -33,8 +33,7 @@ export const handMadeBatch = (blue: string, red: string, seed = 1): BatchSummary
     ),
   );
 
-const skillOf = (opponent: Opponent) =>
-  BALANCE.tiers.find((t) => t.tier === opponent.tier)?.skill ?? 'medium';
+const skillOf = (opponent: Opponent) => tierOf(opponent.tier).skill;
 
 /**
  * Every opponent of a tier against every opponent of the tier below, the computer commanding

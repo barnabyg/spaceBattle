@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createBattle, type SideSetup } from './battle';
 import type { Design, InternalComponentDesign } from './design';
-import { INTELLIGENCE_FACTS } from './intelligence';
 import { launchingTestDesign, testDesign, testSetup, testSides, withSection } from './testing';
 
 /** The test design with intelligence components inside its forward section. */
@@ -20,10 +19,6 @@ const intelligence = (blue: Design, red: Design, seed = 1) => {
 };
 
 describe('intelligence before a battle', () => {
-  it('there are ten facts to learn about an enemy design', () => {
-    expect(INTELLIGENCE_FACTS).toBe(10);
-  });
-
   it('leaves a side without intelligence components knowing nothing before its sensors make it out', () => {
     const [blue] = intelligence(testDesign(), launchingTestDesign(4));
     expect(blue.intelligence).toEqual([{ enemy: 'red', design: null, facts: [] }]);

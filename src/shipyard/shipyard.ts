@@ -21,7 +21,7 @@ export interface SpecifiedComponent {
   readonly section?: SectionKind;
 }
 
-/** What the player asks the shipyard for: everything about a design but where its parts go. */
+/** What the player asks the shipyard for: everything about a design but where its components go. */
 export interface ShipSpecification {
   /** The class's name; the design is called "<name> class". */
   readonly name: string;

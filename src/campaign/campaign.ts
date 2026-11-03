@@ -194,14 +194,14 @@ export const recordBattle = (
   { outcome, condition }: CampaignBattleResult,
 ): Campaign => {
   const lost = outcome.sides.find((s) => s.side === PLAYER_SIDE)?.shipLost ?? false;
-  const hangar = lost
+  const settled = lost
     ? { ...campaign, hangar: campaign.hangar.filter((ship) => ship.id !== battle.shipId) }
     : withShip(campaign, battle.shipId, (ship) => ({
         ...ship,
         condition: condition ?? ship.condition,
       }));
   return {
-    ...hangar,
+    ...settled,
     credits: campaign.credits + (outcome.winner === PLAYER_SIDE ? tierOf(battle.tier).reward : 0),
     battles: campaign.battles + 1,
   };

@@ -1,13 +1,9 @@
 import type { CampaignBattle } from '../campaign/campaign';
-import type { IntelligenceFact, IntelligenceReport } from '../sim/battle';
+import type { CaptainSkill, IntelligenceFact, IntelligenceReport } from '../sim/battle';
 import { COMPONENT_TEXT } from './damagePanel';
 import { designSummary } from './designSummary';
 import { el } from './el';
-import { formatCredits, formatKmPerS, formatMm, formatMW } from './format';
-
-const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
-
-const SKILL_TEXT = { low: 'Low', medium: 'Medium', high: 'High' } as const;
+import { capitalise, formatCredits, formatKmPerS, formatMm, formatMW, SKILL_TEXT } from './format';
 
 /** A fact a signal interceptor learned, as a label and its value. */
 export const describeFact = (fact: IntelligenceFact): readonly [string, string] => {
@@ -99,7 +95,7 @@ export interface BriefingActions {
 export const createBriefingScreen = (
   battle: CampaignBattle,
   report: IntelligenceReport | undefined,
-  tier: { readonly budget: number; readonly skill: keyof typeof SKILL_TEXT },
+  tier: { readonly budget: number; readonly skill: CaptainSkill },
   actions: BriefingActions,
 ) => {
   const [player] = battle.setup.sides;

@@ -176,10 +176,6 @@ export const createApp = (root: HTMLElement) => {
     );
   };
 
-  /**
-   * Fights a campaign battle, then settles it and goes back to the hub; in test mode `replay`
-   * gives the orders of an earlier try again.
-   */
   /** A campaign battle about to be fought, as the battle it will be. */
   const campaignBattle = (pending: CampaignBattle) =>
     createBattle(
@@ -206,6 +202,10 @@ export const createApp = (root: HTMLElement) => {
     );
   };
 
+  /**
+   * Fights a campaign battle, then settles it and goes back to the hub; in test mode `replay`
+   * gives the orders of an earlier try again.
+   */
   const showCampaignBattle = (pending: CampaignBattle, replay?: readonly RecordedAction[]) => {
     const { setup } = pending;
     const battle = campaignBattle(pending);

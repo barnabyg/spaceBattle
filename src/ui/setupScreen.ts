@@ -6,12 +6,12 @@ import {
   type FreeBattleSetup,
   type FreeBattleSide,
 } from '../game/freeBattle';
-import type { CaptainSkill, Commander } from '../sim/battle';
+import type { Commander } from '../sim/battle';
 import type { Design } from '../sim/design';
 import { CAPTAIN_SKILLS } from '../sim/captain';
 import { designSummary } from './designSummary';
 import { el } from './el';
-import { formatKm, formatKmPerS } from './format';
+import { formatKm, formatKmPerS, SKILL_TEXT } from './format';
 import { SIDE_COLOURS } from './mapStyle';
 
 const COMMANDERS: readonly (readonly [Commander, string])[] = [
@@ -19,11 +19,6 @@ const COMMANDERS: readonly (readonly [Commander, string])[] = [
   ['computer', 'Computer'],
 ];
 
-const SKILL_TEXT: Readonly<Record<CaptainSkill, string>> = {
-  low: 'Low',
-  medium: 'Medium',
-  high: 'High',
-};
 const SKILLS = CAPTAIN_SKILLS.map((skill) => [skill, SKILL_TEXT[skill]] as const);
 
 export interface SetupScreenActions {

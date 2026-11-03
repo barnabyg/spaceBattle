@@ -14,6 +14,7 @@ import { effectiveRange, type BeamWeaponDesign } from '../sim/beams';
 import { designFullDeflection } from '../sim/shields';
 import { designMissiles } from '../sim/weapons';
 import {
+  capitalise,
   formatGeV,
   formatKilotons,
   formatKm,
@@ -22,8 +23,6 @@ import {
   formatMW,
   formatTonnes,
 } from './format';
-
-const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** A missile design's name, with its yield if its warhead is nuclear. */
 const missileName = (missile: MissileDesign): string =>

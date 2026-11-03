@@ -26,9 +26,7 @@ import { createDesignPreview } from './designPreview';
 import { designSummary } from './designSummary';
 import { el } from './el';
 import { downloadText, textFilePicker } from './files';
-import { formatCredits, formatKmPerS, formatTonnes } from './format';
-
-const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+import { capitalise, formatCredits, formatKmPerS, formatTonnes } from './format';
 
 /** What a new design starts from: a modest laser frigate, waiting for a name. */
 const NEW_SPECIFICATION: ShipSpecification = {

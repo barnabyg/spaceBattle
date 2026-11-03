@@ -67,9 +67,9 @@ export const refittedCondition = (
     if (component.type !== 'magazine') return [];
     const full = fresh.magazines[magazine++];
     const old = kept[i];
-    const held = old === null || old === undefined ? -1 : oldMagazines.indexOf(old);
+    const oldMagazine = old === null || old === undefined ? -1 : oldMagazines.indexOf(old);
     return [
-      (held >= 0 ? condition.magazines[held] : undefined) ??
+      (oldMagazine >= 0 ? condition.magazines[oldMagazine] : undefined) ??
         full ?? { slugs: 0, rounds: 0, missiles: 0 },
     ];
   });
