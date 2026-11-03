@@ -505,6 +505,26 @@ h3 {
   font-size: 0.9rem;
 }
 
+.setup-scenario {
+  display: grid;
+  grid-template-columns: 14rem 1fr;
+  align-items: center;
+  gap: 0.3rem 2rem;
+  width: calc(88rem + 3rem);
+  padding: 1rem 2rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+}
+
+.setup-scenario .field {
+  grid-row: span 2;
+}
+
+.setup-scenario .menu-note {
+  margin: 0;
+}
+
 .setup-sides {
   display: grid;
   grid-template-columns: repeat(2, 44rem);

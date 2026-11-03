@@ -50,6 +50,30 @@ test('a free battle goes from the main menu through setup and the battle to its 
   await expect(page.getByRole('button', { name: 'Free battle' })).toBeVisible();
 });
 
+test('the chosen scenario sets where the ships start and is kept for the next battle', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Free battle' }).click();
+  const scenario = page.getByLabel('Scenario');
+  await expect(scenario).toHaveValue('opening-pass');
+  await scenario.selectOption({ label: 'Head-on' });
+  await expect(page.getByText('The ships fly straight at each other, nose to nose.')).toBeVisible();
+  await expect(page.getByLabel('Starting geometry')).toHaveText(
+    '300,000 km apart · relative speed 4.00 km/s · closing at 4.00 km/s',
+  );
+  await page.getByRole('button', { name: 'Start battle' }).click();
+
+  // The ships start 300 000 km apart and close at 2 km/s each.
+  await expect(page.getByLabel('Separation')).toHaveText(/^(300,000|299,\d{3}) km$/);
+  await expect(page.getByLabel('Own speed')).toHaveText(/^2\.\d\d km\/s$/);
+
+  await page.getByRole('button', { name: 'End battle' }).click();
+  await page.getByRole('button', { name: 'Forfeit' }).click();
+  await page.getByRole('button', { name: 'Back to setup' }).click();
+  await expect(scenario).toHaveValue('head-on');
+});
+
 test('a computer-vs-computer battle is watched, takes no orders and ends with no result', async ({
   page,
 }) => {
