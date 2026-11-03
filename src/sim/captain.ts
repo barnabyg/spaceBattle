@@ -9,12 +9,15 @@ import type {
 import { effectiveRange } from './beams';
 import {
   designComponents,
+  designComponentsOfType,
+  missileRole,
   type Design,
   type MountedComponentDesign,
   type ShieldType,
 } from './design';
+import { ARMOUR } from './armour';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE } from './heat';
-import { reachOfDeltaV } from './missile';
+import { missileReach, reachOfDeltaV } from './missile';
 import type {
   AntiMissileOrder,
   AttitudeOrder,
@@ -29,6 +32,8 @@ import type {
   WeaponsOrder,
 } from './orders';
 import type { PowerSystem } from './power';
+import { designReach } from './weapons';
+import { RESERVE_WARNING } from './ship';
 import { cross, distance, dot, normalize, scale, sub, vec3, type Vec3 } from './vector';
 
 /**
@@ -40,6 +45,41 @@ export interface Captain {
   /** The orders to give now; none when the standing orders already do what it wants. */
   decide(observation: SideObservation): readonly Order[];
 }
+
+/** How skilled a computer captain is. */
+export type CaptainSkill = 'low' | 'medium' | 'high';
+export const CAPTAIN_SKILLS: readonly CaptainSkill[] = ['low', 'medium', 'high'];
+
+/** What a captain of each skill does. */
+interface SkillProfile {
+  /** How often it reconsiders its plan and gives orders, s. */
+  readonly reconsider: number;
+  /**
+   * Whether it foresees the enemy's motion against its own: where enemy slugs will meet a ship
+   * that moves, so it dodges them.
+   */
+  readonly predicts: boolean;
+  /**
+   * Whether it manages power and heat: the weapons first in a fight and the drive first on the
+   * way, radiators out to fight, shields raised only against weapons they counter. Without it
+   * the captain leaves the power as it was, deploys the radiators only when hot and keeps the
+   * shields up.
+   */
+  readonly managesPower: boolean;
+  /** Whether it keeps out of reach of an enemy it outranges, rather than always closing in. */
+  readonly keepsRange: boolean;
+  /**
+   * Advanced tactics: it turns its best-armoured section to the enemy while it holds its range,
+   * and withdraws with some of its reserve to spare once out of the fight.
+   */
+  readonly advanced: boolean;
+}
+
+const SKILLS: Readonly<Record<CaptainSkill, SkillProfile>> = {
+  low: { reconsider: 20, predicts: false, managesPower: false, keepsRange: false, advanced: false },
+  medium: { reconsider: 1, predicts: true, managesPower: true, keepsRange: true, advanced: false },
+  high: { reconsider: 1, predicts: true, managesPower: true, keepsRange: true, advanced: true },
+};
 
 /** A ship that outranges its enemy holds at this fraction of its own reach. */
 const STANDOFF_FRACTION = 0.95;
@@ -72,6 +112,8 @@ const SPEED_TOLERANCE = 0.1;
 const DODGE_TIME = 20;
 /** Dodging, the captain changes the direction it pushes in this often, s. */
 const JINK_PERIOD = 15;
+/** A captain turns its armour to the enemy while within this fraction of the range it wants. */
+const SETTLED_BAND = 0.25;
 /** An attitude this close to the one ordered (the cosine of the angle) is the same order. */
 const SAME_DIRECTION = Math.cos((1 * Math.PI) / 180);
 /**
@@ -207,16 +249,18 @@ const enemyArsenal = () => {
   /**
    * How far the enemy's known weapons can hurt the ship, m: its beam weapons, its kinetic guns
    * out to where their slugs cannot be dodged, and its launchers as far as the missiles it has
-   * been seen to launch reach. A missile seen in flight shows a launcher, made out or not, until
-   * every launcher made out is gone.
+   * been seen to launch reach, or else `presumedMissileReach`. A missile seen in flight shows a
+   * launcher, made out or not, until every launcher made out is gone.
    */
-  const reach = (): number => {
+  const reach = (presumedMissileReach: number): number => {
     const known = [...mounts.values()].map(({ component }) => component);
+    const launcher = known.some((c) => c.type === 'launcher');
     return Math.max(
       0,
       ...beamWeapons().map(effectiveRange),
       ...known.map((c) => (c.type === 'kinetic-gun' ? sureRange(c.muzzleVelocity) : 0)),
-      known.some((c) => c.type === 'launcher') || !launcherSeen ? missileReachSeen : 0,
+      launcher || !launcherSeen ? missileReachSeen : 0,
+      launcher && missileReachSeen === 0 ? presumedMissileReach : 0,
     );
   };
 
@@ -338,15 +382,22 @@ const jink = (
 };
 
 /**
- * A basic computer captain for one side. It knows its own ship's design, and of the enemy only
- * what its side observes: the weapons its sensors make out on the contact and the missiles the
- * enemy launches (see `enemyArsenal`). A weapon it has not made out, it does not allow for.
+ * A computer captain for one side, at the side's skill (medium if not set; see `SkillProfile`
+ * for what each skill does). It knows its own ship's design, and of the enemy only what its side
+ * observes: the weapons its sensors make out on the contact and the missiles the enemy launches
+ * (see `enemyArsenal`). A weapon it has not made out, it does not allow for, though it takes an
+ * enemy launcher to reach as far as its own missiles until it sees the enemy's.
  *
  * Range: if it outranges the enemy it holds just inside its own reach, out of the enemy's;
  * otherwise it closes to where its weapons bite hard. It heads there at a fifth of its delta-v,
  * as the opening ranges are long. If neither side fires and the range stops shrinking for a
- * while, it gives up on standing off and closes in for good. With nothing left to fight with, it
- * stops where it is: there is no withdrawing yet.
+ * while, it gives up on standing off and closes in for good. Near the range it wants, a highly
+ * skilled captain turns its best-armoured section to the enemy, unless enemy missiles are on
+ * their way. It never pursues a withdrawing enemy.
+ *
+ * Withdrawal: it withdraws once an armed ship has nothing left to fight with, or at its reserve
+ * (a highly skilled one, out of the fight, with half the reserve again to spare). A ship built
+ * without weapons stays.
  *
  * Weapons: it targets the enemy and fires its beams freely. It holds its kinetic guns' fire
  * until the enemy is close enough that their slugs arrive before it could dodge them, so as not
@@ -367,8 +418,26 @@ const jink = (
  */
 export const createComputerCaptain = (setup: SideSetup): Captain => {
   const side = setup.id;
+  const profile = SKILLS[setup.skill ?? 'medium'];
   const arsenal = enemyArsenal();
   const countered = counteredBy(setup.design);
+  // Whether it was built to harm a ship: point defence counts, anti-missile missiles do not.
+  const armed =
+    designReach(setup.design) > 0 ||
+    designComponentsOfType(setup.design, 'point-defence').length > 0;
+  // Its best-armoured section: the most armour by mass for each square metre.
+  const armoured = [...setup.design.sections].sort(
+    (a, b) =>
+      b.armour.thickness * ARMOUR[b.armour.type].density -
+      a.armour.thickness * ARMOUR[a.armour.type].density,
+  )[0];
+  const designMissileReach = Math.max(
+    0,
+    ...designComponentsOfType(setup.design, 'magazine').flatMap(({ missile }) =>
+      missile && missileRole(missile) === 'anti-ship' ? [missileReach(missile)] : [],
+    ),
+  );
+  let nextDecision = 0;
   /** When the battle last got somewhere, s, and the range to measure progress from, m. */
   let progress: { time: number; range: number } | null = null;
   let pressing = false;
@@ -410,7 +479,7 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
     const approach = APPROACH_FRACTION * ship.deltaV;
     const speed = approach > 0 ? { speed: approach } : {};
     const standoff = STANDOFF_FRACTION * reach;
-    return !pressing && standoff > enemyReach
+    return profile.keepsRange && !pressing && standoff > enemyReach
       ? { type: 'manoeuvre', goal: 'hold', range: standoff, ...speed }
       : { type: 'manoeuvre', goal: 'close', range: CLOSE_FRACTION * reach, ...speed };
   };
@@ -453,16 +522,52 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       : null;
   };
 
+  /**
+   * Near the range it wants, the ship turns its best-armoured section to the enemy instead of
+   * steering: its nose at the enemy for the
+   * forward section, its tail for the engine section, broadside for the middle. Otherwise it
+   * keeps to its manoeuvre.
+   */
+  const armourTowards = (
+    ship: OwnShipObservation,
+    enemy: ContactObservation,
+    goal: ManoeuvreOrder,
+  ): ManoeuvreOrder | AttitudeOrder => {
+    if (goal.goal === 'none' || goal.goal === 'match-velocity' || !armoured) return goal;
+    const offset = sub(enemy.position, ship.position);
+    const range = Math.hypot(offset.x, offset.y, offset.z);
+    if (Math.abs(range - goal.range) > SETTLED_BAND * goal.range) return goal;
+    switch (armoured.kind) {
+      case 'forward':
+        return { type: 'attitude', mode: 'enemy' };
+      case 'engine':
+        return { type: 'attitude', mode: 'away' };
+      case 'middle': {
+        const sight = normalize(offset);
+        const reference = Math.abs(sight.z) < 0.9 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+        return {
+          type: 'attitude',
+          mode: 'direction',
+          direction: normalize(cross(sight, reference)),
+        };
+      }
+    }
+  };
+
   return {
     side,
     decide(observation) {
       const enemy = observation.contacts[0];
       if (observation.outcome || !enemy) return [];
+      // It watches all the time, but reconsiders its plan only as often as its skill allows.
       arsenal.watch(observation, enemy);
+      if (observation.time < nextDecision - 1e-9) return [];
+      nextDecision = observation.time + profile.reconsider;
       const ship = observation.ownShip;
       const range = distance(ship.position, enemy.position);
       notice(observation, range);
-      const enemyReach = arsenal.reach();
+      // An enemy launcher whose missiles it has not seen yet it takes to reach as far as its own.
+      const enemyReach = arsenal.reach(designMissileReach);
       const threats = missileThreats(observation, side);
       // With nothing else left to fight with, point defence turns on the ship.
       const lastResort = ownReach(ship) === 0 && pointDefenceReach(ship) > 0;
@@ -483,7 +588,7 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       };
       const radiators: RadiatorsOrder = {
         type: 'radiators',
-        deployed: (fighting || hot) && !nuclearClose,
+        deployed: ((profile.managesPower && fighting) || hot) && !nuclearClose,
       };
       const power: PowerOrder = {
         type: 'power',
@@ -494,20 +599,28 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         priority: lastResort ? 'missiles-then-ship' : 'missiles',
       };
       const antiMissile: AntiMissileOrder = { type: 'anti-missile', automatic: true };
+      // It withdraws once it has nothing left to fight with, or at its reserve; with advanced
+      // tactics, with some of the reserve to spare while out of the fight.
+      const reserve = profile.advanced && !fighting ? RESERVE_WARNING * ship.reserve : ship.reserve;
+      const leaving = ship.withdrawing || (armed && reach === 0) || ship.deltaV <= reserve;
       // A withdrawing ship takes no other course, and the rules forbid pursuing one.
-      const dodge = ship.withdrawing ? null : jink(observation, side, enemy);
-      const course =
-        dodge ??
-        (ship.withdrawing || enemy.withdrawing ? null : manoeuvre(ship, reach, enemyReach));
+      const moving = !leaving && !enemy.withdrawing;
+      const dodge = moving && profile.predicts ? jink(observation, side, enemy) : null;
+      const goal = moving ? manoeuvre(ship, reach, enemyReach) : null;
+      // A ship that stops steering is easy for missiles, so it turns its armour only when none is
+      // on its way.
+      const turning = profile.advanced && threats.length === 0;
+      const course = dodge ?? (goal && turning ? armourTowards(ship, enemy, goal) : goal);
       const orders: Order[] = [
+        ...(leaving ? [{ type: 'withdraw' } as const] : []),
         weapons,
         pointDefence,
         antiMissile,
         ...(Array.isArray(course) ? course : course ? [course] : []),
         radiators,
-        power,
+        ...(profile.managesPower ? [power] : []),
       ];
-      if (ship.shields.shields.length > 0) {
+      if (profile.managesPower && ship.shields.shields.length > 0) {
         const shields: ShieldsOrder = {
           type: 'shields',
           raised: range <= FIGHTING_FRACTION * arsenal.reachOfKinds(countered),

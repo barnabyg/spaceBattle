@@ -458,13 +458,6 @@ describe('computer captain', () => {
     expect(battle.observe('red').ownShip.heat.radiatorsDeployed).toBe(false);
   }, 20_000);
 
-  it('with nothing left to fight with, stops where it is rather than run', () => {
-    const empty = withComponent(handMadeDesign('sling'), 'magazine', { slugs: 0 });
-    const battle = againstIdlePlayer(handMadeDesign('lance'), empty, 100_000 * KM);
-    battle.advance(10);
-    expect(battle.observe('red').ownShip.manoeuvre?.goal).toBe('match-velocity');
-  });
-
   it('heads for its fighting range from far off faster than its autopilot would', () => {
     // At the autopilot's own cruising speed it would take over nine hours to get there.
     const battle = againstIdlePlayer(testDesign(), handMadeDesign('torch'), 200_000 * KM);

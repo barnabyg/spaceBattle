@@ -1,6 +1,6 @@
 import { handMadeDesign } from '../data/designs';
 import { OPENING_PASS, startingScenario, type StartingScenario } from '../data/scenarios';
-import { createBattle, type Commander, type SideSetup } from '../sim/battle';
+import { createBattle, type CaptainSkill, type Commander, type SideSetup } from '../sim/battle';
 import type { BatchSetup } from './batch';
 import { createBattleRunner, type BattleRunner } from './battleRunner';
 import type { RecordedAction } from './orderLog';
@@ -10,6 +10,8 @@ export interface FreeBattleSide {
   /** A hand-made design's id. */
   readonly designId: string;
   readonly commander: Commander;
+  /** The skill of its captain when the computer commands it; medium if left out. */
+  readonly skill?: CaptainSkill;
 }
 
 /** The choices for a free battle: always two sides, Blue then Red, and where they start. */
@@ -37,8 +39,8 @@ export const DEFAULT_FREE_BATTLE: FreeBattleSetup = {
 /** The battle's sides for a free battle's choices. */
 export const freeBattleSides = (setup: FreeBattleSetup): readonly SideSetup[] =>
   FREE_BATTLE_SIDES.map((side, i) => {
-    const { designId, commander } = setup.sides[i] ?? DEFAULT_FREE_BATTLE.sides[0];
-    return { ...side, commander, design: handMadeDesign(designId) };
+    const { designId, commander, skill } = setup.sides[i] ?? DEFAULT_FREE_BATTLE.sides[0];
+    return { ...side, commander, design: handMadeDesign(designId), ...(skill && { skill }) };
   });
 
 /** The starting scenario a free battle's choices name. */

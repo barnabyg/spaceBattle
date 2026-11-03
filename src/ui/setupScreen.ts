@@ -7,7 +7,7 @@ import {
   type FreeBattleSetup,
   type FreeBattleSide,
 } from '../game/freeBattle';
-import type { Commander } from '../sim/battle';
+import type { CaptainSkill, Commander } from '../sim/battle';
 import { designSummary } from './designSummary';
 import { el } from './el';
 import { formatKm, formatKmPerS } from './format';
@@ -16,6 +16,12 @@ import { SIDE_COLOURS } from './tacticalMap';
 const COMMANDERS: readonly (readonly [Commander, string])[] = [
   ['player', 'Player'],
   ['computer', 'Computer'],
+];
+
+const SKILLS: readonly (readonly [CaptainSkill, string])[] = [
+  ['low', 'Low'],
+  ['medium', 'Medium'],
+  ['high', 'High'],
 ];
 
 export interface SetupScreenActions {
@@ -177,6 +183,19 @@ const createSideChoice = (
     initial.designId,
   );
   const commander = select(COMMANDERS, initial.commander);
+  const skill = select(SKILLS, initial.skill ?? 'medium');
+  const skillField = el(
+    'label',
+    { className: 'field' },
+    el('span', { text: 'Captain skill' }),
+    skill,
+  );
+  // Only a computer captain has a skill to choose.
+  const showSkill = () => {
+    skillField.hidden = commander.value !== 'computer';
+  };
+  commander.addEventListener('change', showSkill);
+  showSkill();
   const summary = el('dl', { className: 'status-list design-summary' });
   const showSummary = () => {
     summary.replaceChildren(
@@ -202,14 +221,18 @@ const createSideChoice = (
     el('label', { className: 'field' }, el('span', { text: 'Design' }), design),
     summary,
     el('label', { className: 'field' }, el('span', { text: 'Commander' }), commander),
+    skillField,
   );
 
   return {
     element,
     commander,
+    /** Shows or hides the skill choice after the commander was changed from outside. */
+    showSkill,
     value: (): FreeBattleSide => ({
       designId: design.value,
       commander: commander.value === 'computer' ? 'computer' : 'player',
+      skill: SKILLS.find(([value]) => value === skill.value)?.[0] ?? 'medium',
     }),
   };
 };
@@ -235,6 +258,7 @@ export const createSetupScreen = (
   // The player commands at most one side; the battle screen gives orders for one side only.
   const keepOnePlayer = (chosen: typeof blue, other: typeof blue) => {
     if (chosen.commander.value === 'player') other.commander.value = 'computer';
+    other.showSkill();
   };
   blue.commander.addEventListener('change', () => {
     keepOnePlayer(blue, red);

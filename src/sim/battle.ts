@@ -1,6 +1,7 @@
 import { incomingMissiles } from './antiMissile';
 import { componentSlots } from './components';
 import { overheat, strike, type DamageContext } from './damage';
+import type { CaptainSkill } from './captain';
 import {
   missileRole,
   SECTION_KINDS,
@@ -115,6 +116,7 @@ export type {
 } from './observation';
 
 export type SideId = string;
+export type { CaptainSkill } from './captain';
 export type Commander = 'player' | 'computer';
 
 export interface SideSetup {
@@ -122,6 +124,8 @@ export interface SideSetup {
   readonly name: string;
   readonly commander: Commander;
   readonly design: Design;
+  /** How skilled a computer side's captain is; medium if left out. A player side ignores it. */
+  readonly skill?: CaptainSkill;
 }
 
 /** Where each side's ship starts, in the same order as the battle's sides. */

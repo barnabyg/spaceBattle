@@ -301,6 +301,10 @@ h3 {
   color: var(--muted);
 }
 
+.field[hidden] {
+  display: none;
+}
+
 .field input {
   width: 7em;
   font: inherit;

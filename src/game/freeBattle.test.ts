@@ -7,6 +7,7 @@ import { runBatchBattle } from './batch';
 import {
   DEFAULT_FREE_BATTLE,
   freeBattleBatch,
+  freeBattleSides,
   startFreeBattle,
   type FreeBattleSetup,
 } from './freeBattle';
@@ -38,6 +39,26 @@ describe('free battle', () => {
       ['frigate', 'player'],
       ['cruiser', 'computer'],
     ]);
+  });
+
+  it("gives a computer side's captain the chosen skill, medium if none is chosen", () => {
+    const sides = freeBattleSides({
+      sides: [
+        { designId: 'lance', commander: 'computer', skill: 'high' },
+        { designId: 'lance', commander: 'computer' },
+      ],
+    });
+    expect(sides.map((side) => side.skill ?? 'medium')).toEqual(['high', 'medium']);
+    const batch = freeBattleBatch(
+      {
+        sides: [
+          { designId: 'lance', commander: 'player', skill: 'low' },
+          DEFAULT_FREE_BATTLE.sides[1],
+        ],
+      },
+      { battles: 1, seed: 1, timeLimit: 60 },
+    );
+    expect(batch.sides[0]?.skill).toBe('low');
   });
 
   it('starts in the opening pass unless another scenario is chosen', () => {
