@@ -13,7 +13,7 @@ import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/powe
 import { distance, length, vec3 } from '../sim/vector';
 import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
-import { formatDuration, formatKm, formatMetresPerS, formatMW } from './format';
+import { formatDuration, formatKm, formatKmPerS, formatMetresPerS, formatMW } from './format';
 
 const DEGREES = Math.PI / 180;
 
@@ -568,8 +568,8 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
         : enemyWithdrawing
           ? 'Enemy withdrawing: fire on it, but no pursuit'
           : ship.reserveWarning
-            ? `Δv near the ${formatMetresPerS(ship.reserve)} reserve`
-            : `Reserve ${formatMetresPerS(ship.reserve)}`;
+            ? `Δv near the ${formatKmPerS(ship.reserve)} reserve`
+            : `Reserve ${formatKmPerS(ship.reserve)}`;
 
       priorities = ship.power.priorities;
       labelPriorityRows();

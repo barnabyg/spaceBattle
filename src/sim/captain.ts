@@ -33,8 +33,7 @@ import type {
 } from './orders';
 import type { PowerSystem } from './power';
 import { designReach } from './weapons';
-import { RESERVE_WARNING } from './ship';
-import { cross, distance, dot, normalize, scale, sub, vec3, type Vec3 } from './vector';
+import { distance, dot, normalize, perpendiculars, scale, sub, type Vec3 } from './vector';
 
 /**
  * A side's commander as the battle sees it: it decides on orders from what its side observes,
@@ -68,18 +67,44 @@ interface SkillProfile {
   readonly managesPower: boolean;
   /** Whether it keeps out of reach of an enemy it outranges, rather than always closing in. */
   readonly keepsRange: boolean;
+  /** Whether it turns its best-armoured section to the enemy near the range it wants. */
+  readonly turnsArmour: boolean;
   /**
-   * Advanced tactics: it turns its best-armoured section to the enemy while it holds its range,
-   * and withdraws with some of its reserve to spare once out of the fight.
+   * Whether it times its withdrawal, leaving out of the fight with `EARLY_WITHDRAWAL` times its
+   * reserve still to spare rather than at the reserve itself.
    */
-  readonly advanced: boolean;
+  readonly withdrawsEarly: boolean;
 }
 
 const SKILLS: Readonly<Record<CaptainSkill, SkillProfile>> = {
-  low: { reconsider: 20, predicts: false, managesPower: false, keepsRange: false, advanced: false },
-  medium: { reconsider: 1, predicts: true, managesPower: true, keepsRange: true, advanced: false },
-  high: { reconsider: 1, predicts: true, managesPower: true, keepsRange: true, advanced: true },
+  low: {
+    reconsider: 20,
+    predicts: false,
+    managesPower: false,
+    keepsRange: false,
+    turnsArmour: false,
+    withdrawsEarly: false,
+  },
+  medium: {
+    reconsider: 1,
+    predicts: true,
+    managesPower: true,
+    keepsRange: true,
+    turnsArmour: false,
+    withdrawsEarly: false,
+  },
+  high: {
+    reconsider: 1,
+    predicts: true,
+    managesPower: true,
+    keepsRange: true,
+    turnsArmour: true,
+    withdrawsEarly: true,
+  },
 };
+
+/** A captain that times its withdrawal leaves with this many times its reserve still to spare. */
+const EARLY_WITHDRAWAL = 1.5;
 
 /** A ship that outranges its enemy holds at this fraction of its own reach. */
 const STANDOFF_FRACTION = 0.95;
@@ -369,9 +394,7 @@ const jink = (
   if (!dodging) return null;
   const sight = normalize(sub(enemy.position, ship.position));
   // Two directions across the line of sight, square to it and to each other.
-  const reference = Math.abs(sight.z) < 0.9 ? vec3(0, 0, 1) : vec3(1, 0, 0);
-  const across = normalize(cross(sight, reference));
-  const other = cross(sight, across);
+  const [across, other] = perpendiculars(sight);
   const directions = [across, other, scale(across, -1), scale(other, -1)];
   const direction =
     directions[Math.floor(observation.time / JINK_PERIOD) % directions.length] ?? across;
@@ -543,13 +566,8 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       case 'engine':
         return { type: 'attitude', mode: 'away' };
       case 'middle': {
-        const sight = normalize(offset);
-        const reference = Math.abs(sight.z) < 0.9 ? vec3(0, 0, 1) : vec3(1, 0, 0);
-        return {
-          type: 'attitude',
-          mode: 'direction',
-          direction: normalize(cross(sight, reference)),
-        };
+        const [broadside] = perpendiculars(normalize(offset));
+        return { type: 'attitude', mode: 'direction', direction: broadside };
       }
     }
   };
@@ -599,9 +617,10 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         priority: lastResort ? 'missiles-then-ship' : 'missiles',
       };
       const antiMissile: AntiMissileOrder = { type: 'anti-missile', automatic: true };
-      // It withdraws once it has nothing left to fight with, or at its reserve; with advanced
-      // tactics, with some of the reserve to spare while out of the fight.
-      const reserve = profile.advanced && !fighting ? RESERVE_WARNING * ship.reserve : ship.reserve;
+      // It withdraws once it has nothing left to fight with, or at its reserve; timing it, with
+      // some of the reserve to spare while out of the fight.
+      const reserve =
+        profile.withdrawsEarly && !fighting ? EARLY_WITHDRAWAL * ship.reserve : ship.reserve;
       const leaving = ship.withdrawing || (armed && reach === 0) || ship.deltaV <= reserve;
       // A withdrawing ship takes no other course, and the rules forbid pursuing one.
       const moving = !leaving && !enemy.withdrawing;
@@ -609,7 +628,7 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       const goal = moving ? manoeuvre(ship, reach, enemyReach) : null;
       // A ship that stops steering is easy for missiles, so it turns its armour only when none is
       // on its way.
-      const turning = profile.advanced && threats.length === 0;
+      const turning = profile.turnsArmour && threats.length === 0;
       const course = dodge ?? (goal && turning ? armourTowards(ship, enemy, goal) : goal);
       const orders: Order[] = [
         ...(leaving ? [{ type: 'withdraw' } as const] : []),

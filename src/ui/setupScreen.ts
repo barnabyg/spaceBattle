@@ -8,6 +8,7 @@ import {
   type FreeBattleSide,
 } from '../game/freeBattle';
 import type { CaptainSkill, Commander } from '../sim/battle';
+import { CAPTAIN_SKILLS } from '../sim/captain';
 import { designSummary } from './designSummary';
 import { el } from './el';
 import { formatKm, formatKmPerS } from './format';
@@ -18,11 +19,12 @@ const COMMANDERS: readonly (readonly [Commander, string])[] = [
   ['computer', 'Computer'],
 ];
 
-const SKILLS: readonly (readonly [CaptainSkill, string])[] = [
-  ['low', 'Low'],
-  ['medium', 'Medium'],
-  ['high', 'High'],
-];
+const SKILL_TEXT: Readonly<Record<CaptainSkill, string>> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+};
+const SKILLS = CAPTAIN_SKILLS.map((skill) => [skill, SKILL_TEXT[skill]] as const);
 
 export interface SetupScreenActions {
   /** Starts the battle with these choices. */
