@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { startFreeBattle } from './freeBattle';
+import { chooseSide, startFreeBattle } from './freeBattle';
 
 test('the map legend explains each layer and switches it off and on, kept for the session', async ({
   page,
@@ -14,7 +14,7 @@ test('the map legend explains each layer and switches it off and on, kept for th
   await expect(open).toHaveAttribute('aria-expanded', 'true');
   await expect(layers).toBeVisible();
   const toggles = layers.getByRole('checkbox');
-  await expect(toggles).toHaveCount(10);
+  await expect(toggles).toHaveCount(11);
   for (const toggle of await toggles.all()) await expect(toggle).toBeChecked();
 
   // Hiding the range rings hides their labels too, and leaves every other layer shown.
@@ -28,9 +28,9 @@ test('the map legend explains each layer and switches it off and on, kept for th
   await expect(ringLabels.first()).toBeVisible();
 
   // Each entry says what its layer means.
-  await expect(layers.getByRole('checkbox', { name: 'Velocity' })).toHaveAccessibleDescription(
-    /fixed frame/,
-  );
+  await expect(
+    layers.getByRole('checkbox', { name: 'Velocity', exact: true }),
+  ).toHaveAccessibleDescription(/fixed frame/);
 
   await layers.getByRole('checkbox', { name: 'Trail' }).uncheck();
   await open.click();
@@ -74,4 +74,27 @@ test("each ship's heading is a nose marker on its symbol, hidden with the headin
   await expect(ownHeading).toBeHidden();
   await toggle.check();
   await expect(ownHeading).toBeVisible();
+});
+
+test('the status panel shows closing and relative speed, with a relative velocity layer on the map', async ({
+  page,
+}) => {
+  // Head-on, both sides left to the player so neither burns: they close at 2 km/s each.
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Free battle' }).click();
+  await page.getByLabel('Scenario').selectOption({ label: 'Head-on' });
+  await chooseSide(page, 'Red', { commander: 'Player' });
+  await page.getByRole('button', { name: 'Start battle' }).click();
+  await page.keyboard.press(' ');
+  await expect(page.getByLabel('Closing speed')).toHaveText('4.00 km/s');
+  await expect(page.getByLabel('Relative speed')).toHaveText('4.00 km/s');
+
+  const map = page.getByRole('region', { name: 'Tactical map' });
+  await map.getByRole('button', { name: 'Legend' }).click();
+  const toggle = map.getByRole('checkbox', { name: 'Relative velocity' });
+  await expect(toggle).toBeChecked();
+  await expect(toggle).toHaveAccessibleDescription(/closing/);
+  await toggle.uncheck();
+  await expect(toggle).not.toBeChecked();
+  await expect(map.getByRole('checkbox', { name: 'Velocity', exact: true })).toBeChecked();
 });

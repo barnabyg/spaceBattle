@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { projectBurns, projectPath } from '../game/projection';
+import { followedContact, relativeMotion } from '../game/relativeMotion';
 import type { MunitionObservation, SideId, SideObservation, SideSetup } from '../sim/battle';
 import { designComponent } from '../sim/design';
 import type { BeamKind } from '../sim/events';
@@ -28,6 +29,8 @@ import {
   PLANNED_BURN_COLOUR,
   PROJECTION_COLOUR,
   RANGE_LABEL_COLOUR,
+  RELATIVE_VELOCITY_DASH,
+  RELATIVE_VELOCITY_PALENESS,
   RING_COLOURS,
   RING_SPACING_KM,
   SIDE_COLOURS,
@@ -224,6 +227,54 @@ export const createTacticalMap = (
     });
   });
 
+  const sideColours = new Map(
+    sides.map((side, index) => [side.id, new THREE.Color(colours[index] ?? '#ffffff')]),
+  );
+
+  // The followed contact's velocity relative to the own ship: a dashed arrow from the contact, in
+  // a pale tint of the contact's colour.
+  const relativeShaft = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+    new THREE.LineDashedMaterial(),
+  );
+  const relativeHead = new THREE.Mesh(
+    new THREE.ConeGeometry(0.5, 1, 5),
+    new THREE.MeshBasicMaterial(),
+  );
+  const relativeArrow = new THREE.Group().add(relativeShaft, relativeHead);
+  relativeArrow.visible = false;
+  scene.add(onLayer(relativeArrow, 'relative-velocity'));
+  const showRelativeVelocity = (observation: SideObservation) => {
+    const contact = followedContact(observation);
+    const v = contact
+      ? toScene(relativeMotion(observation.ownShip, contact).relativeVelocity).multiplyScalar(
+          VECTOR_SECONDS,
+        )
+      : new THREE.Vector3();
+    const vLength = v.length();
+    relativeArrow.visible = contact !== undefined && vLength > 0;
+    if (!contact || vLength === 0) return;
+    relativeShaft.material.color
+      .copy(sideColours.get(contact.sideId) ?? WHITE)
+      .lerp(WHITE, RELATIVE_VELOCITY_PALENESS);
+    relativeHead.material.color.copy(relativeShaft.material.color);
+    const from = toScene(contact.position);
+    const direction = v.normalize();
+    const headLength = Math.min(vLength * 0.15, 8_000);
+    const headWidth = Math.min(vLength * 0.08, 4_000);
+    const tip = from.clone().addScaledVector(direction, vLength);
+    relativeShaft.geometry.setFromPoints([
+      from,
+      tip.clone().addScaledVector(direction, -headLength),
+    ]);
+    relativeShaft.computeLineDistances();
+    relativeShaft.material.dashSize = vLength * RELATIVE_VELOCITY_DASH.dash;
+    relativeShaft.material.gapSize = vLength * RELATIVE_VELOCITY_DASH.gap;
+    relativeHead.position.copy(tip).addScaledVector(direction, -headLength / 2);
+    relativeHead.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    relativeHead.scale.set(headWidth, headLength, headWidth);
+  };
+
   // The own ship's projected path, through its planned burns.
   const projectionPositions = new Float32Array(PROJECTION_POINTS * 3);
   const projectionGeometry = new THREE.BufferGeometry();
@@ -285,9 +336,6 @@ export const createTacticalMap = (
 
   // Munitions in flight: a dot each, in the colour of the side that fired it; missiles larger,
   // anti-missile missiles paler.
-  const munitionColours = new Map(
-    sides.map((side, index) => [side.id, new THREE.Color(colours[index] ?? '#ffffff')]),
-  );
   const munitionDots = (size: number, paleness = 0) => {
     const tint = new THREE.Color();
     const geometry = new THREE.BufferGeometry();
@@ -320,7 +368,7 @@ export const createTacticalMap = (
           munition.position.y / KM,
           munition.position.z / KM,
         );
-        tint.copy(munitionColours.get(munition.attacker) ?? WHITE).lerp(WHITE, paleness);
+        tint.copy(sideColours.get(munition.attacker) ?? WHITE).lerp(WHITE, paleness);
         tints.setXYZ(i, tint.r, tint.g, tint.b);
       });
       positions.needsUpdate = true;
@@ -514,6 +562,7 @@ export const createTacticalMap = (
           observation.time,
         );
       }
+      showRelativeVelocity(observation);
       const target = observation.contacts.find((c) => c.sideId === own.weapons.target);
       const firing = new Set<BeamKind>([
         ...(own.weapons.lasers.some((l) => l.firing) ? (['laser'] as const) : []),

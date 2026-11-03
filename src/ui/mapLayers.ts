@@ -6,6 +6,7 @@ import { sessionStore, type SettingsStorage } from './sessionStore';
  */
 export const MAP_LAYERS = [
   'velocity',
+  'relative-velocity',
   'heading',
   'trail',
   'drop-lines',

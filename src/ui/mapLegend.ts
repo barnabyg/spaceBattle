@@ -12,6 +12,7 @@ import {
   MUNITION_SIZE,
   PLANNED_BURN_COLOUR,
   PROJECTION_COLOUR,
+  RELATIVE_VELOCITY_PALENESS,
   RING_COLOURS,
   RING_SPACING_KM,
   TRAIL_OPACITY,
@@ -79,6 +80,26 @@ const ENTRIES: Readonly<Record<MapLayer, LegendEntry>> = {
     name: 'Velocity',
     description: `Where each ship would drift in ${formatDuration(VECTOR_SECONDS)}, in the battle's fixed frame rather than relative to your ship. The only arrow whose length means something: the longer, the faster.`,
     sample: (colours) => bothShips(colours, (colour, y) => arrow(4, 36, y, colour)),
+  },
+  'relative-velocity': {
+    name: 'Relative velocity',
+    description: `Where the contact will be relative to your ship in ${formatDuration(VECTOR_SECONDS)}, on the velocity arrows' scale. Pointing at your ship means closing; none means the ships are not moving relative to each other.`,
+    sample: ([, contact = '#ffffff']) => {
+      // The map pales it by mixing in linear colour, as three.js does.
+      const colour = `color-mix(in srgb-linear, ${contact}, #ffffff ${RELATIVE_VELOCITY_PALENESS * 100}%)`;
+      return [
+        svg('line', {
+          x1: 4,
+          y1: 8,
+          x2: 31,
+          y2: 8,
+          style: `stroke: ${colour}`,
+          'stroke-width': 1.5,
+          'stroke-dasharray': DASHED,
+        }),
+        svg('polygon', { points: '36,8 31,5 31,11', style: `fill: ${colour}` }),
+      ];
+    },
   },
   heading: {
     name: 'Heading',

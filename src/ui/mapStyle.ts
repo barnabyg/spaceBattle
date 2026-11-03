@@ -9,6 +9,13 @@ export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
 
 /** Velocity vectors show where a ship would drift in this many seconds. */
 export const VECTOR_SECONDS = 20_000;
+/**
+ * The followed contact's relative velocity is a dashed arrow on the same scale as the velocity
+ * arrows, in its side's colour this far towards white.
+ */
+export const RELATIVE_VELOCITY_PALENESS = 0.45;
+/** Its dashes and gaps, as shares of the arrow's length. */
+export const RELATIVE_VELOCITY_DASH = { dash: 1 / 16, gap: 1 / 24 } as const;
 /** Trails are drawn in their side's colour, this opaque. */
 export const TRAIL_OPACITY = 0.45;
 /** Drop lines are dashed in their side's colour. */
