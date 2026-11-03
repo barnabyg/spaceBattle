@@ -8,6 +8,7 @@ import type { BattleOutcome } from '../sim/outcome';
 import { createRandom } from '../sim/random';
 import { fullCondition, type ShipCondition } from '../sim/ship';
 import { designCost } from '../shipyard/cost';
+import { refitPrice, refittedCondition } from './refit';
 import {
   conditionRepairCost,
   conditionRestockCost,
@@ -81,17 +82,13 @@ export const buildShip = (campaign: Campaign, design: Design): Campaign => {
   const cost = designCost(design);
   if (cost > campaign.credits) throw new Error('Not enough credits to build this design.');
   const number = campaign.shipsBuilt + 1;
-  const known = campaign.designs.some((d) => d.id === design.id);
   return {
-    ...campaign,
+    ...withDesign(campaign, design),
     credits: campaign.credits - cost,
     hangar: [
       ...campaign.hangar,
       { id: `ship-${number}`, name: `Ship ${number}`, design, condition: fullCondition(design) },
     ],
-    designs: known
-      ? campaign.designs.map((d) => (d.id === design.id ? design : d))
-      : [...campaign.designs, design],
     shipsBuilt: number,
   };
 };
@@ -218,4 +215,51 @@ export const restockShip = (campaign: Campaign, shipId: string): Campaign => {
     ...s,
     condition: restockedCondition(s.design, s.condition),
   }));
+};
+
+/** What refitting a ship to another design costs, credits (see `refitPrice`). */
+export const refitCost = (ship: CampaignShip, design: Design): number =>
+  refitPrice(ship.design, design);
+
+/** Adds a design to those the campaign can build, or updates it. */
+const withDesign = (campaign: Campaign, design: Design): Campaign => ({
+  ...campaign,
+  designs: campaign.designs.some((d) => d.id === design.id)
+    ? campaign.designs.map((d) => (d.id === design.id ? design : d))
+    : [...campaign.designs, design],
+});
+
+/**
+ * Refits a ship to another design on the same hull size, paying for the new components and the
+ * labour; whatever is taken out is scrapped. Components it keeps keep their damage.
+ */
+export const refitShip = (campaign: Campaign, shipId: string, design: Design): Campaign => {
+  const ship = shipOf(campaign, shipId);
+  if (design.hullSize !== ship.design.hullSize) {
+    throw new Error(
+      `A refit keeps the same hull size: ${ship.name} is a ${ship.design.hullSize}, not a ${design.hullSize}.`,
+    );
+  }
+  return withShip(withDesign(pay(campaign, refitCost(ship, design)), design), shipId, (s) => ({
+    ...s,
+    design,
+    condition: refittedCondition(s.design, s.condition, design),
+  }));
+};
+
+/**
+ * What a ship sells for: `BALANCE.saleShare` of what it would cost new, less what its repairs
+ * and restocking would cost, and never less than nothing, credits.
+ */
+export const saleValue = (ship: CampaignShip): number =>
+  BALANCE.saleShare * Math.max(0, designCost(ship.design) - repairCost(ship) - restockCost(ship));
+
+/** Sells a ship: it leaves the hangar and its sale value is paid. */
+export const sellShip = (campaign: Campaign, shipId: string): Campaign => {
+  const ship = shipOf(campaign, shipId);
+  return {
+    ...campaign,
+    credits: campaign.credits + saleValue(ship),
+    hangar: campaign.hangar.filter((s) => s.id !== shipId),
+  };
 };

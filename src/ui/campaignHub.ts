@@ -1,5 +1,12 @@
 import { BALANCE } from '../data/balance';
-import { repairCost, restockCost, type Campaign, type CampaignShip } from '../campaign/campaign';
+import {
+  refitCost,
+  repairCost,
+  restockCost,
+  saleValue,
+  type Campaign,
+  type CampaignShip,
+} from '../campaign/campaign';
 import type { Design } from '../sim/design';
 import { designCost } from '../shipyard/cost';
 import { el } from './el';
@@ -14,6 +21,10 @@ export interface CampaignHubActions {
   readonly onRepair: (shipId: string, share: number) => void;
   /** Refills a ship's propellant and ammunition. */
   readonly onRestock: (shipId: string) => void;
+  /** Refits a ship to another design on its hull size. */
+  readonly onRefit: (shipId: string, design: Design) => void;
+  /** Sells a ship. */
+  readonly onSell: (shipId: string) => void;
   /** Sends a ship from the hangar against an opponent of a tier. */
   readonly onFight: (shipId: string, tier: number) => void;
   /** Goes to the shipyard to design ships to build. */
@@ -54,6 +65,51 @@ export const createCampaignHub = (
    * A ship in the hangar: its design, what its damage would cost to repair and its used propellant
    * and ammunition to restock, and the buttons to pay for them; a share of the repair can be paid.
    */
+  const buildable = [
+    ...campaign.designs,
+    ...libraryDesigns.filter((d) => !campaign.designs.some((known) => known.id === d.id)),
+  ];
+
+  /** A ship's refit: the designs on its hull size to choose from, each with its price. */
+  const refitChoice = (ship: CampaignShip) => {
+    const options = buildable.filter(
+      (d) => d.hullSize === ship.design.hullSize && d.id !== ship.design.id,
+    );
+    const choice = el(
+      'select',
+      { attrs: { 'aria-label': `Refit ${ship.name} to` } },
+      ...options.map((d) =>
+        el('option', {
+          text: `${d.name} · ${formatCredits(refitCost(ship, d))}`,
+          attrs: { value: d.id },
+        }),
+      ),
+    );
+    const refit = button('Refit', `Refit ${ship.name}`);
+    refit.disabled = options.length === 0;
+    refit.addEventListener('click', () => {
+      const design = options.find((d) => d.id === choice.value);
+      if (design) actions.onRefit(ship.id, design);
+    });
+    return el('span', { className: 'campaign-list__actions' }, choice, refit);
+  };
+
+  /** Sells a ship, on a second click to confirm: it cannot be undone. */
+  const sellButton = (ship: CampaignShip) => {
+    const value = formatCredits(saleValue(ship));
+    const sell = button(`Sell for ${value}`, `Sell ${ship.name}`);
+    let armed = false;
+    sell.addEventListener('click', () => {
+      if (armed) {
+        actions.onSell(ship.id);
+        return;
+      }
+      armed = true;
+      sell.textContent = `Confirm sale for ${value}`;
+    });
+    return sell;
+  };
+
   const hangarEntry = (ship: CampaignShip) => {
     const repair = repairCost(ship);
     const restock = restockCost(ship);
@@ -101,6 +157,8 @@ export const createCampaignHub = (
         repairButton,
         restockButton,
       ),
+      refitChoice(ship),
+      sellButton(ship),
     );
   };
   const hangar = el('ul', { className: 'campaign-list' });
@@ -109,10 +167,6 @@ export const createCampaignHub = (
     hangar.append(el('li', { className: 'menu-note', text: 'No ships yet: build one below.' }));
   }
 
-  const buildable = [
-    ...campaign.designs,
-    ...libraryDesigns.filter((d) => !campaign.designs.some((known) => known.id === d.id)),
-  ];
   const designs = el(
     'ul',
     { className: 'campaign-list' },

@@ -12,8 +12,10 @@ import {
   PLAYER_SIDE,
   prepareBattle,
   recordBattle,
+  refitShip,
   repairShip,
   restockShip,
+  sellShip,
   tierOf,
   type Campaign,
   type CampaignBattle,
@@ -123,6 +125,12 @@ export const createApp = (root: HTMLElement) => {
           },
           onRestock: (shipId) => {
             act((c) => restockShip(c, shipId), 'Restocked.');
+          },
+          onRefit: (shipId, design) => {
+            act((c) => refitShip(c, shipId, design), `Refitted to ${design.name}.`);
+          },
+          onSell: (shipId) => {
+            act((c) => sellShip(c, shipId), 'Sold.');
           },
           onFight: (shipId, tier) => {
             if (campaign) showCampaignBattle(prepareBattle(campaign, shipId, tier));

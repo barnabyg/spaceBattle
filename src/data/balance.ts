@@ -31,6 +31,10 @@ export const BALANCE = {
    * structure that is wrecked.
    */
   repairPriceShare: 0.5,
+  /** A refit's labour costs this share of all the new design's components and armour. */
+  refitLabourShare: 0.2,
+  /** A ship sells for this share of what it would cost new, less its repairs and restocking. */
+  saleShare: 0.25,
   /** Price of each type of component, per kg of it; a magazine's ammunition is extra. */
   componentPrice: {
     drive: 30,

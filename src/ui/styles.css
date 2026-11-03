@@ -699,6 +699,7 @@ h3 {
 }
 
 .field select,
+.campaign-list select,
 .shipyard-component select {
   font: inherit;
   font-size: 1.1rem;
