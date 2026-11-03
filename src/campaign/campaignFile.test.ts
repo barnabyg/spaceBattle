@@ -70,5 +70,17 @@ describe('campaign files', () => {
     expect(() =>
       loadCampaign(JSON.stringify({ format: 'space-battle-campaign', version: 3 })),
     ).toThrow('newer version');
+    // Numbers written as text are not numbers, however they read.
+    const textual = saved.campaign.hangar.map((s) => ({
+      ...s,
+      condition: {
+        ...s.condition,
+        integrity: s.condition.integrity.map(String),
+        propellantMass: String(s.condition.propellantMass),
+      },
+    }));
+    expect(() =>
+      loadCampaign(JSON.stringify({ ...saved, campaign: { ...saved.campaign, hangar: textual } })),
+    ).toThrow('damaged');
   });
 });

@@ -287,24 +287,27 @@ export const conditionOf = (ship: ShipState): ShipCondition => ({
   magazines: ship.ammunition.map(({ slugs, rounds, missiles }) => ({ slugs, rounds, missiles })),
 });
 
-const isFraction = (value: number) => value >= 0 && value <= 1;
+/**
+ * Whether a value is a number from `low` to `high`. A condition may come from a file, where a
+ * number written as text would pass the comparisons alone.
+ */
+const isBetween = (value: unknown, low: number, high: number): boolean =>
+  typeof value === 'number' && value >= low && value <= high;
 
 /** Throws unless `condition` fits a ship of `design`. */
 const checkCondition = (design: Design, condition: ShipCondition): void => {
   const full = fullCondition(design);
   const fits =
     condition.integrity.length === full.integrity.length &&
-    condition.integrity.every(isFraction) &&
+    condition.integrity.every((value) => isBetween(value, 0, 1)) &&
     SECTION_KINDS.every((kind) => {
       const section = condition.sections[kind];
       return (
-        section.armour >= 0 &&
-        section.armour <= full.sections[kind].armour &&
-        isFraction(section.structure)
+        isBetween(section.armour, 0, full.sections[kind].armour) &&
+        isBetween(section.structure, 0, 1)
       );
     }) &&
-    condition.propellantMass >= 0 &&
-    condition.propellantMass <= design.propellantMass &&
+    isBetween(condition.propellantMass, 0, design.propellantMass) &&
     condition.magazines.length === full.magazines.length &&
     condition.magazines.every((held, i) => {
       const most = full.magazines[i];
