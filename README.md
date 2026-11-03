@@ -24,7 +24,11 @@ The game opens on the main menu. Choose **Free battle**, pick a **Scenario** for
 
 A low-skill computer captain reconsiders its plan only every 20 seconds, does not dodge, leaves power and heat alone and always closes in; a medium one manages power and heat and keeps out of reach of an enemy it outranges; a high one also turns its best armour to the enemy and withdraws with some reserve to spare. Every computer captain knows the enemy only through its sensors, and withdraws once it has nothing left to fight with or reaches its reserve.
 
+In battle, the time controls in the top bar pause the battle (or Space) and set its time compression with one button per speed, 1×, 10×, 100×, 500× and 1000× (or keys 1–5, and + / − to step between them); the chosen speed stays selected while paused. A significant event, such as a hit or a launch, drops time compression back to 1×.
+
 You know the enemy only as a contact: its position and motion always, the rest only as far as your sensors make it out at the range. The tactical map labels the contact with what is made out (position only, silhouette, sections, mounts), and **Aim at** in the weapons orders offers each section and mount once it is made out; until then the weapons aim at the whole ship.
+
+The tactical map's **Legend** shows how each layer is drawn and what it means, such as velocity, relative velocity, heading, trails and planned burns, with a switch to hide or show each one; the choices are kept for the browser session.
 
 Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** (click twice to confirm) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost.
 

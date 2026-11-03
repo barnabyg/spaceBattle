@@ -2,43 +2,49 @@ import type { BattleRunner } from '../game/battleRunner';
 import { el } from './el';
 import { formatBattleTime } from './format';
 
-/** Pause and time compression, as buttons and keyboard shortcuts. */
+/** How many time compressions have a number key: 1 to 5. */
+const NUMBERED = 5;
+
+/**
+ * Pause and time compression, as buttons and keyboard shortcuts: one button per time
+ * compression the runner offers, the current one pressed, and kept pressed while paused.
+ */
 export const createTimeControls = (runner: BattleRunner) => {
   const clock = el('output', { className: 'battle-clock', attrs: { 'aria-label': 'Battle time' } });
   const pause = el('button', { className: 'time-button', attrs: { type: 'button' } });
-  const slower = el('button', {
-    className: 'time-button',
-    text: '«',
-    attrs: { type: 'button', 'aria-label': 'Slower', title: 'Slower ( - )' },
-  });
-  const faster = el('button', {
-    className: 'time-button',
-    text: '»',
-    attrs: { type: 'button', 'aria-label': 'Faster', title: 'Faster ( + )' },
-  });
-  const compression = el('output', {
-    className: 'time-compression',
-    attrs: { 'aria-label': 'Time compression' },
+  const speeds = runner.compressions.map((compression, i) => {
+    const button = el('button', {
+      className: 'time-button time-speed',
+      text: `${compression}×`,
+      attrs: {
+        type: 'button',
+        'aria-pressed': 'false',
+        title: i < NUMBERED ? `${compression}× ( ${i + 1} )` : `${compression}×`,
+      },
+    });
+    button.addEventListener('click', () => {
+      runner.setTimeCompression(compression);
+    });
+    return { compression, button };
   });
   const element = el(
     'div',
     { className: 'time-controls', attrs: { role: 'group', 'aria-label': 'Time controls' } },
     clock,
     pause,
-    slower,
-    compression,
-    faster,
-    el('span', { className: 'time-hint', text: 'Space pause · + / − time compression' }),
+    el(
+      'div',
+      { className: 'time-speeds', attrs: { role: 'group', 'aria-label': 'Time compression' } },
+      ...speeds.map(({ button }) => button),
+    ),
+    el('span', {
+      className: 'time-hint',
+      text: `Space pause · 1–${String(Math.min(speeds.length, NUMBERED))} or + / − time compression`,
+    }),
   );
 
   pause.addEventListener('click', () => {
     runner.togglePause();
-  });
-  slower.addEventListener('click', () => {
-    runner.slower();
-  });
-  faster.addEventListener('click', () => {
-    runner.faster();
   });
 
   const onKey = (event: KeyboardEvent) => {
@@ -60,8 +66,13 @@ export const createTimeControls = (runner: BattleRunner) => {
       case '[':
         runner.slower();
         break;
-      default:
-        return;
+      default: {
+        // Number keys 1 to NUMBERED choose a time compression directly.
+        const index = /^[1-9]$/.test(event.key) ? Number(event.key) - 1 : NUMBERED;
+        const compression = index < NUMBERED ? runner.compressions[index] : undefined;
+        if (compression === undefined) return;
+        runner.setTimeCompression(compression);
+      }
     }
     event.preventDefault();
   };
@@ -74,7 +85,10 @@ export const createTimeControls = (runner: BattleRunner) => {
       pause.textContent = runner.paused ? '▶' : '❚❚';
       pause.setAttribute('aria-label', runner.paused ? 'Resume' : 'Pause');
       pause.title = runner.paused ? 'Resume (Space)' : 'Pause (Space)';
-      compression.textContent = runner.paused ? 'Paused' : `${runner.timeCompression}×`;
+      pause.classList.toggle('time-paused', runner.paused);
+      for (const { compression, button } of speeds) {
+        button.setAttribute('aria-pressed', String(compression === runner.timeCompression));
+      }
     },
     dispose() {
       window.removeEventListener('keydown', onKey);

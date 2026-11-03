@@ -94,10 +94,26 @@ button {
   border-color: var(--accent);
 }
 
-.time-compression {
-  min-width: 5em;
-  text-align: center;
+.time-button.time-paused {
+  border-color: #ffb347;
+  color: #ffb347;
+}
+
+.time-speeds {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.time-speed {
+  min-width: 4.2rem;
   font-variant-numeric: tabular-nums;
+}
+
+.time-speed[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
 }
 
 .time-hint {
@@ -199,21 +215,34 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* The symbol is the glyph's size, so the map centres the glyph on the ship's position. */
 .ship-symbol {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  position: relative;
+  width: 1rem;
+  height: 1rem;
   color: var(--side-colour);
   pointer-events: none;
-  /* Centre the glyph, not the whole symbol, on the ship's position. */
-  transform: translateX(calc(50% - 0.5rem));
 }
 
 .ship-symbol__glyph {
+  display: block;
   width: 1rem;
   height: 1rem;
   border: 3px solid var(--side-colour);
   background: color-mix(in srgb, var(--side-colour) 30%, transparent);
+}
+
+/* The nose marker: a tick out from the glyph, turned to the heading as seen on screen. */
+.ship-symbol__heading {
+  position: absolute;
+  top: calc(50% - 0.125rem);
+  left: 50%;
+  width: 1.1rem;
+  height: 0.25rem;
+  border-radius: 0.125rem;
+  background: var(--side-colour);
+  transform-origin: 0 50%;
+  transform: rotate(var(--angle, 0rad)) translateX(0.6rem) scaleX(var(--length, 1));
 }
 
 .ship-symbol--own .ship-symbol__glyph {
@@ -225,6 +254,11 @@ button {
 }
 
 .ship-symbol__label {
+  position: absolute;
+  top: 50%;
+  /* Clear of the nose marker, whichever way it points. */
+  left: 2.4rem;
+  transform: translateY(-50%);
   font-size: 0.8rem;
   white-space: nowrap;
   text-shadow: 0 0 4px #000;
@@ -233,6 +267,70 @@ button {
 .range-label {
   color: #4d6488;
   font-size: 0.7rem;
+}
+
+.map-legend {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+  max-height: calc(100% - 2rem);
+}
+
+.map-legend__button {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+}
+
+.map-legend__button:hover,
+.map-legend__button[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+
+.map-legend__entries {
+  width: 22rem;
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  list-style: none;
+  overflow-y: auto;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+
+.map-legend__entry + .map-legend__entry {
+  margin-top: 0.4rem;
+}
+
+.map-legend__entry label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.map-legend__sample {
+  flex: none;
+  width: 2.5rem;
+  height: 1rem;
+  background: var(--bg);
+}
+
+.map-legend__description {
+  margin: 0.1rem 0 0 4.4rem;
+  color: var(--muted);
+  font-size: 0.75rem;
 }
 
 .scale-bar {
@@ -282,9 +380,17 @@ h3 {
   border-color: var(--accent);
 }
 
+/* The order in effect: filled, bold and ticked, so it reads apart from a hovered button without colour. */
 .order-button.active {
   border-color: var(--accent);
-  background: #1c3358;
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+/* The tick is decoration: aria-pressed tells assistive tech, so it stays out of the button's name. */
+.order-button.active::before {
+  content: '✓ ' / '';
 }
 
 .order-state {
@@ -316,14 +422,49 @@ h3 {
   padding: 0.2rem 0.4rem;
 }
 
+/* A planned burn: hollow chevrons pointing the way the drive will push, centred on where. */
 .planned-burn {
-  color: #ffb347;
+  position: relative;
+  width: 1.4rem;
+  height: 1.4rem;
+  color: var(--burn-colour);
+  pointer-events: none;
+}
+
+.planned-burn__chevrons {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--angle, 0rad)) scaleX(var(--length, 1));
+}
+
+.planned-burn__chevrons::before,
+.planned-burn__chevrons::after {
+  content: '';
+  position: absolute;
+  top: 0.4rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-top: 3px solid var(--burn-colour);
+  border-right: 3px solid var(--burn-colour);
+  transform: rotate(45deg);
+}
+
+.planned-burn__chevrons::before {
+  left: 0.1rem;
+}
+
+.planned-burn__chevrons::after {
+  left: 0.6rem;
+}
+
+.planned-burn__text {
+  position: absolute;
+  bottom: 1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 0.75rem;
   white-space: nowrap;
   text-shadow: 0 0 4px #000;
-  pointer-events: none;
-  /* Sit above the arrow's base rather than on top of it. */
-  margin-top: -2rem;
 }
 
 .priority-list {

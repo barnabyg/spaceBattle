@@ -18,8 +18,12 @@ test('the player withdraws and sees the result', async ({ page }) => {
   // The contact shows only what Blue's sensor makes out of it.
   await expect(page.getByRole('region', { name: 'Tactical map' })).toContainText(/Red · .* · /);
   const withdraw = page.getByRole('button', { name: 'Withdraw', exact: true });
+  await expect(withdraw).toHaveAttribute('aria-pressed', 'false');
   await withdraw.click();
-  await page.getByRole('button', { name: 'Confirm withdrawal' }).click();
+  // Waiting for confirmation is not yet the order.
+  const confirm = page.getByRole('button', { name: 'Confirm withdrawal' });
+  await expect(confirm).toHaveAttribute('aria-pressed', 'false');
+  await confirm.click();
   // Out of reach of the Bastion's weapons at the start, Blue is gone at once.
   const result = page.getByRole('dialog', { name: 'Battle result' });
   await expect(result).toBeVisible({ timeout: 30_000 });

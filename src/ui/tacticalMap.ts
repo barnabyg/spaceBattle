@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { projectBurns, projectPath } from '../game/projection';
+import { followedContact, relativeMotion } from '../game/relativeMotion';
 import type { MunitionObservation, SideId, SideObservation, SideSetup } from '../sim/battle';
 import { designComponent } from '../sim/design';
 import type { BeamKind } from '../sim/events';
@@ -11,14 +12,35 @@ import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { CONTACT_DETAIL_TEXT, formatDuration, formatKm, formatKmPerS } from './format';
+import { createMapLegend } from './mapLegend';
+import { loadMapLayers, MAP_LAYERS, saveMapLayers, type MapLayer } from './mapLayers';
+import {
+  ANTI_MISSILE_PALENESS,
+  ANTI_MISSILE_SIZE,
+  BEAM_OPACITY,
+  BEAM_STYLES,
+  BURST_COLOUR,
+  BURST_FLASH_SIZE,
+  DROP_LINE_DASH,
+  INTERCEPT_COLOUR,
+  INTERCEPT_FLASH_SIZE,
+  MISSILE_SIZE,
+  MUNITION_SIZE,
+  PLANNED_BURN_COLOUR,
+  PROJECTION_COLOUR,
+  RELATIVE_VELOCITY_DASH,
+  RELATIVE_VELOCITY_PALENESS,
+  RING_COLOURS,
+  RING_SPACING_KM,
+  SIDE_COLOURS,
+  TRAIL_OPACITY,
+  VECTOR_SECONDS,
+} from './mapStyle';
 import { softGlowTexture } from './shipModel';
 
 /** Scene units are kilometres; the simulation works in metres. */
 const KM = 1000;
-const RING_SPACING_KM = 50_000;
 const RING_COUNT = 10;
-/** Velocity vectors show where a ship would drift in this many seconds. */
-const VECTOR_SECONDS = 20_000;
 /** Simulated seconds between points on a ship's trail. */
 const TRAIL_INTERVAL = 30;
 const TRAIL_POINTS = 2_000;
@@ -29,37 +51,22 @@ const MAX_PROJECTION_HORIZON = 24 * 3_600;
 const PROJECTION_POINTS = 121;
 /** Planned burns shown on the map, in order. */
 const MAX_PLANNED_BURNS = 4;
-const PLANNED_BURN_COLOUR = '#ffb347';
-/** How the own ship's beams are drawn while firing: lasers solid green, particle beams apart. */
-const BEAM_STYLES: Readonly<
-  Record<BeamKind, { readonly colour: string; readonly dashed: boolean }>
-> = {
-  laser: { colour: '#7dffb0', dashed: false },
-  'charged-particle': { colour: '#c890ff', dashed: false },
-  'neutral-particle': { colour: '#7fe0ff', dashed: true },
-};
-/** Heading lines are this fraction of the camera's distance from the own ship. */
-const HEADING_SCALE = 0.06;
-/** Munitions in flight are drawn as dots this many pixels across. */
-const MUNITION_SIZE = 5;
-/** Missiles are drawn larger than slugs, px. */
-const MISSILE_SIZE = 9;
-/**
- * Anti-missile missiles are drawn between the two, px, and paler: their side's colour this far
- * towards white.
- */
-const ANTI_MISSILE_SIZE = 7;
-const ANTI_MISSILE_PALENESS = 0.55;
+/** A heading shortens on screen as it turns towards or away from the camera, down to this share. */
+const MIN_FORESHORTENING = 0.25;
 const WHITE = new THREE.Color('#ffffff');
 
-/** A nuclear burst's flash, at its brightest this share of the map's height across. */
-const BURST_FLASH_SIZE = 0.12;
-const BURST_COLOUR = '#fffbe8';
-/** A missile shot down flashes smaller, in amber. */
-const INTERCEPT_FLASH_SIZE = 0.04;
-const INTERCEPT_COLOUR = '#ffc24d';
-
-export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
+/**
+ * Each layer the captain can hide draws on its own camera layer, so hiding it only stops it being
+ * drawn: it keeps updating, and shows its current state when shown again. Layer 0, always drawn,
+ * holds the ship symbols.
+ */
+const cameraLayer = (layer: MapLayer) => MAP_LAYERS.indexOf(layer) + 1;
+const onLayer = <T extends THREE.Object3D>(object: T, layer: MapLayer): T => {
+  object.traverse((part) => {
+    part.layers.set(cameraLayer(layer));
+  });
+  return object;
+};
 
 const toScene = (v: Vec3) => new THREE.Vector3(v.x / KM, v.y / KM, v.z / KM);
 
@@ -68,7 +75,11 @@ interface ShipMarker {
   readonly label: HTMLElement;
   readonly velocity: THREE.ArrowHelper;
   readonly dropLine: THREE.Line;
-  readonly heading: THREE.Line;
+  /** The nose marker on the symbol, turned to the ship's heading as seen on screen. */
+  readonly heading: HTMLElement;
+  /** The ship's position and which way its nose points, or null if not made out. */
+  readonly at: THREE.Vector3;
+  nose: THREE.Vector3 | null;
   readonly trail: THREE.Line;
   readonly trailPositions: Float32Array;
   trailCount: number;
@@ -116,6 +127,21 @@ export const createTacticalMap = (
   controls.minDistance = 2_000;
   controls.maxDistance = 5_000_000;
 
+  let layers = loadMapLayers();
+  const showLayers = () => {
+    for (const layer of MAP_LAYERS) {
+      if (layers[layer]) camera.layers.enable(cameraLayer(layer));
+      else camera.layers.disable(cameraLayer(layer));
+    }
+  };
+  showLayers();
+  const legend = createMapLegend(colours, layers, (shown) => {
+    layers = shown;
+    showLayers();
+    saveMapLayers(layers);
+  });
+  element.append(legend.element);
+
   // Range rings around the captain's own ship, in the plane of the own ship.
   const grid = new THREE.Group();
   const polar = new THREE.PolarGridHelper(
@@ -123,24 +149,31 @@ export const createTacticalMap = (
     12,
     RING_COUNT,
     128,
-    '#2b3d5a',
-    '#1a2638',
+    RING_COLOURS.spokes,
+    RING_COLOURS.rings,
   );
   polar.rotation.x = Math.PI / 2;
   grid.add(polar);
   for (let ring = 2; ring <= RING_COUNT; ring += 2) {
     const label = new CSS2DObject(
-      el('span', { className: 'range-label', text: formatKm(ring * RING_SPACING_KM * KM) }),
+      el('span', {
+        className: 'range-label',
+        text: formatKm(ring * RING_SPACING_KM * KM),
+      }),
     );
     label.position.set(ring * RING_SPACING_KM, 0, 0);
     grid.add(label);
   }
-  scene.add(grid);
+  scene.add(onLayer(grid, 'range-rings'));
 
   const markers = new Map<SideId, ShipMarker>();
   sides.forEach((side, index) => {
     const colour = colours[index] ?? '#ffffff';
     const label = el('span', { className: 'ship-symbol__label' });
+    const heading = el('span', {
+      className: 'ship-symbol__heading',
+      attrs: { 'aria-hidden': 'true' },
+    });
     const symbol = new CSS2DObject(
       el(
         'div',
@@ -149,6 +182,7 @@ export const createTacticalMap = (
           attrs: { 'data-side': side.id, style: `--side-colour: ${colour}` },
         },
         el('span', { className: 'ship-symbol__glyph', attrs: { 'aria-hidden': 'true' } }),
+        heading,
         label,
       ),
     );
@@ -160,7 +194,7 @@ export const createTacticalMap = (
     );
     const dropLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-      new THREE.LineDashedMaterial({ color: colour, dashSize: 4_000, gapSize: 4_000 }),
+      new THREE.LineDashedMaterial({ color: colour, ...DROP_LINE_DASH }),
     );
     const trailPositions = new Float32Array(TRAIL_POINTS * 3);
     const trailGeometry = new THREE.BufferGeometry();
@@ -168,19 +202,22 @@ export const createTacticalMap = (
     trailGeometry.setDrawRange(0, 0);
     const trail = new THREE.Line(
       trailGeometry,
-      new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 0.45 }),
+      new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: TRAIL_OPACITY }),
     );
-    const heading = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-      new THREE.LineBasicMaterial({ color: '#ffffff' }),
+    scene.add(
+      symbol,
+      onLayer(velocity, 'velocity'),
+      onLayer(dropLine, 'drop-lines'),
+      onLayer(trail, 'trail'),
     );
-    scene.add(symbol, velocity, dropLine, heading, trail);
     markers.set(side.id, {
       symbol,
       label,
       velocity,
       dropLine,
       heading,
+      at: new THREE.Vector3(),
+      nose: null,
       trail,
       trailPositions,
       trailCount: 0,
@@ -188,30 +225,89 @@ export const createTacticalMap = (
     });
   });
 
+  const sideColours = new Map(
+    sides.map((side, index) => [side.id, new THREE.Color(colours[index] ?? '#ffffff')]),
+  );
+
+  // The followed contact's velocity relative to the own ship: a dashed arrow from the contact, in
+  // a pale tint of the contact's colour.
+  const relativeShaft = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+    new THREE.LineDashedMaterial(),
+  );
+  const relativeHead = new THREE.Mesh(
+    new THREE.ConeGeometry(0.5, 1, 5),
+    new THREE.MeshBasicMaterial(),
+  );
+  const relativeArrow = new THREE.Group().add(relativeShaft, relativeHead);
+  relativeArrow.visible = false;
+  scene.add(onLayer(relativeArrow, 'relative-velocity'));
+  const showRelativeVelocity = (observation: SideObservation) => {
+    const contact = followedContact(observation);
+    const v = contact
+      ? toScene(relativeMotion(observation.ownShip, contact).relativeVelocity).multiplyScalar(
+          VECTOR_SECONDS,
+        )
+      : new THREE.Vector3();
+    const vLength = v.length();
+    relativeArrow.visible = contact !== undefined && vLength > 0;
+    if (!contact || vLength === 0) return;
+    relativeShaft.material.color
+      .copy(sideColours.get(contact.sideId) ?? WHITE)
+      .lerp(WHITE, RELATIVE_VELOCITY_PALENESS);
+    relativeHead.material.color.copy(relativeShaft.material.color);
+    const from = toScene(contact.position);
+    const direction = v.normalize();
+    const headLength = Math.min(vLength * 0.15, 8_000);
+    const headWidth = Math.min(vLength * 0.08, 4_000);
+    const tip = from.clone().addScaledVector(direction, vLength);
+    relativeShaft.geometry.setFromPoints([
+      from,
+      tip.clone().addScaledVector(direction, -headLength),
+    ]);
+    relativeShaft.computeLineDistances();
+    relativeShaft.material.dashSize = vLength * RELATIVE_VELOCITY_DASH.dash;
+    relativeShaft.material.gapSize = vLength * RELATIVE_VELOCITY_DASH.gap;
+    relativeHead.position.copy(tip).addScaledVector(direction, -headLength / 2);
+    relativeHead.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    relativeHead.scale.set(headWidth, headLength, headWidth);
+  };
+
   // The own ship's projected path, through its planned burns.
   const projectionPositions = new Float32Array(PROJECTION_POINTS * 3);
   const projectionGeometry = new THREE.BufferGeometry();
   projectionGeometry.setAttribute('position', new THREE.BufferAttribute(projectionPositions, 3));
   const projection = new THREE.Line(
     projectionGeometry,
-    new THREE.LineDashedMaterial({ color: '#9fd0ff', dashSize: 2_000, gapSize: 2_000 }),
+    new THREE.LineDashedMaterial({ color: PROJECTION_COLOUR, dashSize: 2_000, gapSize: 2_000 }),
   );
-  scene.add(projection);
+  scene.add(onLayer(projection, 'projected-path'));
 
-  // Where and which way the autopilot plans to burn, along the projected path.
+  // Where and which way the autopilot plans to burn, along the projected path: chevrons pointing
+  // the way it will burn, unlike the velocity arrows, since their size means nothing.
   const plannedBurnMarkers = Array.from({ length: MAX_PLANNED_BURNS }, () => {
-    const arrow = new THREE.ArrowHelper(
-      new THREE.Vector3(1, 0, 0),
-      new THREE.Vector3(),
-      1,
-      PLANNED_BURN_COLOUR,
+    const chevrons = el('span', {
+      className: 'planned-burn__chevrons',
+      attrs: { 'aria-hidden': 'true' },
+    });
+    const text = el('span', { className: 'planned-burn__text' });
+    const label = new CSS2DObject(
+      el(
+        'div',
+        { className: 'planned-burn', attrs: { style: `--burn-colour: ${PLANNED_BURN_COLOUR}` } },
+        chevrons,
+        text,
+      ),
     );
-    const text = el('span', { className: 'planned-burn' });
-    const label = new CSS2DObject(text);
-    arrow.visible = false;
     label.visible = false;
-    scene.add(arrow, label);
-    return { arrow, label, text };
+    scene.add(onLayer(label, 'planned-burns'));
+    return {
+      label,
+      text,
+      chevrons,
+      at: new THREE.Vector3(),
+      direction: new THREE.Vector3(),
+    };
   });
   const ownDrive = sides[0] ? designComponent(sides[0].design, 'drive') : undefined;
 
@@ -222,25 +318,22 @@ export const createTacticalMap = (
       ? new THREE.LineDashedMaterial({
           color: colour,
           transparent: true,
-          opacity: 0.8,
+          opacity: BEAM_OPACITY,
           dashSize: 1_000,
           gapSize: 600,
         })
-      : new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 0.8 });
+      : new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: BEAM_OPACITY });
     const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
       material,
     );
     line.visible = false;
-    scene.add(line);
+    scene.add(onLayer(line, 'beams'));
     return { kind, line };
   });
 
   // Munitions in flight: a dot each, in the colour of the side that fired it; missiles larger,
   // anti-missile missiles paler.
-  const munitionColours = new Map(
-    sides.map((side, index) => [side.id, new THREE.Color(colours[index] ?? '#ffffff')]),
-  );
   const munitionDots = (size: number, paleness = 0) => {
     const tint = new THREE.Color();
     const geometry = new THREE.BufferGeometry();
@@ -250,7 +343,7 @@ export const createTacticalMap = (
       new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true }),
     );
     points.frustumCulled = false;
-    scene.add(points);
+    scene.add(onLayer(points, 'munitions'));
     return (shown: readonly MunitionObservation[]) => {
       if (shown.length > capacity) {
         capacity = Math.max(256, 2 * shown.length);
@@ -273,7 +366,7 @@ export const createTacticalMap = (
           munition.position.y / KM,
           munition.position.z / KM,
         );
-        tint.copy(munitionColours.get(munition.attacker) ?? WHITE).lerp(WHITE, paleness);
+        tint.copy(sideColours.get(munition.attacker) ?? WHITE).lerp(WHITE, paleness);
         tints.setXYZ(i, tint.r, tint.g, tint.b);
       });
       positions.needsUpdate = true;
@@ -295,7 +388,7 @@ export const createTacticalMap = (
     );
     sprite.renderOrder = 2;
     sprite.visible = false;
-    scene.add(sprite);
+    scene.add(onLayer(sprite, 'flashes'));
     return sprite;
   };
   // A nuclear burst flashes where it went off, fading in a second or two.
@@ -352,12 +445,10 @@ export const createTacticalMap = (
   ) => {
     const { position, velocity } = ship;
     const p = toScene(position);
-    const headingLength = camera.position.distanceTo(controls.target) * HEADING_SCALE;
-    marker.heading.visible = ship.orientation !== null;
-    if (ship.orientation) {
-      const nose = toScene(rotate(ship.orientation, vec3(1, 0, 0))).normalize();
-      marker.heading.geometry.setFromPoints([p, p.clone().addScaledVector(nose, headingLength)]);
-    }
+    marker.at.copy(p);
+    marker.nose = ship.orientation
+      ? toScene(rotate(ship.orientation, vec3(1, 0, 0))).normalize()
+      : null;
 
     marker.symbol.position.copy(p);
     marker.label.textContent = text;
@@ -403,6 +494,37 @@ export const createTacticalMap = (
     scaleLabel.textContent = formatKm(barKm * KM);
   };
 
+  /**
+   * Turns a mark at `at` to point along `direction` (a unit vector) as seen on screen, shortened
+   * as the direction turns towards or away from the camera.
+   */
+  const pointOnScreen = (mark: HTMLElement, at: THREE.Vector3, direction: THREE.Vector3) => {
+    const view = at.clone().sub(camera.position).normalize();
+    const across = Math.sqrt(Math.max(0, 1 - direction.dot(view) ** 2));
+    const step = camera.position.distanceTo(at) * 0.01;
+    const from = at.clone().project(camera);
+    const to = at.clone().addScaledVector(direction, step).project(camera);
+    // Screen y runs down, normalised device y up.
+    const angle = Math.atan2(
+      -(to.y - from.y) * element.clientHeight,
+      (to.x - from.x) * element.clientWidth,
+    );
+    mark.style.setProperty('--angle', `${angle}rad`);
+    mark.style.setProperty('--length', String(Math.max(across, MIN_FORESHORTENING)));
+  };
+
+  /** Turns the heading and planned-burn marks to the camera's view; run once it has moved. */
+  const pointMarks = () => {
+    for (const marker of markers.values()) {
+      marker.heading.hidden = marker.nose === null || !layers.heading;
+      if (marker.nose && !marker.heading.hidden)
+        pointOnScreen(marker.heading, marker.at, marker.nose);
+    }
+    for (const marker of plannedBurnMarkers) {
+      if (marker.label.visible) pointOnScreen(marker.chevrons, marker.at, marker.direction);
+    }
+  };
+
   const sideName = (id: SideId) => sides.find((s) => s.id === id)?.name ?? id;
   let previousCentre: THREE.Vector3 | undefined;
 
@@ -438,6 +560,7 @@ export const createTacticalMap = (
           observation.time,
         );
       }
+      showRelativeVelocity(observation);
       const target = observation.contacts.find((c) => c.sideId === own.weapons.target);
       const firing = new Set<BeamKind>([
         ...(own.weapons.lasers.some((l) => l.firing) ? (['laser'] as const) : []),
@@ -475,17 +598,13 @@ export const createTacticalMap = (
         projection.computeLineDistances();
 
         const burns = projectBurns(own, ownDrive, horizon);
-        const arrowLength = camera.position.distanceTo(controls.target) * HEADING_SCALE * 1.5;
         plannedBurnMarkers.forEach((marker, i) => {
           const planned = burns[i];
-          marker.arrow.visible = planned !== undefined;
           marker.label.visible = planned !== undefined;
           if (!planned) return;
-          const at = toScene(planned.position);
-          marker.arrow.position.copy(at);
-          marker.arrow.setDirection(toScene(planned.burn.direction).normalize());
-          marker.arrow.setLength(arrowLength, arrowLength * 0.3, arrowLength * 0.15);
-          marker.label.position.copy(at);
+          marker.at.copy(toScene(planned.position));
+          marker.direction.copy(toScene(planned.burn.direction)).normalize();
+          marker.label.position.copy(marker.at);
           marker.text.textContent =
             planned.burn.start < 1
               ? `Burn ${formatDuration(planned.burn.duration)}`
@@ -495,6 +614,7 @@ export const createTacticalMap = (
     },
     render() {
       controls.update();
+      pointMarks();
       updateScaleBar();
       renderer.render(scene, camera);
       labelRenderer.render(scene, camera);

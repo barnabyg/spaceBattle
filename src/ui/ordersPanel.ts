@@ -28,6 +28,12 @@ const numberInput = (label: string, value: number, attrs: Record<string, string>
 const button = (text: string) =>
   el('button', { className: 'order-button', text, attrs: { type: 'button' } });
 
+/** Shows whether a toggle order is in effect, to sight and to assistive tech alike. */
+const setPressed = (orderButton: HTMLButtonElement, pressed: boolean) => {
+  orderButton.classList.toggle('active', pressed);
+  orderButton.setAttribute('aria-pressed', String(pressed));
+};
+
 /** An aim point as the value of an option: "whole", "middle" or "forward/0". */
 const aimValue = (aim: AimPoint | null): string =>
   aim === null ? 'whole' : aim.mount === null ? aim.section : `${aim.section}/${String(aim.mount)}`;
@@ -337,6 +343,10 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   lowerShields.addEventListener('click', () => {
     giveOrder({ type: 'shields', raised: false });
   });
+  const shieldsState = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Shields state' },
+  });
 
   const targetEnemy = button('Target enemy');
   const noTarget = button('No target');
@@ -506,6 +516,7 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
     el('h3', { text: 'Shields' }),
     el('div', { className: 'order-row' }, raiseShields, lowerShields),
+    shieldsState,
     el('h3', { text: 'Weapons' }),
     el('div', { className: 'order-row' }, targetEnemy, noTarget),
     el('div', { className: 'order-row' }, fireFreely, holdFire),
@@ -544,24 +555,26 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
             : attitude.mode === 'away'
               ? 'Pointing away from enemy'
               : 'Pointing along set direction';
-      pointAtEnemy.classList.toggle('active', attitude?.mode === 'enemy');
-      pointAway.classList.toggle('active', attitude?.mode === 'away');
-      pointCustom.classList.toggle('active', attitude?.mode === 'direction');
+      setPressed(pointAtEnemy, attitude?.mode === 'enemy');
+      setPressed(pointAway, attitude?.mode === 'away');
+      setPressed(pointCustom, attitude?.mode === 'direction');
       burnState.textContent = ship.burn
         ? `Burning at ${Math.round(ship.burn.throttle * 100)}% · ${Math.ceil(ship.burn.remaining)} s left`
         : manoeuvre
           ? 'Set by the manoeuvre'
           : 'Drive off';
       for (const [goal, goalButton] of Object.entries(goalButtons)) {
-        goalButton.classList.toggle('active', manoeuvre?.goal === goal);
+        setPressed(goalButton, manoeuvre?.goal === goal);
       }
-      manual.classList.toggle('active', !manoeuvre);
+      setPressed(manual, !manoeuvre);
       manoeuvreState.textContent = manoeuvre ? describeGoal(manoeuvre) : 'Manual control';
       planState.textContent = manoeuvre
         ? `${describePlan(manoeuvre)}${ship.reserveWarning ? ' · Δv near reserve' : ''}`
         : '';
+      // Pressed once the withdrawal is ordered, not while a first click waits for confirmation;
+      // it cannot be taken back, so the button is then disabled.
       withdraw.disabled = ship.withdrawing;
-      withdraw.classList.toggle('active', ship.withdrawing);
+      setPressed(withdraw, ship.withdrawing);
       const enemyWithdrawing = observation.contacts.some((c) => c.withdrawing);
       withdrawState.textContent = ship.withdrawing
         ? 'Withdrawing: burning away from the enemy'
@@ -578,13 +591,19 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
         const row = priorityRows[rank];
         if (row) row.share.textContent = `${formatMW(supplied)} of ${formatMW(demand)}`;
       });
-      deployRadiators.classList.toggle('active', ship.heat.radiatorsDeployed);
-      retractRadiators.classList.toggle('active', !ship.heat.radiatorsDeployed);
+      setPressed(deployRadiators, ship.heat.radiatorsDeployed);
+      setPressed(retractRadiators, !ship.heat.radiatorsDeployed);
       const shielded = ship.shields.shields.length > 0;
       raiseShields.disabled = !shielded;
       lowerShields.disabled = !shielded;
-      raiseShields.classList.toggle('active', shielded && ship.shields.raised);
-      lowerShields.classList.toggle('active', shielded && !ship.shields.raised);
+      shieldsState.hidden = !shielded;
+      shieldsState.textContent = shielded
+        ? ship.shields.raised
+          ? 'Shields raised'
+          : 'Shields lowered'
+        : '';
+      setPressed(raiseShields, shielded && ship.shields.raised);
+      setPressed(lowerShields, shielded && !ship.shields.raised);
 
       weapons = { target: ship.weapons.target, mode: ship.weapons.mode, aim: ship.weapons.aim };
       enemy = observation.contacts[0]?.sideId ?? null;
@@ -602,23 +621,24 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       // An aim not made out any more shows as the whole ship, which the weapons fall back on.
       const shown = aimValue(weapons.aim);
       aimSelect.value = aims.has(shown) ? shown : 'whole';
-      targetEnemy.classList.toggle('active', weapons.target !== null);
-      noTarget.classList.toggle('active', weapons.target === null);
-      fireFreely.classList.toggle('active', weapons.mode === 'fire-freely');
-      holdFire.classList.toggle('active', weapons.mode === 'hold-fire');
+      setPressed(targetEnemy, weapons.target !== null);
+      setPressed(noTarget, weapons.target === null);
+      setPressed(fireFreely, weapons.mode === 'fire-freely');
+      setPressed(holdFire, weapons.mode === 'hold-fire');
       weaponsState.textContent = describeWeapons(ship.weapons);
       const canLaunch = ship.weapons.launchers.some((l) => l.integrity > 0);
       const { salvo } = ship.weapons;
       launch.disabled = !canLaunch || missilesIn(ship.weapons, 'anti-ship').left === 0;
       callOff.disabled = salvo === null;
+      // Launch buttons are actions, not toggles: they only light up while their salvo flies.
       launch.classList.toggle('active', salvo !== null && !targetsMissile(salvo.target));
       launchState.textContent = describeLaunch(ship.weapons);
       const antiMissiles = missilesIn(ship.weapons, 'anti-missile');
       const defending = antiMissiles.designs.length > 0;
       automaticDefence.disabled = !defending;
       byOrderOnly.disabled = !defending;
-      automaticDefence.classList.toggle('active', defending && ship.weapons.antiMissile.automatic);
-      byOrderOnly.classList.toggle('active', defending && !ship.weapons.antiMissile.automatic);
+      setPressed(automaticDefence, defending && ship.weapons.antiMissile.automatic);
+      setPressed(byOrderOnly, defending && !ship.weapons.antiMissile.automatic);
       nearest = nearestIncoming(observation)?.id ?? null;
       launchAtNearest.disabled = !canLaunch || antiMissiles.left === 0 || nearest === null;
       launchAtNearest.classList.toggle(
@@ -629,10 +649,7 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       const defended = ship.weapons.pointDefence.length > 0;
       for (const [priority, priorityButton] of Object.entries(pointDefenceButtons)) {
         priorityButton.disabled = !defended;
-        priorityButton.classList.toggle(
-          'active',
-          defended && ship.weapons.pointDefencePriority === priority,
-        );
+        setPressed(priorityButton, defended && ship.weapons.pointDefencePriority === priority);
       }
       pointDefenceState.textContent = describePointDefence(ship.weapons);
     },

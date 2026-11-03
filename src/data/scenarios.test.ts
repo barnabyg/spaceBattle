@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createBattle, type SideObservation } from '../sim/battle';
 import { testSides } from '../sim/testing';
+import { relativeMotion } from '../game/relativeMotion';
 import { add, dot, length, normalize, scale, sub, type Vec3 } from '../sim/vector';
 import { handMadeDesign } from './designs';
 import {
@@ -56,12 +57,13 @@ describe('starting scenarios', () => {
     (_, scenario) => {
       for (const side of Object.values(startIn(scenario))) {
         const contact = contactOf(side);
-        const range = sub(contact.position, side.ownShip.position);
-        const relativeVelocity = sub(contact.velocity, side.ownShip.velocity);
-        expect(length(range)).toBeCloseTo(scenario.separation, -3); // to the nearest km
-        expect(length(relativeVelocity)).toBeCloseTo(scenario.relativeSpeed, 0); // to the nearest m/s
-        // The rate the range falls at.
-        expect(-dot(normalize(range), relativeVelocity)).toBeCloseTo(scenario.closingSpeed, 0);
+        const motion = relativeMotion(side.ownShip, contact);
+        expect(length(sub(contact.position, side.ownShip.position))).toBeCloseTo(
+          scenario.separation,
+          -3, // to the nearest km
+        );
+        expect(motion.relativeSpeed).toBeCloseTo(scenario.relativeSpeed, 0); // to the nearest m/s
+        expect(motion.closingSpeed).toBeCloseTo(scenario.closingSpeed, 0);
       }
     },
   );

@@ -10,7 +10,8 @@ import { createResultScreen } from './resultScreen';
 import { createShipSound } from './shipSound';
 import { createStatusPanel } from './statusPanel';
 import { formatDuration } from './format';
-import { createTacticalMap, SIDE_COLOURS } from './tacticalMap';
+import { SIDE_COLOURS } from './mapStyle';
+import { createTacticalMap } from './tacticalMap';
 import { createTestLog } from './testLog';
 import { createTimeControls } from './timeControls';
 

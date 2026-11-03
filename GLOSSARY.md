@@ -207,6 +207,13 @@ _Avoid_: Fast forward, speed-up
 A single engagement between sides. It has no time limit outside test mode.
 _Avoid_: Fight, match, encounter
 
+**Relative velocity**:
+A contact's velocity minus the own ship's: how the contact moves as seen from the own ship, rather than in the battle's fixed frame. Its size is the relative speed.
+
+**Closing speed**:
+How fast the separation between two ships falls: positive while they close, negative while they draw apart.
+_Avoid_: Approach speed, range rate
+
 **Tactical map**:
 The captain's main working view of a battle: symbols and exact data showing positions, motion, projected paths, weapon ranges and munitions in flight.
 _Avoid_: Radar screen, plot

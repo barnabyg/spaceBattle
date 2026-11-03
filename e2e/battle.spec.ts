@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { startFreeBattle } from './freeBattle';
+import {
+  selectedTimeCompression,
+  startFreeBattle,
+  timeCompressionButton,
+  timeCompressionButtons,
+} from './freeBattle';
 
 const kmOf = (text: string | null) => Number((text ?? '').replace(/[^\d.]/g, ''));
 
@@ -14,8 +19,8 @@ test('the game loads a battle and the ships move when time runs', async ({ page 
   await expect(separation).toContainText('km');
   const before = kmOf(await separation.textContent());
 
-  for (let i = 0; i < 9; i++) await page.keyboard.press('+');
-  await expect(page.getByLabel('Time compression')).toHaveText('1000×');
+  await timeCompressionButton(page, '1000×').click();
+  await expect(selectedTimeCompression(page)).toHaveText('1000×');
   await expect.poll(async () => kmOf(await separation.textContent())).not.toBe(before);
 });
 
@@ -23,7 +28,7 @@ test('pause stops the battle clock', async ({ page }) => {
   await startFreeBattle(page);
   const clock = page.getByLabel('Battle time');
   await page.keyboard.press(' ');
-  await expect(page.getByLabel('Time compression')).toHaveText('Paused');
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
   const paused = (await clock.textContent()) ?? '';
   await page.waitForTimeout(1_500);
   await expect(clock).toHaveText(paused);
@@ -32,18 +37,77 @@ test('pause stops the battle clock', async ({ page }) => {
   await expect(clock).not.toHaveText(paused);
 });
 
+test('a speed button sets the time compression, and stays selected while paused', async ({
+  page,
+}) => {
+  await startFreeBattle(page);
+  await expect(timeCompressionButtons(page)).toHaveText(['1×', '10×', '100×', '500×', '1000×']);
+  await expect(page.getByRole('button', { name: /^(Slower|Faster)$/ })).toHaveCount(0);
+  await expect(selectedTimeCompression(page)).toHaveText('1×');
+
+  // Paused, so no significant event can drop the battle back to real time while it is checked.
+  await page.keyboard.press(' ');
+  await timeCompressionButton(page, '500×').click();
+  await expect(timeCompressionButton(page, '500×')).toHaveAttribute('aria-pressed', 'true');
+  await expect(timeCompressionButton(page, '1×')).toHaveAttribute('aria-pressed', 'false');
+  await expect(selectedTimeCompression(page)).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
+  await expect(selectedTimeCompression(page)).toHaveCount(1);
+});
+
+test('keys 1 to 5 choose a time compression and + / - step through them', async ({ page }) => {
+  await startFreeBattle(page);
+  await expect(page.getByRole('group', { name: 'Time controls' })).toContainText(
+    'Space pause · 1–5 or + / − time compression',
+  );
+  await page.keyboard.press(' ');
+  const selected = selectedTimeCompression(page);
+  await page.keyboard.press('4');
+  await expect(selected).toHaveText('500×');
+  await page.keyboard.press('+');
+  await expect(selected).toHaveText('1000×');
+  await page.keyboard.press('+');
+  await expect(selected).toHaveText('1000×');
+  await page.keyboard.press('-');
+  await expect(selected).toHaveText('500×');
+  await page.keyboard.press('2');
+  await expect(selected).toHaveText('10×');
+  await page.keyboard.press('-');
+  await expect(selected).toHaveText('1×');
+  await page.keyboard.press('-');
+  await expect(selected).toHaveText('1×');
+  await page.keyboard.press('5');
+  await expect(selected).toHaveText('1000×');
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
+});
+
 test('a manoeuvre order shows its goal and planned burns on the map', async ({ page }) => {
   await startFreeBattle(page);
   await page.keyboard.press(' ');
   await page.getByLabel('Range km').fill('150000');
   await page.getByRole('button', { name: 'Hold', exact: true }).click();
   await expect(page.getByLabel('Manoeuvre state')).toContainText('Holding 150,000 km · error');
+  await expect(page.getByRole('button', { name: 'Hold', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByRole('button', { name: 'Manual' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
   const burns = page.getByRole('region', { name: 'Tactical map' }).locator('.planned-burn');
   await expect(burns.first()).toBeVisible();
   await expect(burns.first()).toContainText('Burn');
 
   await page.getByRole('button', { name: 'Manual' }).click();
   await expect(page.getByLabel('Manoeuvre state')).toHaveText('Manual control');
+  await expect(page.getByRole('button', { name: 'Manual' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await expect(burns.filter({ visible: true })).toHaveCount(0);
 });
 
@@ -68,7 +132,8 @@ test('the ship heats up during a burn', async ({ page }) => {
   await expect(temperature).toHaveText('300 K');
   await page.getByLabel('Duration s').fill('600');
   await page.getByRole('button', { name: 'Burn', exact: true }).click();
-  for (let i = 0; i < 6; i++) await page.keyboard.press('+');
+  await page.keyboard.press('3');
+  await expect(selectedTimeCompression(page)).toHaveText('100×');
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect.poll(async () => kmOf(await temperature.textContent())).toBeGreaterThan(400);
 });
@@ -98,10 +163,11 @@ test('End battle asks first, then shows the player forfeited', async ({ page }) 
   await page.getByRole('button', { name: 'End battle' }).click();
   const confirm = page.getByRole('dialog', { name: 'End battle' });
   await expect(confirm).toContainText('forfeit');
-  await expect(page.getByLabel('Time compression')).toHaveText('Paused');
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
   await confirm.getByRole('button', { name: 'Continue battle' }).click();
   await expect(confirm).toBeHidden();
-  await expect(page.getByLabel('Time compression')).toHaveText('1×');
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
+  await expect(selectedTimeCompression(page)).toHaveText('1×');
 
   await page.getByRole('button', { name: 'End battle' }).click();
   await confirm.getByRole('button', { name: 'Forfeit' }).click();
@@ -163,12 +229,12 @@ test('a ship with launchers launches missiles by order, dropping to real time', 
   await page.getByLabel('Missiles', { exact: true }).fill('2');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await expect(launch).toHaveText('Launching · 2 to go · 12 missiles left');
-  for (let i = 0; i < 9; i++) await page.keyboard.press('+');
+  await timeCompressionButton(page, '1000×').click();
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
     '2 ours · 0 incoming',
   );
-  await expect(page.getByLabel('Time compression')).toHaveText('1×');
+  await expect(selectedTimeCompression(page)).toHaveText('1×');
   await expect(page.getByLabel('Ammunition')).toHaveText('10 of 12 missiles');
   await expect(page.getByRole('list', { name: 'Battle log' })).toContainText('Missile launched');
 });
@@ -236,4 +302,69 @@ test('a shielded ship shows its shields, and they can be lowered and raised', as
   await expect(shields).toHaveText('Lowered');
   await page.getByRole('button', { name: 'Shields up' }).click();
   await expect(shields).toContainText('Raised');
+});
+
+test('toggle orders show which is selected, to sight and to assistive tech', async ({ page }) => {
+  await startFreeBattle(page, { blue: { design: 'Rime' } });
+  await page.keyboard.press(' ');
+  const up = page.getByRole('button', { name: 'Shields up' });
+  const down = page.getByRole('button', { name: 'Shields down' });
+  const state = page.getByLabel('Shields state');
+  await expect(up).toHaveAttribute('aria-pressed', 'true');
+  await expect(down).toHaveAttribute('aria-pressed', 'false');
+  await expect(state).toHaveText('Shields raised');
+
+  await down.click();
+  await expect(down).toHaveAttribute('aria-pressed', 'true');
+  await expect(up).toHaveAttribute('aria-pressed', 'false');
+  await expect(state).toHaveText('Shields lowered');
+  // With the pointer over the button not selected, it still looks unlike the selected one.
+  await up.hover();
+  const look = (button: typeof up) =>
+    button.evaluate((b) => {
+      const style = getComputedStyle(b);
+      return [style.backgroundColor, style.color, style.fontWeight].join(' ');
+    });
+  expect(await look(up)).not.toBe(await look(down));
+  // Not by colour alone: the selected one is ticked, and the tick stays out of its name.
+  const tick = (button: typeof up) =>
+    button.evaluate((b) => getComputedStyle(b, '::before').content);
+  expect(await tick(down)).toContain('✓');
+  expect(await tick(up)).not.toContain('✓');
+  await expect(down).toHaveAccessibleName('Shields down');
+
+  await up.click();
+  await expect(up).toHaveAttribute('aria-pressed', 'true');
+  await expect(down).toHaveAttribute('aria-pressed', 'false');
+  await expect(state).toHaveText('Shields raised');
+
+  const deploy = page.getByRole('button', { name: 'Deploy radiators' });
+  const retract = page.getByRole('button', { name: 'Retract radiators' });
+  await expect(retract).toHaveAttribute('aria-pressed', 'true');
+  await expect(deploy).toHaveAttribute('aria-pressed', 'false');
+  await deploy.click();
+  await expect(deploy).toHaveAttribute('aria-pressed', 'true');
+  await expect(retract).toHaveAttribute('aria-pressed', 'false');
+
+  const atEnemy = page.getByRole('button', { name: 'Point at enemy' });
+  const away = page.getByRole('button', { name: 'Point away' });
+  await atEnemy.click();
+  await expect(atEnemy).toHaveAttribute('aria-pressed', 'true');
+  await expect(away).toHaveAttribute('aria-pressed', 'false');
+  await away.click();
+  await expect(away).toHaveAttribute('aria-pressed', 'true');
+  await expect(atEnemy).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('a ship without shields takes no shield orders and shows no shields state', async ({
+  page,
+}) => {
+  await startFreeBattle(page);
+  await page.keyboard.press(' ');
+  for (const name of ['Shields up', 'Shields down']) {
+    const button = page.getByRole('button', { name });
+    await expect(button).toBeDisabled();
+    await expect(button).toHaveAttribute('aria-pressed', 'false');
+  }
+  await expect(page.getByLabel('Shields state')).toBeHidden();
 });

@@ -12,7 +12,7 @@ import { CAPTAIN_SKILLS } from '../sim/captain';
 import { designSummary } from './designSummary';
 import { el } from './el';
 import { formatKm, formatKmPerS } from './format';
-import { SIDE_COLOURS } from './tacticalMap';
+import { SIDE_COLOURS } from './mapStyle';
 
 const COMMANDERS: readonly (readonly [Commander, string])[] = [
   ['player', 'Player'],

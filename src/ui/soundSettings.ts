@@ -1,3 +1,5 @@
+import { sessionStore, type SettingsStorage } from './sessionStore';
+
 /** The captain's sound settings, kept for the browser session. */
 export interface SoundSettings {
   /** 0–1 */
@@ -8,17 +10,6 @@ export interface SoundSettings {
 export const DEFAULT_SOUND_SETTINGS: SoundSettings = { volume: 0.5, muted: false };
 
 const KEY = 'space-battle.sound';
-
-type SettingsStorage = Pick<Storage, 'getItem' | 'setItem'>;
-
-/** The session's storage, or null where the browser refuses it. */
-const sessionStore = (): SettingsStorage | null => {
-  try {
-    return globalThis.sessionStorage;
-  } catch {
-    return null;
-  }
-};
 
 /** The settings kept for this session, or the defaults if none are kept or storage is blocked. */
 export const loadSoundSettings = (

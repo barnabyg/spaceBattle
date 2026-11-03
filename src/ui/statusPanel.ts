@@ -1,3 +1,4 @@
+import { followedContact, relativeMotion } from '../game/relativeMotion';
 import type { MunitionObservation, SideObservation } from '../sim/battle';
 import { SECTION_KINDS, type MissileRole } from '../sim/design';
 import type { BeamKind } from '../sim/events';
@@ -91,14 +92,49 @@ const describeShields = ({ ownShip: { shields, heat } }: SideObservation): strin
   ].join(' · ');
 };
 
+/** How the followed contact moves relative to the own ship, if there is one. */
+const motionOf = (observation: SideObservation) => {
+  const contact = followedContact(observation);
+  return contact ? relativeMotion(observation.ownShip, contact) : undefined;
+};
+
+/** Closing speed to the nearest 0.01 km/s shown, e.g. "3.20 km/s" or "−0.40 km/s · opening". */
+const describeClosing = (closingSpeed: number): string => {
+  const shown = Math.round(closingSpeed / 10) * 10 + 0;
+  return shown < 0 ? `${formatKmPerS(shown)} · opening` : formatKmPerS(shown);
+};
+
 /** Each readout: its label and how to show it from the captain's observation. */
 const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] = [
   [
     'Separation',
-    (o) => (o.contacts[0] ? formatKm(distance(o.ownShip.position, o.contacts[0].position)) : '—'),
+    (o) => {
+      const contact = followedContact(o);
+      return contact ? formatKm(distance(o.ownShip.position, contact.position)) : '—';
+    },
   ],
   ['Own speed', (o) => formatKmPerS(length(o.ownShip.velocity))],
-  ['Contact speed', (o) => (o.contacts[0] ? formatKmPerS(length(o.contacts[0].velocity)) : '—')],
+  [
+    'Contact speed',
+    (o) => {
+      const contact = followedContact(o);
+      return contact ? formatKmPerS(length(contact.velocity)) : '—';
+    },
+  ],
+  [
+    'Closing speed',
+    (o) => {
+      const motion = motionOf(o);
+      return motion ? describeClosing(motion.closingSpeed) : '—';
+    },
+  ],
+  [
+    'Relative speed',
+    (o) => {
+      const motion = motionOf(o);
+      return motion ? formatKmPerS(motion.relativeSpeed) : '—';
+    },
+  ],
   [
     'Delta-v',
     ({ ownShip }) =>
