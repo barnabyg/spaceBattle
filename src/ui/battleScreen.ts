@@ -142,7 +142,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     map.render();
     endBattle.update(observation.outcome !== null);
     if (observation.outcome) result.show(observation.outcome);
-    instruments.update(observation);
+    instruments.update(observation, test && enemy ? battle.observe(enemy.id).ownShip : undefined);
     instruments.render();
     frame = requestAnimationFrame(tick);
   };
