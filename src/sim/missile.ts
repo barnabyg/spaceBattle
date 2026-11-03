@@ -84,11 +84,14 @@ export const missileDeltaV = (
 ): number => design.exhaustVelocity * Math.log((design.dryMass + propellantMass) / design.dryMass);
 
 /**
- * How far a missile design reaches, m: the speed its boost builds up (its delta-v down to the
- * guidance reserve), held for `MISSILE_REACH_TIME`.
+ * How far a missile with `deltaV` m/s left reaches, m: the speed its boost builds up (its delta-v
+ * down to the guidance reserve), held for `MISSILE_REACH_TIME`.
  */
-export const missileReach = (design: MissileDesign): number =>
-  (1 - GUIDANCE_RESERVE) * missileDeltaV(design) * MISSILE_REACH_TIME;
+export const reachOfDeltaV = (deltaV: number): number =>
+  (1 - GUIDANCE_RESERVE) * deltaV * MISSILE_REACH_TIME;
+
+/** How far a missile design reaches with a full load of propellant, m (see `reachOfDeltaV`). */
+export const missileReach = (design: MissileDesign): number => reachOfDeltaV(missileDeltaV(design));
 
 /** A missile leaving a ship: it starts where the ship is, moving with it, with full propellant. */
 export const launchMissile = (

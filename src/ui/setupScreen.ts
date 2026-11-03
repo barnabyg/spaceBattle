@@ -1,15 +1,30 @@
 import { HAND_MADE_DESIGNS, handMadeDesign } from '../data/designs';
+import { STARTING_SCENARIOS, startingScenario } from '../data/scenarios';
 import { DEFAULT_TIME_LIMIT } from '../game/batch';
-import { FREE_BATTLE_SIDES, type FreeBattleSetup, type FreeBattleSide } from '../game/freeBattle';
-import type { Commander } from '../sim/battle';
+import {
+  FREE_BATTLE_SIDES,
+  freeBattleScenario,
+  type FreeBattleSetup,
+  type FreeBattleSide,
+} from '../game/freeBattle';
+import type { CaptainSkill, Commander } from '../sim/battle';
+import { CAPTAIN_SKILLS } from '../sim/captain';
 import { designSummary } from './designSummary';
 import { el } from './el';
+import { formatKm, formatKmPerS } from './format';
 import { SIDE_COLOURS } from './tacticalMap';
 
 const COMMANDERS: readonly (readonly [Commander, string])[] = [
   ['player', 'Player'],
   ['computer', 'Computer'],
 ];
+
+const SKILL_TEXT: Readonly<Record<CaptainSkill, string>> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+};
+const SKILLS = CAPTAIN_SKILLS.map((skill) => [skill, SKILL_TEXT[skill]] as const);
 
 export interface SetupScreenActions {
   /** Starts the battle with these choices. */
@@ -124,6 +139,41 @@ const select = (options: readonly (readonly [string, string])[], value: string) 
   return element;
 };
 
+/** The starting scenario, with what it looks like and how far apart and how fast it starts. */
+const createScenarioChoice = (initialId: string) => {
+  const scenario = select(
+    STARTING_SCENARIOS.map((s) => [s.id, s.name]),
+    initialId,
+  );
+  const description = el('p', { className: 'menu-note' });
+  const geometry = el('p', {
+    className: 'menu-note',
+    attrs: { 'aria-label': 'Starting geometry' },
+  });
+  const describe = () => {
+    const chosen = startingScenario(scenario.value);
+    description.textContent = chosen.description;
+    geometry.textContent = [
+      `${formatKm(chosen.separation)} apart`,
+      `relative speed ${formatKmPerS(chosen.relativeSpeed)}`,
+      `closing at ${formatKmPerS(chosen.closingSpeed)}`,
+    ].join(' · ');
+  };
+  scenario.addEventListener('change', describe);
+  describe();
+
+  return {
+    element: el(
+      'div',
+      { className: 'setup-scenario' },
+      el('label', { className: 'field' }, el('span', { text: 'Scenario' }), scenario),
+      description,
+      geometry,
+    ),
+    value: (): string => scenario.value,
+  };
+};
+
 /** One side's choices: its design, with that design's key numbers, and who commands it. */
 const createSideChoice = (
   side: (typeof FREE_BATTLE_SIDES)[number],
@@ -135,6 +185,19 @@ const createSideChoice = (
     initial.designId,
   );
   const commander = select(COMMANDERS, initial.commander);
+  const skill = select(SKILLS, initial.skill ?? 'medium');
+  const skillField = el(
+    'label',
+    { className: 'field' },
+    el('span', { text: 'Captain skill' }),
+    skill,
+  );
+  // Only a computer captain has a skill to choose.
+  const showSkill = () => {
+    skillField.hidden = commander.value !== 'computer';
+  };
+  commander.addEventListener('change', showSkill);
+  showSkill();
   const summary = el('dl', { className: 'status-list design-summary' });
   const showSummary = () => {
     summary.replaceChildren(
@@ -160,21 +223,25 @@ const createSideChoice = (
     el('label', { className: 'field' }, el('span', { text: 'Design' }), design),
     summary,
     el('label', { className: 'field' }, el('span', { text: 'Commander' }), commander),
+    skillField,
   );
 
   return {
     element,
     commander,
+    /** Shows or hides the skill choice after the commander was changed from outside. */
+    showSkill,
     value: (): FreeBattleSide => ({
       designId: design.value,
       commander: commander.value === 'computer' ? 'computer' : 'player',
+      skill: SKILLS.find(([value]) => value === skill.value)?.[0] ?? 'medium',
     }),
   };
 };
 
 /**
- * The free battle setup: a design and a commander for each of the two sides; in test mode, test
- * settings and batch runs too.
+ * The free battle setup: a starting scenario, and a design and a commander for each of the two
+ * sides; in test mode, test settings and batch runs too.
  */
 export const createSetupScreen = (
   initial: FreeBattleSetup,
@@ -184,11 +251,16 @@ export const createSetupScreen = (
   const [blueSide, redSide] = FREE_BATTLE_SIDES;
   const blue = createSideChoice(blueSide, SIDE_COLOURS[0], initial.sides[0]);
   const red = createSideChoice(redSide, SIDE_COLOURS[1], initial.sides[1]);
-  const setup = (): FreeBattleSetup => ({ sides: [blue.value(), red.value()] });
+  const scenario = createScenarioChoice(freeBattleScenario(initial).id);
+  const setup = (): FreeBattleSetup => ({
+    sides: [blue.value(), red.value()],
+    scenarioId: scenario.value(),
+  });
 
   // The player commands at most one side; the battle screen gives orders for one side only.
   const keepOnePlayer = (chosen: typeof blue, other: typeof blue) => {
     if (chosen.commander.value === 'player') other.commander.value = 'computer';
+    other.showSkill();
   };
   blue.commander.addEventListener('change', () => {
     keepOnePlayer(blue, red);
@@ -238,6 +310,7 @@ export const createSetupScreen = (
       className: 'menu-tagline',
       text: 'Choose a design for each side and who commands it. You command at most one side and see the battle from it, or from Blue if the computer commands both.',
     }),
+    scenario.element,
     el('div', { className: 'setup-sides' }, blue.element, red.element),
     ...(test ? [test.element] : []),
     el('div', { className: 'setup-actions' }, back, start),

@@ -63,7 +63,9 @@ describe('ship model', () => {
   it('hides lost parts and shows exhaust only under thrust', () => {
     const design = handMadeDesign('lance');
     const model = createShipModel(design);
-    const parts = shipShape(design, design.propellantMass, false).filter((p) => p.mount !== 0);
+    const parts = shipShape(design, design.propellantMass, false).filter(
+      (p) => !(p.section === 'middle' && p.mount === 0),
+    );
     updateShipModel(model, {
       propellantMass: design.propellantMass,
       radiatorsDeployed: false,

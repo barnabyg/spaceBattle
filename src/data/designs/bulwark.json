@@ -3,10 +3,14 @@
   "name": "Bulwark",
   "hullSize": "frigate",
   "propellantMass": 400000,
+  "reserve": 10000,
   "sections": [
     {
       "kind": "forward",
-      "armour": { "type": "heavy", "thickness": 0.012 },
+      "armour": {
+        "type": "heavy",
+        "thickness": 0.012
+      },
       "components": [
         {
           "type": "capacitor",
@@ -34,14 +38,35 @@
             }
           }
         }
+      ],
+      "mounts": [
+        {
+          "type": "sensor",
+          "mass": 4000,
+          "aperture": 4,
+          "wavelength": 5e-8,
+          "trackingError": 3e-9
+        }
       ]
     },
     {
       "kind": "middle",
-      "armour": { "type": "ablative", "thickness": 0.02 },
+      "armour": {
+        "type": "ablative",
+        "thickness": 0.02
+      },
       "components": [
-        { "type": "thrusters", "mass": 20000, "torque": 8000000 },
-        { "type": "reactor", "mass": 40000, "output": 2000000000, "efficiency": 0.75 },
+        {
+          "type": "thrusters",
+          "mass": 20000,
+          "torque": 8000000
+        },
+        {
+          "type": "reactor",
+          "mass": 40000,
+          "output": 2000000000,
+          "efficiency": 0.75
+        },
         {
           "type": "magazine",
           "mass": 28000,
@@ -52,7 +77,9 @@
             "propellantMass": 2500,
             "thrust": 150000,
             "exhaustVelocity": 25000,
-            "warhead": { "type": "kinetic" }
+            "warhead": {
+              "type": "kinetic"
+            }
           }
         }
       ],
@@ -71,9 +98,21 @@
           "retractedArea": 600,
           "emissivity": 0.9
         },
-        { "type": "launcher", "mass": 8000, "reloadTime": 20 },
-        { "type": "launcher", "mass": 8000, "reloadTime": 20 },
-        { "type": "launcher", "mass": 8000, "reloadTime": 20 },
+        {
+          "type": "launcher",
+          "mass": 8000,
+          "reloadTime": 20
+        },
+        {
+          "type": "launcher",
+          "mass": 8000,
+          "reloadTime": 20
+        },
+        {
+          "type": "launcher",
+          "mass": 8000,
+          "reloadTime": 20
+        },
         {
           "type": "laser",
           "mass": 25000,
@@ -86,7 +125,10 @@
     },
     {
       "kind": "engine",
-      "armour": { "type": "ablative", "thickness": 0.01 },
+      "armour": {
+        "type": "ablative",
+        "thickness": 0.01
+      },
       "components": [
         {
           "type": "drive",

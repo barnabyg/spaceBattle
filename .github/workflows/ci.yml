@@ -18,7 +18,9 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps firefox
       # The runner has no GPU: give Firefox a virtual display and Mesa's software OpenGL for WebGL.
-      - run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libegl-mesa0
+      # Nor a sound device: give it a PulseAudio server with a silent sink, so Web Audio can start.
+      - run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libegl-mesa0 pulseaudio
+      - run: pulseaudio --start --exit-idle-time=-1 && pactl load-module module-null-sink && pactl info
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck

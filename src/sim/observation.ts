@@ -5,8 +5,11 @@ import { intactShape } from './damage';
 import {
   designComponentsOfType,
   missileRole,
+  type ArmourDesign,
   type ArmourType,
   type ComponentType,
+  type HullSize,
+  type MountedComponentDesign,
   type MissileRole,
   type SectionKind,
   type ShieldType,
@@ -24,16 +27,18 @@ import {
   type Missile,
   type MissileTarget,
 } from './missile';
-import type { AttitudeOrder, FireMode, PointDefencePriority } from './orders';
+import type { AimPoint, AttitudeOrder, FireMode, PointDefencePriority } from './orders';
 import type { BattleOutcome } from './outcome';
 import { burstEnergy, pointDefenceRange, type PointDefenceEngagement } from './pointDefence';
 import { powerPlantOf, type EnergyLedger, type PowerShare, type PowerSystem } from './power';
 import { rotate, type Quat } from './quaternion';
 import type { ShapePart } from './shape';
+import { perceive, sensorPower, type ContactDetail } from './sensors';
 import { coolantCapacity, fullDeflection, shieldsPowered } from './shields';
 import {
   deltaVOf,
   driveLimit,
+  reserveWarning,
   noseOf,
   shipMassProperties,
   temperatureOf,
@@ -41,7 +46,7 @@ import {
   type BurnState,
   type ShipState,
 } from './ship';
-import type { Vec3 } from './vector';
+import { distance, type Vec3 } from './vector';
 import {
   designMissiles,
   missilesLeft,
@@ -294,6 +299,8 @@ export interface AntiMissileObservation {
 export interface WeaponsObservation {
   readonly target: SideId | null;
   readonly mode: FireMode;
+  /** The part of the target the weapons are ordered to aim at; null for the whole ship. */
+  readonly aim: AimPoint | null;
   readonly lasers: readonly LaserObservation[];
   /** Charged and neutral particle beams. */
   readonly particleBeams: readonly ParticleBeamObservation[];
@@ -369,6 +376,12 @@ export interface OwnShipObservation {
   readonly propellantMass: number;
   /** m/s */
   readonly deltaV: number;
+  /** The delta-v its design holds back for withdrawal, m/s. */
+  readonly reserve: number;
+  /** Whether the delta-v left is coming down towards the reserve (see `reserveWarning`). */
+  readonly reserveWarning: boolean;
+  /** Whether it is withdrawing from the battle. */
+  readonly withdrawing: boolean;
   /** Drive thrust applied in the last step, N. */
   readonly thrust: number;
   /** Thruster torque applied in the last step (body frame), N·m. */
@@ -388,16 +401,70 @@ export interface OwnShipObservation {
   readonly appearance: ShipAppearance;
 }
 
-/** An enemy ship as a side perceives it; its position, motion and orientation are known. */
+/** How a contact looks from outside, as far as the side's sensors make it out. */
+export interface ContactAppearance {
+  /** Drive thrust applied in the last step, N; its exhaust shows at any range. */
+  readonly thrust: number;
+  /** The temperature it glows at, K; its heat shows at any range. */
+  readonly temperature: number;
+  readonly radiatorsDeployed: boolean;
+  /**
+   * The intact parts' boxes in the body frame once its silhouette is made out (see `perceive`);
+   * none before. They show its shape, not which part is which.
+   */
+  readonly outline: readonly ShapePart[];
+  /** The intact sections and mounts made out, in the body frame. */
+  readonly parts: readonly ShapePart[];
+  /** Where beams landed on it in the last step. */
+  readonly beamsLanding: readonly BeamLanding[];
+  /** Where slugs and missiles struck it in the last step. */
+  readonly impacts: readonly ImpactLanding[];
+}
+
+/** A section of a contact the side's sensors make out. */
+export interface ContactSectionObservation {
+  readonly kind: SectionKind;
+  /** Its armour as built: its type and thickness show at its edges and surface. */
+  readonly armour: ArmourDesign;
+}
+
+/** A mount of a contact the side's sensors make out. */
+export interface ContactMountObservation {
+  readonly section: SectionKind;
+  /** Its place in the section's mounts. */
+  readonly mount: number;
+  /** What it is, recognised by its size and shape. */
+  readonly component: MountedComponentDesign;
+  /** Whether it fired in the last step: a beam weapon's glare or a gun's flash. */
+  readonly firing: boolean;
+}
+
+/**
+ * An enemy ship as a side perceives it. Its position and motion are always known; the rest only
+ * as far as the side's sensors make it out at its range (see `perceive`): its silhouette, then its
+ * sections and their armour, then its mounts. A side can aim at a section or mount only once it is
+ * made out.
+ */
 export interface ContactObservation {
   readonly sideId: SideId;
   readonly position: Vec3;
   readonly velocity: Vec3;
   /** Its acceleration over the last step, m/s². */
   readonly acceleration: Vec3;
-  readonly orientation: Quat;
-  /** Full detail until sensors limit what a side can make out (a later phase). */
-  readonly appearance: ShipAppearance;
+  /** Whether it is withdrawing, so it may be fired on but not pursued. */
+  readonly withdrawing: boolean;
+  /** The finest detail the side's sensors make out at its range, m; infinite when blind. */
+  readonly resolution: number;
+  readonly detail: ContactDetail;
+  /** Known once its silhouette is made out; null before. */
+  readonly orientation: Quat | null;
+  /** Known once its silhouette is made out; null before. */
+  readonly hullSize: HullSize | null;
+  /** The sections made out, from nose to tail. */
+  readonly sections: readonly ContactSectionObservation[];
+  /** The mounts made out, section by section. */
+  readonly mounts: readonly ContactMountObservation[];
+  readonly appearance: ContactAppearance;
 }
 
 /** What every munition in flight shows. */
@@ -557,6 +624,7 @@ const observeWeapons = (
   return {
     target: weapons.target,
     mode: weapons.mode,
+    aim: weapons.aim,
     lasers: weapons.beamWeapons.filter((w) => w.attack === 'laser').map(observeBeamWeapon),
     particleBeams: weapons.beamWeapons.flatMap((state) =>
       state.attack === 'laser' ? [] : [{ ...observeBeamWeapon(state), kind: state.attack }],
@@ -695,6 +763,9 @@ export const observeOwnShip = (
     mass: shipMassProperties(ship).mass,
     propellantMass: ship.propellantMass,
     deltaV: deltaVOf(ship),
+    reserve: ship.design.reserve,
+    reserveWarning: reserveWarning(ship),
+    withdrawing: ship.withdrawingSince !== null,
     thrust: ship.thrust,
     torque: ship.torque,
     attitude: ship.attitude,
@@ -710,15 +781,64 @@ export const observeOwnShip = (
   };
 };
 
-/** An enemy ship as another side perceives it. */
-export const observeContact = (contact: ObservedShip): ContactObservation => ({
-  sideId: contact.side.id,
-  position: contact.ship.position,
-  velocity: contact.ship.velocity,
-  acceleration: contact.ship.acceleration,
-  orientation: contact.ship.orientation,
-  appearance: observeAppearance(contact),
-});
+/** Whether a mounted weapon fired in the last step, by its slot in the design. */
+const firedFrom = (ship: ShipState, slot: number): boolean => {
+  const { weapons } = ship;
+  return (
+    weapons.beamWeapons.some((w) => w.slot === slot && w.beamPower > 0) ||
+    weapons.kineticGuns.some((g) => g.slot === slot && g.firing) ||
+    weapons.pointDefence.some((g) => g.slot === slot && g.engaging !== null)
+  );
+};
+
+/** An enemy ship as the side whose ship is `viewer` perceives it with its sensors. */
+export const observeContact = (viewer: ShipState, contact: ObservedShip): ContactObservation => {
+  const { ship } = contact;
+  const seen = perceive(sensorPower(viewer), ship, distance(viewer.position, ship.position));
+  const silhouette = seen.detail !== 'position';
+  const slots = componentSlots(ship.design);
+  return {
+    sideId: contact.side.id,
+    position: ship.position,
+    velocity: ship.velocity,
+    acceleration: ship.acceleration,
+    withdrawing: ship.withdrawingSince !== null,
+    resolution: seen.resolution,
+    detail: seen.detail,
+    orientation: silhouette ? ship.orientation : null,
+    hullSize: silhouette ? ship.design.hullSize : null,
+    sections: ship.design.sections.flatMap((section) =>
+      seen.parts.some((p) => p.mount === null && p.section === section.kind)
+        ? [{ kind: section.kind, armour: section.armour }]
+        : [],
+    ),
+    mounts: seen.parts.flatMap((part) => {
+      if (part.mount === null) return [];
+      const slot = slots.findIndex(
+        (s) => s.mounted && s.section === part.section && s.index === part.mount,
+      );
+      const component = slots[slot]?.component;
+      if (!component || component.type === 'magazine') return [];
+      return [
+        {
+          section: part.section,
+          mount: part.mount,
+          component: component as MountedComponentDesign,
+          firing: firedFrom(ship, slot),
+        },
+      ];
+    }),
+    appearance: {
+      thrust: ship.thrust,
+      temperature: temperatureOf(ship),
+      radiatorsDeployed: ship.radiatorsDeployed,
+      outline: seen.outline,
+      parts: seen.parts,
+      beamsLanding: contact.beamsLanding,
+      impacts: contact.impacts,
+    },
+  };
+};
 
 /** Every munition in flight: slugs, then missiles, each in the order fired. */
 export const observeMunitions = (

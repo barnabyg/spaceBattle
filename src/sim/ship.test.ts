@@ -95,7 +95,7 @@ describe('burn orders', () => {
     expect(battle.observe('blue').ownShip.thrust).toBe(0);
   });
 
-  it('produces no thrust once propellant is exhausted', () => {
+  it('burns until the propellant is exhausted, leaving the ship stranded', () => {
     const design = testDesign({ propellantMass: 1_000 });
     const battle = battleWith(design);
     battle.giveOrder('blue', { type: 'burn', throttle: 1, duration: 1e6 });
@@ -103,10 +103,7 @@ describe('burn orders', () => {
     const empty = battle.observe('blue').ownShip;
     expect(empty.propellantMass).toBe(0);
     expect(empty.deltaV).toBe(0);
-    battle.advance(60);
-    const later = battle.observe('blue').ownShip;
-    expect(later.thrust).toBe(0);
-    expect(later.velocity).toStrictEqual(empty.velocity);
+    expect(battle.outcome?.sides[0]?.loss).toEqual({ result: 'stranded' });
   });
 
   it('accepts orders while the battle is not advancing', () => {

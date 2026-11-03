@@ -62,7 +62,7 @@ export const createBatchScreen = (batch: BatchSetup, actions: BatchScreenActions
     el('h1', { className: 'menu-title', text: 'Batch run' }),
     el('p', {
       className: 'menu-tagline',
-      text: `${blue?.name ?? ''} · ${blue?.design.name ?? ''} against ${red?.name ?? ''} · ${red?.design.name ?? ''}, the computer commanding both sides: ${batch.battles.toLocaleString('en-GB')} battles with a time limit of ${formatDuration(batch.timeLimit)}, from batch seed ${batch.seed}.`,
+      text: `${blue?.name ?? ''} · ${blue?.design.name ?? ''} (${blue?.skill ?? 'medium'} skill) against ${red?.name ?? ''} · ${red?.design.name ?? ''} (${red?.skill ?? 'medium'} skill), the computer commanding both sides: ${batch.battles.toLocaleString('en-GB')} battles with a time limit of ${formatDuration(batch.timeLimit)}, from batch seed ${batch.seed}.`,
     }),
     el('div', { className: 'batch-progress' }, progress, status),
     results,

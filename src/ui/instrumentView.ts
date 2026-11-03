@@ -2,18 +2,20 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type {
   MunitionObservation,
+  OwnShipObservation,
   ShipAppearance,
   SideObservation,
   SideSetup,
 } from '../sim/battle';
 import type { BeamKind } from '../sim/events';
 import { HULLS, hullLength } from '../sim/hull';
-import type { Quat } from '../sim/quaternion';
+import { IDENTITY, type Quat } from '../sim/quaternion';
 import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vector';
 import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
-import { formatKm } from './format';
+import { createContactModel, disposeContactModel, updateContactModel } from './contactModel';
+import { CONTACT_DETAIL_TEXT, formatKm } from './format';
 import {
   createShipModel,
   disposeShipModel,
@@ -221,7 +223,7 @@ interface Flash {
 }
 
 /** What glows on a ship: each beam's spot, brighter the more intense, and each slug's impact. */
-const flashesOf = (look: ShipAppearance): Flash[] => [
+const flashesOf = (look: Pick<ShipAppearance, 'impacts' | 'beamsLanding'>): Flash[] => [
   ...look.impacts.map((impact) => ({
     point: impact.point,
     // A flash that grows with the energy released: about 14 m across for a gigajoule.
@@ -252,7 +254,11 @@ const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance)
   } else {
     updateShipModel(view.model, look);
   }
+  showFlashes(view, look);
+};
 
+/** Shows where beams and slugs land on a ship. */
+const showFlashes = (view: ShipView, look: Pick<ShipAppearance, 'impacts' | 'beamsLanding'>) => {
   // Beams are invisible in vacuum and slugs too fast to see; only where they land glows.
   const flashes = flashesOf(look);
   let brightest = 0;
@@ -330,9 +336,9 @@ const telescopePosition = (munition: MunitionObservation, own: Vec3, contact: Ve
  * tens of metres long, tens of thousands of kilometres apart, cannot share one frame, so it is
  * split: the own ship above, orbited freely, and the contact below as the telescope sees it,
  * along the line of sight from the own ship, with any slugs and missiles in flight seen against
- * it, missiles larger and flaring white while their drives burn. Both ships
- * are drawn in full until sensors limit what can be made out of the contact (a later phase). One
- * renderer draws both halves.
+ * it, missiles larger and flaring white while their drives burn. The own ship is drawn in full;
+ * the contact only as the sensors make it out (see `createContactModel`), unless test mode hands
+ * `update` the enemy's own view of its ship to draw in full. One renderer draws both halves.
  */
 export const createInstrumentView = (sides: readonly SideSetup[]) => {
   const ownSide = sides[0];
@@ -341,7 +347,7 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
 
   const caption = (text: string) => el('span', { className: 'instrument-view__caption', text });
   const ownCaption = caption(`${ownSide.name} · ${ownSide.design.name}`);
-  const contactCaption = caption(`${contactSide.name} · ${contactSide.design.name}`);
+  const contactCaption = caption(contactSide.name);
   const ownPane = el(
     'div',
     {
@@ -386,6 +392,9 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
 
   const own = createShipView(scene, ownSide, 1);
   const contact = createShipView(scene, contactSide, 2);
+  const fogged = createContactModel();
+  contact.anchor.add(fogged);
+  setLayer(fogged, contact.layer);
 
   // Slugs and missiles in flight as the telescope sees them against the contact, drawn over it.
   const glintsOf = (size: number) => {
@@ -485,7 +494,11 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
 
   return {
     element,
-    update(observation: SideObservation) {
+    /**
+     * Shows what the side observes. In test mode, `enemy` is the enemy's own view of its ship,
+     * which the contact is drawn from in full.
+     */
+    update(observation: SideObservation, enemy?: OwnShipObservation) {
       const ship = observation.ownShip;
       updateShipView(own, ship.orientation, ship.appearance);
       ownPosition = ship.position;
@@ -496,8 +509,18 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       missileGlints.clear();
       antiMissileGlints.clear();
       if (seen) {
-        updateShipView(contact, seen.orientation, seen.appearance);
-        contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${formatKm(distance(seen.position, ship.position))}`;
+        const range = formatKm(distance(seen.position, ship.position));
+        contact.model.visible = enemy !== undefined;
+        fogged.visible = enemy === undefined;
+        if (enemy) {
+          updateShipView(contact, enemy.orientation, enemy.appearance);
+          contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${range}`;
+        } else {
+          toQuaternion(seen.orientation ?? IDENTITY, contact.anchor.quaternion);
+          updateContactModel(fogged, seen);
+          showFlashes(contact, seen.appearance);
+          contactCaption.textContent = `${contactSide.name} · ${seen.hullSize ?? 'unknown hull'} · ${CONTACT_DETAIL_TEXT[seen.detail]} · ${range}`;
+        }
         for (const munition of observation.munitions) {
           const at = telescopePosition(munition, ship.position, seen.position);
           if (!at) continue;
@@ -554,6 +577,7 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       controls.dispose();
       disposeShipModel(own.model);
       disposeShipModel(contact.model);
+      disposeContactModel(fogged);
       disposeScene(scene);
       disposeRenderer(renderer);
     },

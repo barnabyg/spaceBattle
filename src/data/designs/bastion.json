@@ -3,10 +3,14 @@
   "name": "Bastion",
   "hullSize": "cruiser",
   "propellantMass": 1600000,
+  "reserve": 10000,
   "sections": [
     {
       "kind": "forward",
-      "armour": { "type": "heavy", "thickness": 0.008 },
+      "armour": {
+        "type": "heavy",
+        "thickness": 0.008
+      },
       "components": [
         {
           "type": "capacitor",
@@ -15,14 +19,35 @@
           "maxCharge": 1500000000,
           "maxDischarge": 15000000000
         }
+      ],
+      "mounts": [
+        {
+          "type": "sensor",
+          "mass": 8000,
+          "aperture": 6,
+          "wavelength": 5e-8,
+          "trackingError": 2e-9
+        }
       ]
     },
     {
       "kind": "middle",
-      "armour": { "type": "ablative", "thickness": 0.015 },
+      "armour": {
+        "type": "ablative",
+        "thickness": 0.015
+      },
       "components": [
-        { "type": "thrusters", "mass": 80000, "torque": 60000000 },
-        { "type": "reactor", "mass": 120000, "output": 5000000000, "efficiency": 0.75 }
+        {
+          "type": "thrusters",
+          "mass": 80000,
+          "torque": 60000000
+        },
+        {
+          "type": "reactor",
+          "mass": 120000,
+          "output": 5000000000,
+          "efficiency": 0.75
+        }
       ],
       "mounts": [
         {
@@ -59,7 +84,10 @@
     },
     {
       "kind": "engine",
-      "armour": { "type": "ablative", "thickness": 0.01 },
+      "armour": {
+        "type": "ablative",
+        "thickness": 0.01
+      },
       "components": [
         {
           "type": "drive",

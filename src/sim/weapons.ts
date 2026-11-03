@@ -29,13 +29,14 @@ import {
   type Slug,
 } from './kinetic';
 import { launchMissile, missileReach, type Missile, type MissileTarget } from './missile';
-import type { FireMode, PointDefencePriority } from './orders';
+import type { AimPoint, FireMode, PointDefencePriority } from './orders';
 import {
   assignPointDefence,
   burstEnergy,
   burstSpread,
   missileHitChance,
   pointDefencePower,
+  pointDefenceRange,
   pointDefenceSolution,
   type PointDefenceEngagement,
   type Threat,
@@ -70,6 +71,34 @@ export const designReach = (design: Design): number =>
           .map(missileReach)
       : []),
   );
+
+/**
+ * How far a ship's working weapons reach now, m: its beam weapons, its kinetic guns and point
+ * defence while they have ammunition, and its launchers while it has anti-ship missiles left.
+ * Zero once none is left.
+ */
+export const workingReach = (ship: ShipState): number => {
+  const working = (slot: number) => (ship.integrity[slot] ?? 0) > 0;
+  const { weapons } = ship;
+  const launching = weapons.launchers.some((l) => working(l.slot));
+  return Math.max(
+    0,
+    ...weapons.beamWeapons.filter((w) => working(w.slot)).map((w) => effectiveRange(w.weapon)),
+    ...(slugsLeft(ship) > 0
+      ? weapons.kineticGuns.filter((g) => working(g.slot)).map((g) => kineticGunRange(g.gun))
+      : []),
+    ...(roundsLeft(ship) > 0
+      ? weapons.pointDefence.filter((g) => working(g.slot)).map((g) => pointDefenceRange(g.gun))
+      : []),
+    ...(launching
+      ? ship.ammunition.flatMap(({ missile, missiles }) =>
+          missile && missiles > 0 && missileRole(missile) === 'anti-ship'
+            ? [missileReach(missile)]
+            : [],
+        )
+      : []),
+  );
+};
 
 /** One beam weapon's state: a laser's or a particle beam's. */
 export interface BeamWeaponState {
@@ -139,6 +168,8 @@ export interface Salvo {
 export interface WeaponsState {
   readonly target: SideId | null;
   readonly mode: FireMode;
+  /** The part of the target the captain has the weapons aim at; null for the whole ship. */
+  readonly aim: AimPoint | null;
   /** Lasers and particle beams, in the order of the ship's component slots. */
   readonly beamWeapons: readonly BeamWeaponState[];
   readonly kineticGuns: readonly KineticGunState[];
@@ -258,6 +289,11 @@ export interface Beam {
   readonly power: number;
   /** Where the attacker was when it fired. */
   readonly origin: Vec3;
+  /**
+   * Where its line of fire passes the target, in the target's body frame as it was when fired:
+   * the point fire control aimed at, thrown off by the error in its track of the target, m.
+   */
+  readonly aim: Vec3;
   /** Distance to the target when fired, m. */
   readonly range: number;
   /** Battle time it reaches the target, s. */
@@ -273,6 +309,7 @@ export interface Beam {
 export const initialWeapons = (design: Design): WeaponsState => ({
   target: null,
   mode: 'hold-fire',
+  aim: null,
   beamWeapons: componentSlots(design).flatMap((slot, i) =>
     slot.component.type === 'laser' ||
     slot.component.type === 'charged-particle-beam' ||
@@ -408,12 +445,13 @@ const weaponsShare = (ship: ShipState): number =>
  * Sends out this step's beams once power is settled: each firing beam weapon gets its share of
  * the power the weapons were given, and puts its efficiency's part of that into its beam (for a
  * neutral particle beam, only what survives the stripping). The beam reaches the target R/c
- * later; fire control leads the target by its known motion.
+ * later; fire control leads the target by its known motion, aiming its line of fire through
+ * `aim` in the target's body frame.
  */
 export const emitBeams = (
   ship: ShipState,
   attacker: SideId,
-  target: { readonly id: SideId; readonly position: Vec3 } | null,
+  target: { readonly id: SideId; readonly position: Vec3; readonly aim: Vec3 } | null,
   time: number,
 ): Beam[] => {
   const { weapons } = ship;
@@ -434,6 +472,7 @@ export const emitBeams = (
       weapon: state.weapon,
       power,
       origin: ship.position,
+      aim: target.aim,
       range,
       arrival: time + range / SPEED_OF_LIGHT,
       continuing: state.firedAt === target.id,

@@ -13,9 +13,13 @@ const contactOf = (battle: Battle, viewer: string) => {
   return contact;
 };
 
-describe('ship appearance (shown in full until sensors arrive)', () => {
+describe('ship appearance', () => {
   it('shows each side how the other ship looks: radiators, temperature, thrust and shape', () => {
-    const battle = createBattle(testSetup());
+    // Close enough for blue's sensor to make out every part of red.
+    const battle = createBattle({
+      ...testSetup(),
+      scenario: duelSetup(testDesign(), testDesign(), 1_000 * KM).scenario,
+    });
     battle.giveOrder('red', { type: 'radiators', deployed: true });
     battle.giveOrder('red', { type: 'burn', throttle: 0.5, duration: 600 });
     battle.advance(60);
@@ -25,10 +29,17 @@ describe('ship appearance (shown in full until sensors arrive)', () => {
     expect(seen.temperature).toBe(red.heat.temperature);
     expect(seen.thrust).toBe(red.thrust);
     expect(seen.thrust).toBeGreaterThan(0);
-    expect(seen.propellantMass).toBe(red.propellantMass);
-    expect(seen.parts).toStrictEqual(shipShape(testDesign(), red.propellantMass, true));
+    const shape = shipShape(testDesign(), red.propellantMass, true);
+    expect(seen.outline).toStrictEqual(shape);
+    expect(seen.parts).toEqual(expect.arrayContaining([...shape]));
+    expect(seen.parts).toHaveLength(shape.length);
     // A side sees its own ship the same way.
-    expect(red.appearance).toStrictEqual(seen);
+    expect(red.appearance).toMatchObject({
+      radiatorsDeployed: true,
+      temperature: seen.temperature,
+      thrust: seen.thrust,
+      parts: shape,
+    });
   });
 
   it('shows where a beam is landing on the ship, in its body frame', () => {
@@ -37,13 +48,14 @@ describe('ship appearance (shown in full until sensors arrive)', () => {
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
     battle.advance(5);
     const red = contactOf(battle, 'blue').appearance;
-    // Red faces blue nose-on, so the beam lands on the middle of its nose.
+    // Red faces blue nose-on, so the beam lands on the middle of its nose, give or take blue's
+    // tracking error of a few millimetres.
     const nose = red.parts.find((p) => p.section === 'forward' && p.mount === null);
     expect(red.beamsLanding).toHaveLength(1);
     const landing = red.beamsLanding[0];
     expect(landing?.point.x).toBeCloseTo(nose?.max.x ?? NaN, 6);
-    expect(landing?.point.y).toBeCloseTo(0, 6);
-    expect(landing?.point.z).toBeCloseTo(0, 6);
+    expect(landing?.point.y).toBeCloseTo(0, 2);
+    expect(landing?.point.z).toBeCloseTo(0, 2);
     expect(landing?.power).toBeGreaterThan(0);
     expect(landing?.spotRadius).toBeGreaterThan(0);
     expect(battle.observe('red').ownShip.appearance.beamsLanding).toStrictEqual(red.beamsLanding);

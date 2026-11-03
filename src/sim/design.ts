@@ -315,6 +315,27 @@ export interface CoolantShieldDesign {
 }
 
 export type ShieldDesign = MagneticShieldDesign | CoolantShieldDesign;
+
+/**
+ * A telescope that observes other ships. Diffraction sets the finest detail it makes out: at range
+ * r, about 1.22·λ·r/D (see `sensorResolution`), so a larger mirror or a shorter wavelength makes
+ * out more from further off. It also tracks a contact's position for fire control, to within an
+ * angle of `trackingError`.
+ */
+export interface SensorDesign {
+  readonly type: 'sensor';
+  /** kg */
+  readonly mass: number;
+  /** Diameter of its mirror, m. */
+  readonly aperture: number;
+  /** The wavelength it observes at, m. */
+  readonly wavelength: number;
+  /**
+   * The angle it tracks a contact's position to, as a standard deviation across the line of
+   * sight, rad: the smaller, the more precise.
+   */
+  readonly trackingError: number;
+}
 export type ShieldType = ShieldDesign['type'];
 
 /** Components that sit inside a section's armour. */
@@ -334,7 +355,8 @@ export type MountedComponentDesign =
   | NeutralParticleBeamDesign
   | KineticGunDesign
   | PointDefenceDesign
-  | LauncherDesign;
+  | LauncherDesign
+  | SensorDesign;
 export type ComponentDesign = InternalComponentDesign | MountedComponentDesign;
 export type ComponentType = ComponentDesign['type'];
 
@@ -355,6 +377,7 @@ const MOUNTED_TYPES = [
   'kinetic-gun',
   'point-defence',
   'launcher',
+  'sensor',
 ] as const;
 
 export const ARMOUR_TYPES = ['heavy', 'ablative'] as const;
@@ -388,6 +411,8 @@ export interface Design {
   readonly sections: readonly SectionDesign[];
   /** Propellant carried at the start of a battle, kg. */
   readonly propellantMass: number;
+  /** The delta-v held back for withdrawal, m/s. */
+  readonly reserve: number;
 }
 
 const componentsOf = new WeakMap<
@@ -593,6 +618,14 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
     }
     case 'launcher':
       return { type, mass, reloadTime: requireNumber(data, 'reloadTime', where) };
+    case 'sensor':
+      return {
+        type,
+        mass,
+        aperture: requireNumber(data, 'aperture', where),
+        wavelength: requireNumber(data, 'wavelength', where),
+        trackingError: requireNumber(data, 'trackingError', where),
+      };
     case 'magazine':
       return parseMagazine(data, mass, where);
     case 'magnetic-shield':
@@ -743,12 +776,13 @@ export const parseDesign = (data: unknown): Design => {
   const name = requireString(data, 'name', where);
   const hullSize = requireOneOf(data, 'hullSize', HULL_SIZES, where);
   const propellantMass = requireNumber(data, 'propellantMass', where, { positive: false });
+  const reserve = requireNumber(data, 'reserve', where, { positive: false });
   if (!Array.isArray(data.sections)) throw new Error(`${where}: "sections" must be a list`);
   const sections = data.sections.map((s) => parseSection(s, where));
   if (sections.map((s) => s.kind).join() !== SECTION_KINDS.join()) {
     throw new Error(`${where}: needs exactly the sections ${SECTION_KINDS.join(', ')}, in order`);
   }
-  const design: Design = { id, name, hullSize, sections, propellantMass };
+  const design: Design = { id, name, hullSize, sections, propellantMass, reserve };
   for (const type of ['drive', 'thrusters', 'reactor'] as const) {
     const count = designComponentsOfType(design, type).length;
     if (count !== 1) throw new Error(`${where}: needs exactly one ${type}, has ${count}`);

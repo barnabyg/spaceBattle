@@ -7,6 +7,7 @@ import {
   type BattleEvent,
   type BattleSetup,
   type SideObservation,
+  type SideSetup,
 } from './battle';
 import { createComputerCaptain } from './captain';
 import { DECISION_INTERVAL, runBattle, withComputerCaptains } from './command';
@@ -63,6 +64,12 @@ const frozen = <T>(value: T): T => {
   return value;
 };
 
+const redOf = (setup: BattleSetup): SideSetup => {
+  const red = setup.sides.find((side) => side.id === 'red');
+  if (!red) throw new Error('No red side');
+  return red;
+};
+
 const range = (observation: SideObservation) =>
   distance(observation.ownShip.position, observation.contacts[0]?.position ?? { x: 0, y: 0, z: 0 });
 
@@ -84,7 +91,7 @@ describe('computer captain', () => {
     // The same battle with each captain handed a frozen copy of its side's observation, and the
     // orders it returns given by hand: the battle accepts each one, and it plays out the same.
     const battle = createBattle(setup);
-    const captains = setup.sides.map((side) => createComputerCaptain(side.id, setup.sides));
+    const captains = setup.sides.map((side) => createComputerCaptain(side));
     const given = new Set<Order['type']>();
     while (battle.time < duration - 1e-9 && !battle.outcome) {
       for (const captain of captains) {
@@ -142,6 +149,7 @@ describe('computer captain', () => {
     );
     battle.advance(10);
     let red = battle.observe('red').ownShip;
+    // Its sensor makes out the Lance's laser even this far off, so it knows it is outranged.
     expect(red.manoeuvre?.goal).toBe('close');
     expect(red.manoeuvre?.range).toBeLessThan(BASTION_REACH);
     expect(red.power.priorities[0]).toBe('drive');
@@ -450,13 +458,6 @@ describe('computer captain', () => {
     expect(battle.observe('red').ownShip.heat.radiatorsDeployed).toBe(false);
   }, 20_000);
 
-  it('with nothing left to fight with, stops where it is rather than run', () => {
-    const empty = withComponent(handMadeDesign('sling'), 'magazine', { slugs: 0 });
-    const battle = againstIdlePlayer(handMadeDesign('lance'), empty, 100_000 * KM);
-    battle.advance(10);
-    expect(battle.observe('red').ownShip.manoeuvre?.goal).toBe('match-velocity');
-  });
-
   it('heads for its fighting range from far off faster than its autopilot would', () => {
     // At the autopilot's own cruising speed it would take over nine hours to get there.
     const battle = againstIdlePlayer(testDesign(), handMadeDesign('torch'), 200_000 * KM);
@@ -475,7 +476,7 @@ describe('computer captain', () => {
       },
     });
     const radiators = (temperature: number, deployed: boolean) =>
-      createComputerCaptain('red', setup.sides)
+      createComputerCaptain(redOf(setup))
         .decide(withHeat(temperature, deployed))
         .find((order) => order.type === 'radiators');
 
@@ -490,7 +491,7 @@ describe('computer captain', () => {
     /** The shields order the computer in red gives at a range against blue's design. */
     const shieldsOrder = (blue: string, red: string, at: number) => {
       const setup = duelSetup(handMadeDesign(blue), handMadeDesign(red), at);
-      return createComputerCaptain('red', setup.sides)
+      return createComputerCaptain(redOf(setup))
         .decide(createBattle(setup).observe('red'))
         .find((order) => order.type === 'shields');
     };
@@ -511,7 +512,7 @@ describe('computer captain', () => {
       type: 'power',
       priorities: ['drive', 'weapons', 'capacitors', 'shields'],
     });
-    const orders = createComputerCaptain('red', setup.sides).decide(battle.observe('red'));
+    const orders = createComputerCaptain(redOf(setup)).decide(battle.observe('red'));
     expect(orders).toContainEqual({ type: 'shields', raised: true });
     expect(orders.find((order) => order.type === 'power')).toEqual({
       type: 'power',
@@ -520,9 +521,10 @@ describe('computer captain', () => {
   });
 
   it('closes in when nothing has happened for a while', () => {
-    // Without propellant neither ship can move, so the Lance cannot reach its standoff range.
-    const stranded = (id: string): Design => ({ ...handMadeDesign(id), propellantMass: 0 });
-    const setup = duelSetup(stranded('lance'), stranded('bastion'), 250_000 * KM);
+    // With a drive of a newton neither ship gets anywhere, so the Lance cannot reach its standoff
+    // range.
+    const stuck = (id: string): Design => withComponent(handMadeDesign(id), 'drive', { thrust: 1 });
+    const setup = duelSetup(stuck('lance'), stuck('bastion'), 250_000 * KM);
     const battle = runBattle(
       { ...setup, sides: setup.sides.map((side) => ({ ...side, commander: 'computer' })) },
       { maxTime: 60 },

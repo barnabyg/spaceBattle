@@ -7,6 +7,7 @@ import type { PowerSystem } from './power';
 import {
   duelSetup,
   TEST_LASER,
+  TEST_SENSOR,
   testDesign,
   testSetup,
   testSides,
@@ -105,7 +106,7 @@ describe('power and heat', () => {
 
   it('keeps the books while lasers fire and damaged capacitors lose their charge', () => {
     // A laser at the back survives while the beams work through the nose to the capacitor.
-    const design = withSection(testDesign(), 'engine', { mounts: [TEST_LASER] });
+    const design = withSection(testDesign(), 'engine', { mounts: [TEST_LASER, TEST_SENSOR] });
     const battle = createBattle(duelSetup(design, design, 20_000e3));
     const checks = (['blue', 'red'] as const).map((side) => {
       battle.giveOrder(side, {

@@ -1,7 +1,15 @@
 import { incomingMissiles } from './antiMissile';
 import { componentSlots } from './components';
 import { overheat, strike, type DamageContext } from './damage';
-import { missileRole, type Design, type MissileRole, type SectionKind } from './design';
+import type { CaptainSkill } from './captain';
+import {
+  missileRole,
+  SECTION_KINDS,
+  type Design,
+  type MissileRole,
+  type SectionKind,
+} from './design';
+import { pursuitRefused, WITHDRAWAL_TIME, withdrawingRefused, type Pursuer } from './engagement';
 import { involves, type BattleEvent, type HitEvent } from './events';
 import {
   manoeuvreCommand,
@@ -23,6 +31,7 @@ import {
 } from './observation';
 import {
   POINT_DEFENCE_PRIORITIES,
+  type AimPoint,
   type LaunchOrder,
   type Order,
   type PointDefencePriority,
@@ -30,11 +39,23 @@ import {
 import type { PointDefenceEngagement, Threat } from './pointDefence';
 import { POWER_SYSTEMS, settlePowerAndHeat } from './power';
 import { endedBy, judge, lossOf, noResult, type BattleOutcome } from './outcome';
-import { IDENTITY, type Quat } from './quaternion';
-import { createRandom } from './random';
-import { burn, createShip, fireDrive, steer, type ShipState } from './ship';
+import { conjugate, IDENTITY, rotate, type Quat } from './quaternion';
+import { createRandom, type Random } from './random';
+import { perceive, sensorPower, type ContactDetail } from './sensors';
+import { burn, createShip, fireDrive, noseOf, steer, type ShipState } from './ship';
 import { TIME_STEP } from './time';
-import { add, distance, length, normalize, scale, sub, type Vec3 } from './vector';
+import {
+  add,
+  distance,
+  dot,
+  length,
+  normalize,
+  scale,
+  perpendiculars,
+  sub,
+  ZERO,
+  type Vec3,
+} from './vector';
 import {
   aimWeapons,
   designMissiles,
@@ -47,12 +68,15 @@ import {
   type PointDefenceBurst,
   type PointDefenceTargets,
   type Salvo,
+  workingReach,
 } from './weapons';
 
 export { TIME_STEP };
 export type {
+  AimPoint,
   BattleEvent,
   BattleOutcome,
+  ContactDetail,
   MissileRole,
   MissileTarget,
   PointDefenceEngagement,
@@ -65,7 +89,10 @@ export type {
   BeamLanding,
   BeamWeaponObservation,
   ComponentObservation,
+  ContactAppearance,
+  ContactMountObservation,
   ContactObservation,
+  ContactSectionObservation,
   HeatObservation,
   ImpactLanding,
   KineticGunObservation,
@@ -88,6 +115,7 @@ export type {
 } from './observation';
 
 export type SideId = string;
+export type { CaptainSkill } from './captain';
 export type Commander = 'player' | 'computer';
 
 export interface SideSetup {
@@ -95,6 +123,8 @@ export interface SideSetup {
   readonly name: string;
   readonly commander: Commander;
   readonly design: Design;
+  /** How skilled a computer side's captain is; medium if left out. A player side ignores it. */
+  readonly skill?: CaptainSkill;
 }
 
 /** Where each side's ship starts, in the same order as the battle's sides. */
@@ -156,6 +186,8 @@ interface Combatant {
   beamsLanding: BeamLanding[];
   /** Slugs and missiles that struck the ship in the last step. */
   impacts: ImpactLanding[];
+  /** Whether it has withdrawn: left the battle by withdrawal. */
+  withdrawn: boolean;
 }
 
 /**
@@ -227,16 +259,48 @@ const checkOrder = (order: Order): Order => {
         );
       }
       return order;
+    case 'weapons': {
+      const { aim } = order;
+      if (aim === undefined) return order;
+      const mount = aim.mount;
+      if (
+        !SECTION_KINDS.includes(aim.section) ||
+        (mount !== null && !(Number.isInteger(mount) && mount >= 0))
+      ) {
+        throw new Error('An aim point needs a section and a mount number or null');
+      }
+      return order;
+    }
     case 'anti-missile':
     case 'radiators':
     case 'shields':
-    case 'weapons':
+    case 'withdraw':
       return order;
   }
 };
 
+/** A withdrawing ship burns once its nose is within this angle of away from the enemy (cosine). */
+const WITHDRAWAL_ALIGNMENT = Math.cos((10 * Math.PI) / 180);
 /** How many recent events each side's observation keeps. */
 const EVENT_LOG_LENGTH = 20;
+/** Mixed into the battle's seed for the errors in fire control's tracks, kept apart from the rest. */
+const TRACKING_SEED = 0x9e3779b9;
+
+/** A draw from the standard normal distribution (Box–Muller). */
+const normal = (random: Random): number =>
+  Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random());
+
+/** The middle of a part's box. */
+const centreOf = (part: { readonly min: Vec3; readonly max: Vec3 }): Vec3 =>
+  scale(add(part.min, part.max), 0.5);
+
+/** Where fire control aims at a target this step. */
+interface Aim {
+  /** In the target's body frame, m. */
+  readonly body: Vec3;
+  /** From the target's centre of mass, in world axes, m. */
+  readonly world: Vec3;
+}
 
 export const createBattle = (setup: BattleSetup): Battle => {
   if (setup.sides.length !== setup.scenario.starts.length) {
@@ -254,10 +318,14 @@ export const createBattle = (setup: BattleSetup): Battle => {
       ship: createShip(side.design, start.position, start.velocity, start.orientation ?? IDENTITY),
       beamsLanding: [],
       impacts: [],
+      withdrawn: false,
     };
   });
   let steps = 0;
   const random = createRandom(setup.seed);
+  // Fire control's tracking errors draw on their own sequence, so they leave every other chance
+  // in the battle as it would be without them.
+  const tracking = createRandom((setup.seed ^ TRACKING_SEED) >>> 0);
   /** Beams on their way to their targets, in the order fired. */
   let beams: Beam[] = [];
   /** Slugs in flight, in the order fired. */
@@ -273,6 +341,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
   const munitions = createMunitions(combatants, launchedFrom);
   const logs = new Map<SideId, BattleEvent[]>(setup.sides.map((side) => [side.id, []]));
   let outcome: BattleOutcome | null = null;
+  /** Events from orders given since the last step, reported with that step's. */
+  let pending: BattleEvent[] = [];
 
   /** Keeps each side's latest events about it. */
   const record = (events: readonly BattleEvent[]) => {
@@ -311,6 +381,43 @@ export const createBattle = (setup: BattleSetup): Battle => {
   const targetOf = (combatant: Combatant): Combatant | undefined => {
     const id = combatant.ship.weapons.target;
     return id === null ? undefined : combatants.find((c) => c.side.id === id);
+  };
+
+  /** A ship and the withdrawing enemy it might pursue, as the rules of engagement see them. */
+  const pursuerOf = (ship: ShipState, enemy: ShipState): Pursuer => ({
+    position: ship.position,
+    nose: noseOf(ship),
+    enemy: enemy.position,
+  });
+
+  /** The part of a target a ship's sensors make out to aim at, if they make it out now. */
+  const aimablePart = (ship: ShipState, target: ShipState, aim: AimPoint) =>
+    perceive(sensorPower(ship), target, distance(ship.position, target.position)).parts.find(
+      (part) => part.section === aim.section && part.mount === aim.mount,
+    );
+
+  /**
+   * Where fire control aims at its target this step: the middle of the part the captain aims at
+   * while the sensors make it out, or else the centre of mass, thrown off across the line of
+   * sight by the error in the sensors' track of the target (see `SensorDesign.trackingError`).
+   */
+  const aimAt = ({ ship }: Combatant, target: Combatant): Aim => {
+    const { aim } = ship.weapons;
+    const part = aim ? aimablePart(ship, target.ship, aim) : undefined;
+    const aimed = part ? centreOf(part) : ZERO;
+    const offset = sub(target.ship.position, ship.position);
+    const sight = normalize(offset);
+    const [across, other] = perpendiculars(sight);
+    const spread = sensorPower(ship).trackingError * length(offset);
+    const error = add(
+      scale(across, spread * normal(tracking)),
+      scale(other, spread * normal(tracking)),
+    );
+    const { orientation } = target.ship;
+    return {
+      body: add(aimed, rotate(conjugate(orientation), error)),
+      world: add(rotate(orientation, aimed), error),
+    };
   };
 
   /** Whether a missile's target is still in the battle: a ship, or a missile in flight. */
@@ -456,6 +563,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
    * plans before any steers, from the same positions, so the order of sides never matters.
    */
   const plan = (c: Combatant): Plan => {
+    if (c.ship.withdrawingSince !== null) {
+      const enemy = enemyOf(c);
+      return {
+        heading: enemy ? normalize(sub(c.ship.position, enemy.ship.position)) : null,
+        command: null,
+      };
+    }
     const state = c.ship.manoeuvre;
     if (!state) return { heading: attitudeTarget(c), command: null };
     const command = manoeuvreCommand(c.ship, state, contactOf(c));
@@ -466,7 +580,11 @@ export const createBattle = (setup: BattleSetup): Battle => {
   const drive = ({ ship }: Combatant, { heading, command }: Plan) => {
     steer(ship, heading, TIME_STEP);
     const coasting = ship.velocity;
-    if (command && ship.manoeuvre) {
+    if (ship.withdrawingSince !== null) {
+      // Withdrawing, it burns at full thrust once turned away from the enemy.
+      const away = heading && dot(noseOf(ship), heading) >= WITHDRAWAL_ALIGNMENT;
+      fireDrive(ship, away ? 1 : 0, TIME_STEP);
+    } else if (command && ship.manoeuvre) {
       ship.manoeuvre = { ...ship.manoeuvre, correcting: command.correcting };
       fireDrive(ship, manoeuvreThrottle(ship, command, TIME_STEP), TIME_STEP);
     } else {
@@ -483,11 +601,17 @@ export const createBattle = (setup: BattleSetup): Battle => {
   const fire = (combatant: Combatant, seen: Snapshot, start: number): BattleEvent[] => {
     const { ship } = combatant;
     const target = targetOf(combatant);
+    const shooting =
+      ship.weapons.beamWeapons.some((w) => w.firing) ||
+      ship.weapons.kineticGuns.some((g) => g.firing);
+    const aim = target && shooting ? aimAt(combatant, target) : null;
     beams.push(
       ...emitBeams(
         ship,
         combatant.side.id,
-        target ? { id: target.side.id, position: target.ship.position } : null,
+        target && aim
+          ? { id: target.side.id, position: target.ship.position, aim: aim.body }
+          : null,
         start,
       ),
     );
@@ -496,7 +620,9 @@ export const createBattle = (setup: BattleSetup): Battle => {
       ...fireKineticGuns(
         ship,
         combatant.side.id,
-        target && motion ? { id: target.side.id, motion } : null,
+        target && motion && aim
+          ? { id: target.side.id, motion: { ...motion, position: add(motion.position, aim.world) } }
+          : null,
         TIME_STEP,
         nextMunitionId,
       ),
@@ -597,13 +723,32 @@ export const createBattle = (setup: BattleSetup): Battle => {
   };
 
   /**
+   * Withdrawing ships that are gone by the end of the step: out of reach of every enemy weapon,
+   * or `WITHDRAWAL_TIME` after their order.
+   */
+  const leave = (time: number) => {
+    for (const c of combatants) {
+      const since = c.ship.withdrawingSince;
+      if (since === null || c.withdrawn) continue;
+      const reached = combatants.some(
+        (enemy) =>
+          enemy !== c && distance(c.ship.position, enemy.ship.position) <= workingReach(enemy.ship),
+      );
+      c.withdrawn = !reached || time - since >= WITHDRAWAL_TIME - 1e-9;
+    }
+  };
+
+  /**
    * How the battle ended in the step, if it did. Ships that lost in it lose together; if all of
    * them did, nobody wins. A side that loses in the step that reaches the time limit still loses.
    */
   const judgeStep = (time: number): BattleOutcome | null => {
     const decided = judge(
       time,
-      combatants.map(({ side, ship }) => ({ side: side.id, loss: lossOf(ship) })),
+      combatants.map(({ side, ship, withdrawn }) => ({
+        side: side.id,
+        loss: lossOf(ship) ?? (withdrawn ? { result: 'withdrawn' as const } : null),
+      })),
     );
     if (decided) return decided;
     return timeLimit !== undefined && time >= timeLimit - 1e-9 ? noResult(time, setup.sides) : null;
@@ -625,10 +770,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
     steps += 1;
 
     const time = steps * TIME_STEP;
-    const events: BattleEvent[] = [...launches];
+    const events: BattleEvent[] = [...pending, ...launches];
+    pending = [];
     const ctx = { time, random, events };
     resolveArrivals(before, ctx);
     overheatShips(ctx);
+    leave(time);
     outcome = judgeStep(time);
     if (outcome) events.push({ type: 'battle-ended', time, outcome });
     record(events);
@@ -647,6 +794,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
       const { ship } = combatantOf(sideId);
       const checked = checkOrder(order);
       if (outcome) return;
+      const withdrawing = combatants.find(
+        (c) => c.side.id !== sideId && c.ship.withdrawingSince !== null,
+      );
+      const refused =
+        (ship.withdrawingSince !== null ? withdrawingRefused(checked) : null) ??
+        (withdrawing ? pursuitRefused(checked, pursuerOf(ship, withdrawing.ship)) : null);
+      if (refused) throw new Error(refused);
       // Manual orders and manoeuvres replace each other: one or the other steers the ship.
       switch (checked.type) {
         case 'manoeuvre':
@@ -674,12 +828,21 @@ export const createBattle = (setup: BattleSetup): Battle => {
         case 'shields':
           ship.shieldsRaised = checked.raised;
           break;
-        case 'weapons':
-          if (checked.target !== null && combatantOf(checked.target).side.id === sideId) {
-            throw new Error('A ship cannot target itself');
+        case 'weapons': {
+          const target = checked.target === null ? null : combatantOf(checked.target);
+          if (target?.side.id === sideId) throw new Error('A ship cannot target itself');
+          const aim = checked.aim ?? null;
+          if (aim) {
+            if (!target) throw new Error('Aiming at a part needs a target');
+            if (!aimablePart(ship, target.ship, aim)) {
+              throw new Error(
+                `The sensors do not make out the ${aim.section} section${aim.mount === null ? '' : ` mount ${String(aim.mount)}`} of the contact`,
+              );
+            }
           }
-          ship.weapons = { ...ship.weapons, target: checked.target, mode: checked.mode };
+          ship.weapons = { ...ship.weapons, target: checked.target, mode: checked.mode, aim };
           break;
+        }
         case 'point-defence':
           ship.weapons = { ...ship.weapons, pointDefencePriority: checked.priority };
           break;
@@ -689,6 +852,25 @@ export const createBattle = (setup: BattleSetup): Battle => {
         case 'anti-missile':
           ship.weapons = { ...ship.weapons, automaticDefence: checked.automatic };
           break;
+        case 'withdraw': {
+          ship.manoeuvre = null;
+          ship.attitude = null;
+          ship.burn = null;
+          ship.withdrawingSince = steps * TIME_STEP;
+          // The enemy may no longer pursue: its standing orders to do so are called off.
+          for (const { side, ship: enemy } of combatants) {
+            if (side.id === sideId) continue;
+            const pursuer = pursuerOf(enemy, ship);
+            const { manoeuvre, attitude, burn: burning } = enemy;
+            if (manoeuvre && pursuitRefused(manoeuvre.order, pursuer)) enemy.manoeuvre = null;
+            if (attitude && pursuitRefused(attitude, pursuer)) enemy.attitude = null;
+            if (burning && pursuitRefused({ type: 'burn', duration: 1, ...burning }, pursuer)) {
+              enemy.burn = null;
+            }
+          }
+          pending.push({ type: 'withdrawal', time: ship.withdrawingSince, side: sideId });
+          break;
+        }
       }
     },
     step,
@@ -703,7 +885,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
       return {
         time: steps * TIME_STEP,
         ownShip: observeOwnShip(own, contactOf(own), antiMissileEngagements(sideId, missiles)),
-        contacts: combatants.filter((c) => c !== own).map(observeContact),
+        contacts: combatants.filter((c) => c !== own).map((c) => observeContact(own.ship, c)),
         munitions: observeMunitions(slugs, missiles),
         events: [...(logs.get(sideId) ?? [])],
         outcome,

@@ -56,8 +56,10 @@ describe('batch run', () => {
     expect(blue).toMatchObject({ side: 'blue', name: 'Blue', designName: 'Test', wins: 2 });
     expect(blue?.losses).toEqual([]);
     expect(red?.wins).toBe(0);
+    // Red's sensor cannot make out blue's laser from 20,000 km, so red sits still while blue's
+    // beam burns through its engine section and its drive.
     expect(red?.losses).toEqual([
-      { loss: { result: 'destroyed', cause: 'reactor-breach' }, count: 2 },
+      { loss: { result: 'disabled', cause: 'no-working-drive' }, count: 2 },
     ]);
   }, 20_000);
 

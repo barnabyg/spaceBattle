@@ -23,6 +23,7 @@ const SIGNIFICANT: Readonly<Record<BattleEvent['type'], boolean>> = {
   'armour-breached': true,
   'component-lost': true,
   'structural-failure': true,
+  withdrawal: true,
   'battle-ended': true,
 };
 

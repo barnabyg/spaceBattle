@@ -76,7 +76,7 @@ describe('manoeuvre orders', () => {
     battle.giveOrder('blue', { type: 'manoeuvre', goal: 'close', range });
     battle.advance(7 * HOUR);
     expect(worstRangeError(battle, range, HOUR)).toBeLessThan(TOLERANCE);
-  });
+  }, 20_000); // Simulates hours of battle; takes a few seconds.
 
   it('lets two ships close on each other without burning against each other', () => {
     const battle = createBattle({
@@ -125,7 +125,7 @@ describe('manoeuvre orders', () => {
     battle.giveOrder('blue', { type: 'manoeuvre', goal: 'open', range });
     battle.advance(6 * HOUR);
     expect(worstRangeError(battle, range, HOUR)).toBeLessThan(TOLERANCE);
-  });
+  }, 20_000); // Simulates hours of battle; takes a few seconds.
 
   it('matches the enemy’s velocity', () => {
     const battle = battleWith();

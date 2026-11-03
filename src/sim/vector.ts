@@ -23,6 +23,16 @@ export const cross = (a: Vec3, b: Vec3): Vec3 => ({
   z: a.x * b.y - a.y * b.x,
 });
 
+/**
+ * Two unit vectors square to the unit vector `v` and to each other, so that with it they make a
+ * right-handed set. The first lies in the world's x–y plane unless `v` is close to the z axis.
+ */
+export const perpendiculars = (v: Vec3): readonly [Vec3, Vec3] => {
+  const reference = Math.abs(v.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
+  const across = normalize(cross(v, reference));
+  return [across, cross(v, across)];
+};
+
 export const length = (a: Vec3): number => Math.hypot(a.x, a.y, a.z);
 
 export const distance = (a: Vec3, b: Vec3): number => length(sub(a, b));
