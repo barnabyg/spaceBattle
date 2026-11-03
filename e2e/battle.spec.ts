@@ -1,5 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { startFreeBattle } from './freeBattle';
+import {
+  selectedTimeCompression,
+  startFreeBattle,
+  timeCompressionButton,
+  timeCompressionButtons,
+} from './freeBattle';
 
 const kmOf = (text: string | null) => Number((text ?? '').replace(/[^\d.]/g, ''));
 
@@ -14,8 +19,8 @@ test('the game loads a battle and the ships move when time runs', async ({ page 
   await expect(separation).toContainText('km');
   const before = kmOf(await separation.textContent());
 
-  for (let i = 0; i < 9; i++) await page.keyboard.press('+');
-  await expect(page.getByLabel('Time compression')).toHaveText('1000×');
+  await timeCompressionButton(page, '1000×').click();
+  await expect(selectedTimeCompression(page)).toHaveText('1000×');
   await expect.poll(async () => kmOf(await separation.textContent())).not.toBe(before);
 });
 
@@ -23,13 +28,60 @@ test('pause stops the battle clock', async ({ page }) => {
   await startFreeBattle(page);
   const clock = page.getByLabel('Battle time');
   await page.keyboard.press(' ');
-  await expect(page.getByLabel('Time compression')).toHaveText('Paused');
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
   const paused = (await clock.textContent()) ?? '';
   await page.waitForTimeout(1_500);
   await expect(clock).toHaveText(paused);
 
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect(clock).not.toHaveText(paused);
+});
+
+test('a speed button sets the time compression, and stays selected while paused', async ({
+  page,
+}) => {
+  await startFreeBattle(page);
+  await expect(timeCompressionButtons(page)).toHaveText(['1×', '10×', '100×', '500×', '1000×']);
+  await expect(page.getByRole('button', { name: /^(Slower|Faster)$/ })).toHaveCount(0);
+  await expect(selectedTimeCompression(page)).toHaveText('1×');
+
+  // Paused, so no significant event can drop the battle back to real time while it is checked.
+  await page.keyboard.press(' ');
+  await timeCompressionButton(page, '500×').click();
+  await expect(timeCompressionButton(page, '500×')).toHaveAttribute('aria-pressed', 'true');
+  await expect(timeCompressionButton(page, '1×')).toHaveAttribute('aria-pressed', 'false');
+  await expect(selectedTimeCompression(page)).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
+  await expect(selectedTimeCompression(page)).toHaveCount(1);
+});
+
+test('keys 1 to 5 choose a time compression and + / - step through them', async ({ page }) => {
+  await startFreeBattle(page);
+  await expect(page.getByRole('group', { name: 'Time controls' })).toContainText(
+    'Space pause · 1–5 or + / − time compression',
+  );
+  await page.keyboard.press(' ');
+  const selected = selectedTimeCompression(page);
+  await page.keyboard.press('4');
+  await expect(selected).toHaveText('500×');
+  await page.keyboard.press('+');
+  await expect(selected).toHaveText('1000×');
+  await page.keyboard.press('+');
+  await expect(selected).toHaveText('1000×');
+  await page.keyboard.press('-');
+  await expect(selected).toHaveText('500×');
+  await page.keyboard.press('2');
+  await expect(selected).toHaveText('10×');
+  await page.keyboard.press('-');
+  await expect(selected).toHaveText('1×');
+  await page.keyboard.press('-');
+  await expect(selected).toHaveText('1×');
+  await page.keyboard.press('5');
+  await expect(selected).toHaveText('1000×');
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
 });
 
 test('a manoeuvre order shows its goal and planned burns on the map', async ({ page }) => {
@@ -68,7 +120,8 @@ test('the ship heats up during a burn', async ({ page }) => {
   await expect(temperature).toHaveText('300 K');
   await page.getByLabel('Duration s').fill('600');
   await page.getByRole('button', { name: 'Burn', exact: true }).click();
-  for (let i = 0; i < 6; i++) await page.keyboard.press('+');
+  await page.keyboard.press('3');
+  await expect(selectedTimeCompression(page)).toHaveText('100×');
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect.poll(async () => kmOf(await temperature.textContent())).toBeGreaterThan(400);
 });
@@ -98,10 +151,11 @@ test('End battle asks first, then shows the player forfeited', async ({ page }) 
   await page.getByRole('button', { name: 'End battle' }).click();
   const confirm = page.getByRole('dialog', { name: 'End battle' });
   await expect(confirm).toContainText('forfeit');
-  await expect(page.getByLabel('Time compression')).toHaveText('Paused');
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
   await confirm.getByRole('button', { name: 'Continue battle' }).click();
   await expect(confirm).toBeHidden();
-  await expect(page.getByLabel('Time compression')).toHaveText('1×');
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
+  await expect(selectedTimeCompression(page)).toHaveText('1×');
 
   await page.getByRole('button', { name: 'End battle' }).click();
   await confirm.getByRole('button', { name: 'Forfeit' }).click();
@@ -163,12 +217,12 @@ test('a ship with launchers launches missiles by order, dropping to real time', 
   await page.getByLabel('Missiles', { exact: true }).fill('2');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await expect(launch).toHaveText('Launching · 2 to go · 12 missiles left');
-  for (let i = 0; i < 9; i++) await page.keyboard.press('+');
+  await timeCompressionButton(page, '1000×').click();
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
     '2 ours · 0 incoming',
   );
-  await expect(page.getByLabel('Time compression')).toHaveText('1×');
+  await expect(selectedTimeCompression(page)).toHaveText('1×');
   await expect(page.getByLabel('Ammunition')).toHaveText('10 of 12 missiles');
   await expect(page.getByRole('list', { name: 'Battle log' })).toContainText('Missile launched');
 });

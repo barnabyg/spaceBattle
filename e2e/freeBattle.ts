@@ -15,6 +15,20 @@ export const chooseSide = async (page: Page, side: 'Blue' | 'Red', choice: SideC
   }
 };
 
+/** The battle screen's time compression buttons, slowest first. */
+export const timeCompressionButtons = (page: Page) =>
+  page.getByRole('group', { name: 'Time compression' }).getByRole('button');
+
+/** The battle screen's button for a time compression, such as `1000×`. */
+export const timeCompressionButton = (page: Page, compression: string) =>
+  page
+    .getByRole('group', { name: 'Time compression' })
+    .getByRole('button', { name: compression, exact: true });
+
+/** The pressed time compression button: the current time compression, kept while paused. */
+export const selectedTimeCompression = (page: Page) =>
+  page.getByRole('group', { name: 'Time compression' }).getByRole('button', { pressed: true });
+
 /**
  * Goes from the main menu through free battle setup into a battle, by default Blue's Lance
  * (player) against Red's Bastion (computer), and waits for the battle screen.

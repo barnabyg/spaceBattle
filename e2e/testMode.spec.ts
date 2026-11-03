@@ -1,9 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
-import { chooseSide, startFreeBattle } from './freeBattle';
+import {
+  chooseSide,
+  selectedTimeCompression,
+  startFreeBattle,
+  timeCompressionButtons,
+} from './freeBattle';
 
-/** Raises time compression as far as it goes. */
+/** Raises time compression as far as it goes: the last speed button. */
 const fastest = async (page: Page) => {
-  for (let i = 0; i < 15; i++) await page.keyboard.press('+');
+  await timeCompressionButtons(page).last().click();
 };
 
 /** Switches test mode on from the main menu and goes to free battle setup. */
@@ -23,8 +28,9 @@ test('no test mode feature is reachable with test mode off', async ({ page }) =>
   await expect(page.getByLabel('Test mode')).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Test log' })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Enemy design' })).toHaveCount(0);
+  await expect(timeCompressionButtons(page)).toHaveText(['1×', '10×', '100×', '500×', '1000×']);
   await fastest(page);
-  await expect(page.getByLabel('Time compression')).toHaveText('1000×');
+  await expect(selectedTimeCompression(page)).toHaveText('1000×');
 
   await page.getByRole('button', { name: 'End battle' }).click();
   await page.getByRole('button', { name: 'Forfeit' }).click();
@@ -66,7 +72,17 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
 
   await fastest(page);
   await page.clock.runFor(20);
-  await expect(page.getByLabel('Time compression')).toHaveText('10000×');
+  await expect(timeCompressionButtons(page)).toHaveText([
+    '1×',
+    '10×',
+    '100×',
+    '500×',
+    '1000×',
+    '2000×',
+    '5000×',
+    '10000×',
+  ]);
+  await expect(selectedTimeCompression(page)).toHaveText('10000×');
   // Half an hour of battle at 10000× takes less than a second.
   await page.clock.runFor(1_000);
   await page.clock.resume();

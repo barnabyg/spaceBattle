@@ -3,7 +3,7 @@ import { withComputerCaptains } from '../sim/command';
 import { withOrderLog, type RecordedAction } from './orderLog';
 
 /** The time compression settings the captain can choose between. */
-export const TIME_COMPRESSIONS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000] as const;
+export const TIME_COMPRESSIONS = [1, 10, 100, 500, 1000] as const;
 /** In test mode, time compression goes on above 1000×. */
 export const TEST_TIME_COMPRESSIONS = [...TIME_COMPRESSIONS, 2000, 5000, 10_000] as const;
 export type TimeCompression = (typeof TEST_TIME_COMPRESSIONS)[number];
@@ -58,11 +58,17 @@ export interface BattleRunner {
   /** The orders and "End battle" given to `battle`, oldest first, for replaying it. */
   readonly orders: readonly RecordedAction[];
   readonly paused: boolean;
+  /** The time compressions this runner offers, slowest first; test mode adds more. */
+  readonly compressions: readonly TimeCompression[];
+  /** Kept while paused, so the battle resumes at it. */
   readonly timeCompression: TimeCompression;
   setPaused(paused: boolean): void;
   togglePause(): void;
+  /** Sets a time compression directly; one this runner does not offer leaves it at 1×. */
   setTimeCompression(compression: TimeCompression): void;
+  /** Steps to the next time compression offered, stopping at the highest. */
   faster(): void;
+  /** Steps to the previous time compression offered, stopping at 1×. */
   slower(): void;
   /**
    * Runs the battle forward by `realSeconds` of real time, returning what happened. A
@@ -89,6 +95,7 @@ export const createBattleRunner = (
   return {
     battle,
     orders: log,
+    compressions,
     get paused() {
       return paused;
     },

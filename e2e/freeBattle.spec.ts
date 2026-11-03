@@ -115,9 +115,8 @@ test('battles fought one after another release the last one', async ({ page }) =
   }
 
   // One keyboard handler drives the battle on screen: Space pauses it, and again resumes it.
-  const compression = page.getByLabel('Time compression');
   await page.keyboard.press(' ');
-  await expect(compression).toHaveText('Paused');
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
   await page.keyboard.press(' ');
-  await expect(compression).toHaveText('1×');
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
 });

@@ -41,14 +41,47 @@ describe('battle runner', () => {
     expect(r.battle.time).toBeCloseTo(0.2);
   });
 
-  it('compresses time up to 1000x', () => {
+  it('offers 1x, 10x, 100x, 500x and 1000x', () => {
+    expect(runner().compressions).toEqual([1, 10, 100, 500, 1000]);
+    expect(runner().compressions).toEqual(TIME_COMPRESSIONS);
+  });
+
+  it('sets a time compression directly', () => {
     const r = runner();
+    r.setTimeCompression(500);
+    expect(r.timeCompression).toBe(500);
+    r.update(0.1);
+    expect(r.battle.time).toBeCloseTo(50);
+    r.setTimeCompression(1000);
+    r.update(0.1);
+    expect(r.battle.time).toBeCloseTo(150);
+  });
+
+  it('steps to the next and previous time compression offered', () => {
+    const r = runner();
+    const seen: TimeCompression[] = [];
     TIME_COMPRESSIONS.forEach(() => {
       r.faster();
+      seen.push(r.timeCompression);
     });
-    expect(r.timeCompression).toBe(1000);
+    expect(seen).toEqual([10, 100, 500, 1000, 1000]);
+    r.slower();
+    expect(r.timeCompression).toBe(500);
+    r.setTimeCompression(10);
+    r.slower();
+    expect(r.timeCompression).toBe(1);
+  });
+
+  it('keeps the time compression while paused, and resumes at it', () => {
+    const r = runner();
+    r.setTimeCompression(100);
+    r.togglePause();
+    expect(r.timeCompression).toBe(100);
     r.update(0.1);
-    expect(r.battle.time).toBeCloseTo(100);
+    expect(r.battle.time).toBe(0);
+    r.togglePause();
+    r.update(0.1);
+    expect(r.battle.time).toBeCloseTo(10);
   });
 
   it('compresses time above 1000x only in test mode', () => {
@@ -56,6 +89,8 @@ describe('battle runner', () => {
     r.setTimeCompression(10_000);
     expect(r.timeCompression).toBe(1);
     const test = createBattleRunner(createBattle(testSetup()), { testMode: true });
+    expect(test.compressions).toEqual([1, 10, 100, 500, 1000, 2000, 5000, 10_000]);
+    expect(test.compressions).toEqual(TEST_TIME_COMPRESSIONS);
     TEST_TIME_COMPRESSIONS.forEach(() => {
       test.faster();
     });

@@ -94,10 +94,26 @@ button {
   border-color: var(--accent);
 }
 
-.time-compression {
-  min-width: 5em;
-  text-align: center;
+.time-button.time-paused {
+  border-color: #ffb347;
+  color: #ffb347;
+}
+
+.time-speeds {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.time-speed {
+  min-width: 4.2rem;
   font-variant-numeric: tabular-nums;
+}
+
+.time-speed[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
 }
 
 .time-hint {
