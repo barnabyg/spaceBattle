@@ -11,14 +11,41 @@ import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { CONTACT_DETAIL_TEXT, formatDuration, formatKm, formatKmPerS } from './format';
+import { createMapLegend } from './mapLegend';
+import {
+  loadMapLayers,
+  MAP_LAYERS,
+  saveMapLayers,
+  type MapLayer,
+  type MapLayers,
+} from './mapLayers';
+import {
+  ANTI_MISSILE_PALENESS,
+  ANTI_MISSILE_SIZE,
+  BEAM_OPACITY,
+  BEAM_STYLES,
+  BURST_COLOUR,
+  BURST_FLASH_SIZE,
+  DROP_LINE_DASH,
+  HEADING_COLOUR,
+  INTERCEPT_COLOUR,
+  INTERCEPT_FLASH_SIZE,
+  MISSILE_SIZE,
+  MUNITION_SIZE,
+  PLANNED_BURN_COLOUR,
+  PROJECTION_COLOUR,
+  RANGE_LABEL_COLOUR,
+  RING_COLOURS,
+  RING_SPACING_KM,
+  SIDE_COLOURS,
+  TRAIL_OPACITY,
+  VECTOR_SECONDS,
+} from './mapStyle';
 import { softGlowTexture } from './shipModel';
 
 /** Scene units are kilometres; the simulation works in metres. */
 const KM = 1000;
-const RING_SPACING_KM = 50_000;
 const RING_COUNT = 10;
-/** Velocity vectors show where a ship would drift in this many seconds. */
-const VECTOR_SECONDS = 20_000;
 /** Simulated seconds between points on a ship's trail. */
 const TRAIL_INTERVAL = 30;
 const TRAIL_POINTS = 2_000;
@@ -29,37 +56,22 @@ const MAX_PROJECTION_HORIZON = 24 * 3_600;
 const PROJECTION_POINTS = 121;
 /** Planned burns shown on the map, in order. */
 const MAX_PLANNED_BURNS = 4;
-const PLANNED_BURN_COLOUR = '#ffb347';
-/** How the own ship's beams are drawn while firing: lasers solid green, particle beams apart. */
-const BEAM_STYLES: Readonly<
-  Record<BeamKind, { readonly colour: string; readonly dashed: boolean }>
-> = {
-  laser: { colour: '#7dffb0', dashed: false },
-  'charged-particle': { colour: '#c890ff', dashed: false },
-  'neutral-particle': { colour: '#7fe0ff', dashed: true },
-};
 /** Heading lines are this fraction of the camera's distance from the own ship. */
 const HEADING_SCALE = 0.06;
-/** Munitions in flight are drawn as dots this many pixels across. */
-const MUNITION_SIZE = 5;
-/** Missiles are drawn larger than slugs, px. */
-const MISSILE_SIZE = 9;
-/**
- * Anti-missile missiles are drawn between the two, px, and paler: their side's colour this far
- * towards white.
- */
-const ANTI_MISSILE_SIZE = 7;
-const ANTI_MISSILE_PALENESS = 0.55;
 const WHITE = new THREE.Color('#ffffff');
 
-/** A nuclear burst's flash, at its brightest this share of the map's height across. */
-const BURST_FLASH_SIZE = 0.12;
-const BURST_COLOUR = '#fffbe8';
-/** A missile shot down flashes smaller, in amber. */
-const INTERCEPT_FLASH_SIZE = 0.04;
-const INTERCEPT_COLOUR = '#ffc24d';
-
-export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
+/**
+ * Each layer the captain can hide draws on its own camera layer, so hiding it only stops it being
+ * drawn: it keeps updating, and shows its current state when shown again. Layer 0, always drawn,
+ * holds the ship symbols.
+ */
+const cameraLayer = (layer: MapLayer) => MAP_LAYERS.indexOf(layer) + 1;
+const onLayer = <T extends THREE.Object3D>(object: T, layer: MapLayer): T => {
+  object.traverse((part) => {
+    part.layers.set(cameraLayer(layer));
+  });
+  return object;
+};
 
 const toScene = (v: Vec3) => new THREE.Vector3(v.x / KM, v.y / KM, v.z / KM);
 
@@ -116,6 +128,20 @@ export const createTacticalMap = (
   controls.minDistance = 2_000;
   controls.maxDistance = 5_000_000;
 
+  const showLayers = (layers: MapLayers) => {
+    for (const layer of MAP_LAYERS) {
+      if (layers[layer]) camera.layers.enable(cameraLayer(layer));
+      else camera.layers.disable(cameraLayer(layer));
+    }
+  };
+  const initialLayers = loadMapLayers();
+  showLayers(initialLayers);
+  const legend = createMapLegend(colours, initialLayers, (layers) => {
+    showLayers(layers);
+    saveMapLayers(layers);
+  });
+  element.append(legend.element);
+
   // Range rings around the captain's own ship, in the plane of the own ship.
   const grid = new THREE.Group();
   const polar = new THREE.PolarGridHelper(
@@ -123,19 +149,23 @@ export const createTacticalMap = (
     12,
     RING_COUNT,
     128,
-    '#2b3d5a',
-    '#1a2638',
+    RING_COLOURS.spokes,
+    RING_COLOURS.rings,
   );
   polar.rotation.x = Math.PI / 2;
   grid.add(polar);
   for (let ring = 2; ring <= RING_COUNT; ring += 2) {
     const label = new CSS2DObject(
-      el('span', { className: 'range-label', text: formatKm(ring * RING_SPACING_KM * KM) }),
+      el('span', {
+        className: 'range-label',
+        text: formatKm(ring * RING_SPACING_KM * KM),
+        attrs: { style: `color: ${RANGE_LABEL_COLOUR}` },
+      }),
     );
     label.position.set(ring * RING_SPACING_KM, 0, 0);
     grid.add(label);
   }
-  scene.add(grid);
+  scene.add(onLayer(grid, 'range-rings'));
 
   const markers = new Map<SideId, ShipMarker>();
   sides.forEach((side, index) => {
@@ -160,7 +190,7 @@ export const createTacticalMap = (
     );
     const dropLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-      new THREE.LineDashedMaterial({ color: colour, dashSize: 4_000, gapSize: 4_000 }),
+      new THREE.LineDashedMaterial({ color: colour, ...DROP_LINE_DASH }),
     );
     const trailPositions = new Float32Array(TRAIL_POINTS * 3);
     const trailGeometry = new THREE.BufferGeometry();
@@ -168,13 +198,19 @@ export const createTacticalMap = (
     trailGeometry.setDrawRange(0, 0);
     const trail = new THREE.Line(
       trailGeometry,
-      new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 0.45 }),
+      new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: TRAIL_OPACITY }),
     );
     const heading = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-      new THREE.LineBasicMaterial({ color: '#ffffff' }),
+      new THREE.LineBasicMaterial({ color: HEADING_COLOUR }),
     );
-    scene.add(symbol, velocity, dropLine, heading, trail);
+    scene.add(
+      symbol,
+      onLayer(velocity, 'velocity'),
+      onLayer(dropLine, 'drop-lines'),
+      onLayer(heading, 'heading'),
+      onLayer(trail, 'trail'),
+    );
     markers.set(side.id, {
       symbol,
       label,
@@ -194,9 +230,9 @@ export const createTacticalMap = (
   projectionGeometry.setAttribute('position', new THREE.BufferAttribute(projectionPositions, 3));
   const projection = new THREE.Line(
     projectionGeometry,
-    new THREE.LineDashedMaterial({ color: '#9fd0ff', dashSize: 2_000, gapSize: 2_000 }),
+    new THREE.LineDashedMaterial({ color: PROJECTION_COLOUR, dashSize: 2_000, gapSize: 2_000 }),
   );
-  scene.add(projection);
+  scene.add(onLayer(projection, 'projected-path'));
 
   // Where and which way the autopilot plans to burn, along the projected path.
   const plannedBurnMarkers = Array.from({ length: MAX_PLANNED_BURNS }, () => {
@@ -210,7 +246,7 @@ export const createTacticalMap = (
     const label = new CSS2DObject(text);
     arrow.visible = false;
     label.visible = false;
-    scene.add(arrow, label);
+    scene.add(onLayer(arrow, 'planned-burns'), onLayer(label, 'planned-burns'));
     return { arrow, label, text };
   });
   const ownDrive = sides[0] ? designComponent(sides[0].design, 'drive') : undefined;
@@ -222,17 +258,17 @@ export const createTacticalMap = (
       ? new THREE.LineDashedMaterial({
           color: colour,
           transparent: true,
-          opacity: 0.8,
+          opacity: BEAM_OPACITY,
           dashSize: 1_000,
           gapSize: 600,
         })
-      : new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 0.8 });
+      : new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: BEAM_OPACITY });
     const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
       material,
     );
     line.visible = false;
-    scene.add(line);
+    scene.add(onLayer(line, 'beams'));
     return { kind, line };
   });
 
@@ -250,7 +286,7 @@ export const createTacticalMap = (
       new THREE.PointsMaterial({ size, sizeAttenuation: false, vertexColors: true }),
     );
     points.frustumCulled = false;
-    scene.add(points);
+    scene.add(onLayer(points, 'munitions'));
     return (shown: readonly MunitionObservation[]) => {
       if (shown.length > capacity) {
         capacity = Math.max(256, 2 * shown.length);
@@ -295,7 +331,7 @@ export const createTacticalMap = (
     );
     sprite.renderOrder = 2;
     sprite.visible = false;
-    scene.add(sprite);
+    scene.add(onLayer(sprite, 'flashes'));
     return sprite;
   };
   // A nuclear burst flashes where it went off, fading in a second or two.
