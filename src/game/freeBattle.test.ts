@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { HEAD_ON, OPENING_PASS, PURSUIT } from '../data/scenarios';
+import type { SideObservation } from '../sim/battle';
 import type { Order } from '../sim/orders';
+import { distance } from '../sim/vector';
 import { runBatchBattle } from './batch';
 import {
   DEFAULT_FREE_BATTLE,
@@ -8,6 +11,10 @@ import {
   type FreeBattleSetup,
 } from './freeBattle';
 import type { RecordedAction } from './orderLog';
+
+/** How far apart a side sees the ships. */
+const separation = ({ ownShip, contacts }: SideObservation) =>
+  distance(ownShip.position, contacts[0]?.position ?? ownShip.position);
 
 describe('free battle', () => {
   it('fights the chosen designs, each side commanded as chosen', () => {
@@ -31,6 +38,21 @@ describe('free battle', () => {
       ['frigate', 'player'],
       ['cruiser', 'computer'],
     ]);
+  });
+
+  it('starts in the opening pass unless another scenario is chosen', () => {
+    const opening = startFreeBattle(DEFAULT_FREE_BATTLE, 1).battle.observe('blue');
+    expect(separation(opening)).toBeCloseTo(OPENING_PASS.separation, -3);
+    const headOn = startFreeBattle({ ...DEFAULT_FREE_BATTLE, scenarioId: 'head-on' }, 1);
+    expect(separation(headOn.battle.observe('blue'))).toBeCloseTo(HEAD_ON.separation, -3);
+  });
+
+  it('replays a battle in the scenario it was fought in', () => {
+    const setup: FreeBattleSetup = { ...DEFAULT_FREE_BATTLE, scenarioId: 'pursuit' };
+    const first = startFreeBattle(setup, 2, { timeLimit: 60 });
+    first.update(0.2);
+    const replay = startFreeBattle(setup, 2, { timeLimit: 60, replay: first.orders });
+    expect(separation(replay.battle.observe('blue'))).toBeCloseTo(PURSUIT.separation, -3);
   });
 
   it('runs: time passes and nothing has ended yet', () => {
@@ -136,6 +158,13 @@ describe('free battle', () => {
       ['red', 'bastion'],
     ]);
     expect(runBatchBattle(batch, 0).outcome).toMatchObject({ winner: null });
+    expect(batch.scenario).toBe(OPENING_PASS);
+  });
+
+  it('batches battles in the chosen scenario', () => {
+    const setup: FreeBattleSetup = { ...DEFAULT_FREE_BATTLE, scenarioId: 'head-on' };
+    const batch = freeBattleBatch(setup, { battles: 2, seed: 4, timeLimit: 600 });
+    expect(batch.scenario).toBe(HEAD_ON);
   });
 
   it('rejects a design that does not exist', () => {
@@ -147,5 +176,11 @@ describe('free battle', () => {
         ],
       }),
     ).toThrow(/nonesuch/);
+  });
+
+  it('rejects a scenario that does not exist', () => {
+    expect(() => startFreeBattle({ ...DEFAULT_FREE_BATTLE, scenarioId: 'nonesuch' })).toThrow(
+      /nonesuch/,
+    );
   });
 });

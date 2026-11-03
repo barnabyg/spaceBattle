@@ -1,5 +1,5 @@
 import { handMadeDesign } from '../data/designs';
-import { OPENING_PASS } from '../data/scenarios';
+import { OPENING_PASS, startingScenario, type StartingScenario } from '../data/scenarios';
 import { createBattle, type Commander, type SideSetup } from '../sim/battle';
 import type { BatchSetup } from './batch';
 import { createBattleRunner, type BattleRunner } from './battleRunner';
@@ -12,9 +12,11 @@ export interface FreeBattleSide {
   readonly commander: Commander;
 }
 
-/** The choices for a free battle: always two sides, Blue then Red. */
+/** The choices for a free battle: always two sides, Blue then Red, and where they start. */
 export interface FreeBattleSetup {
   readonly sides: readonly [FreeBattleSide, FreeBattleSide];
+  /** A starting scenario's id; the opening pass if left out. */
+  readonly scenarioId?: string;
 }
 
 /** The two sides' fixed identities, in battle order. */
@@ -29,6 +31,7 @@ export const DEFAULT_FREE_BATTLE: FreeBattleSetup = {
     { designId: 'lance', commander: 'player' },
     { designId: 'bastion', commander: 'computer' },
   ],
+  scenarioId: OPENING_PASS.id,
 };
 
 /** The battle's sides for a free battle's choices. */
@@ -37,6 +40,10 @@ export const freeBattleSides = (setup: FreeBattleSetup): readonly SideSetup[] =>
     const { designId, commander } = setup.sides[i] ?? DEFAULT_FREE_BATTLE.sides[0];
     return { ...side, commander, design: handMadeDesign(designId) };
   });
+
+/** The starting scenario a free battle's choices name. */
+export const freeBattleScenario = (setup: FreeBattleSetup): StartingScenario =>
+  startingScenario(setup.scenarioId ?? OPENING_PASS.id);
 
 /** What test mode adds to a free battle. */
 export interface FreeBattleTestMode {
@@ -50,7 +57,7 @@ export interface FreeBattleTestMode {
 export const newSeed = (): number => Math.floor(Math.random() * 2 ** 32);
 
 /**
- * Sets up a free battle in the opening pass and returns it ready to run. The same choices and
+ * Sets up a free battle in its chosen scenario and returns it ready to run. The same choices and
  * seed fight the same battle, given the same orders. Test mode adds a time limit, time
  * compression above 1000× and replay: the orders another battle recorded, given again.
  */
@@ -62,7 +69,7 @@ export const startFreeBattle = (
   createBattleRunner(
     createBattle({
       seed,
-      scenario: OPENING_PASS,
+      scenario: freeBattleScenario(setup),
       sides: freeBattleSides(setup),
       ...(testMode && { timeLimit: testMode.timeLimit }),
     }),
@@ -70,10 +77,14 @@ export const startFreeBattle = (
   );
 
 /**
- * A test mode batch run of free battles in the opening pass between the chosen designs; the
+ * A test mode batch run of free battles in the chosen scenario between the chosen designs; the
  * computer commands both sides, whatever the choices say.
  */
 export const freeBattleBatch = (
   setup: FreeBattleSetup,
   options: Pick<BatchSetup, 'battles' | 'seed' | 'timeLimit'>,
-): BatchSetup => ({ sides: freeBattleSides(setup), scenario: OPENING_PASS, ...options });
+): BatchSetup => ({
+  sides: freeBattleSides(setup),
+  scenario: freeBattleScenario(setup),
+  ...options,
+});
