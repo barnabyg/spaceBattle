@@ -130,6 +130,37 @@ describe('the shipyard', () => {
     });
   });
 
+  it('keeps a component where the player placed it, and the rest are placed around it', () => {
+    const radiator = laserFrigate.components.findIndex((c) => c.component.type === 'radiator');
+    const { design, errors, placement } = buildDesign({
+      ...laserFrigate,
+      components: laserFrigate.components.map((c, i) =>
+        i === radiator ? { ...c, section: 'forward' as const } : c,
+      ),
+    });
+    expect(errors).toEqual([]);
+    expect(placement[radiator]).toBe('forward');
+    const mountsOf = (kind: string) =>
+      design.sections.find((s) => s.kind === kind)?.mounts.map((m) => m.type);
+    expect(mountsOf('forward')).toContain('radiator');
+    // The other radiator is still placed along the middle's sides.
+    expect(mountsOf('middle')?.filter((type) => type === 'radiator')).toHaveLength(1);
+  });
+
+  it('checks components placed by hand against the volume of their section', () => {
+    // Five 300 m³ lasers will not go into a frigate's 1,440 m³ forward section.
+    const { errors, placement } = buildDesign({
+      ...laserFrigate,
+      components: [
+        ...laserFrigate.components,
+        ...Array.from({ length: 5 }, () => ({ ...part('laser-500'), section: 'forward' as const })),
+      ],
+    });
+    expect(placement.slice(-5)).toEqual(Array(5).fill('forward'));
+    // The sensor and capacitor that would go forward are placed elsewhere instead.
+    expect(errors).toEqual(['Forward section is over its volume: 1,500 of 1,440 m³.']);
+  });
+
   it('fits every hand-made design, rebuilt from its specification, within its hull', () => {
     for (const design of HAND_MADE_DESIGNS) {
       const { errors, design: rebuilt } = buildDesign(specificationOf(design));

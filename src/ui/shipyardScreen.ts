@@ -177,6 +177,32 @@ export const createShipyardScreen = (library: DesignLibrary, actions: ShipyardSc
     el('dd', { text: value, attrs: { 'aria-label': label } }),
   ];
 
+  /**
+   * Where a component goes: placed automatically, showing where that put it, or placed by hand
+   * in a section the player chooses.
+   */
+  const placementChoice = (specified: SpecifiedComponent, i: number, label: string) => {
+    const placed = built.placement[i] ?? 'middle';
+    const choice = select<SectionKind | 'auto'>(
+      [
+        ['auto', `Automatic (${capitalise(placed)})`],
+        ...SECTION_KINDS.map((kind) => [kind, capitalise(kind)] as const),
+      ],
+      specified.section ?? 'auto',
+    );
+    choice.className = 'shipyard-component__section';
+    choice.setAttribute('aria-label', `Section of ${label}`);
+    choice.addEventListener('change', () => {
+      const { component } = specified;
+      const section = SECTION_KINDS.find((kind) => kind === choice.value);
+      components = components.map((c, j) =>
+        j === i ? (section ? { component, section } : { component }) : c,
+      );
+      refresh();
+    });
+    return choice;
+  };
+
   const showComponents = () => {
     componentList.replaceChildren(
       ...components.map((specified, i) => {
@@ -199,10 +225,7 @@ export const createShipyardScreen = (library: DesignLibrary, actions: ShipyardSc
             className: 'shipyard-component__numbers',
             text: `${Math.round(componentVolume(component)).toLocaleString('en-GB')} m³ · ${formatTonnes(component.mass)} · ${formatCredits(componentCost(component))}`,
           }),
-          el('span', {
-            className: 'shipyard-component__section',
-            text: capitalise(built.placement[i] ?? ''),
-          }),
+          placementChoice(specified, i, label),
           remove,
         );
       }),
@@ -322,6 +345,15 @@ export const createShipyardScreen = (library: DesignLibrary, actions: ShipyardSc
     showLibrary();
     saved.textContent = `Saved ${design.name}.`;
   });
+  const automatic = el('button', {
+    className: 'order-button',
+    text: 'Place all automatically',
+    attrs: { type: 'button' },
+  });
+  automatic.addEventListener('click', () => {
+    components = components.map(({ component }) => ({ component }));
+    refresh();
+  });
   const newDesign = el('button', {
     className: 'menu-button',
     text: 'New design',
@@ -359,6 +391,7 @@ export const createShipyardScreen = (library: DesignLibrary, actions: ShipyardSc
         ),
         el('div', { className: 'order-row' }, field('Component', catalogue), add),
         componentList,
+        el('div', { className: 'order-row' }, automatic),
         ...armour.map(({ kind, type, thickness }) =>
           el(
             'div',
