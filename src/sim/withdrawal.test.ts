@@ -90,6 +90,30 @@ describe('withdrawal', () => {
   });
 });
 
+describe('the rule against pursuit', () => {
+  it('also refuses turning towards a withdrawing ship, and burning while pointed at it', () => {
+    // Red faces blue nose-on, holding its attitude towards it, and keeps blue in its laser's reach.
+    const battle = createBattle(duelSetup(testDesign(), armedTestDesign(), 10_000 * KM));
+    battle.giveOrder('red', { type: 'attitude', mode: 'enemy' });
+    battle.giveOrder('blue', { type: 'withdraw' });
+    battle.step();
+    expect(battle.observe('red').ownShip.attitude).toBeNull();
+    for (const order of [
+      { type: 'attitude', mode: 'enemy' },
+      { type: 'attitude', mode: 'direction', direction: { x: -1, y: 0.2, z: 0 } },
+      { type: 'burn', throttle: 1, duration: 60 },
+    ] as const) {
+      expect(() => {
+        battle.giveOrder('red', order);
+      }).toThrow(/pursue/);
+    }
+    // Turning away and burning off is allowed.
+    battle.giveOrder('red', { type: 'attitude', mode: 'away' });
+    battle.advance(10 * MINUTE);
+    battle.giveOrder('red', { type: 'burn', throttle: 1, duration: 60 });
+  });
+});
+
 describe('the reserve', () => {
   it('warns as the delta-v left comes down towards the reserve', () => {
     const battle = createBattle(duelSetup(testDesign(), testDesign(), 10_000 * KM));

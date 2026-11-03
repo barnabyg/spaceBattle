@@ -68,7 +68,10 @@ export interface Perception {
   /** The finest detail made out at the contact, m; infinite without a working sensor. */
   readonly resolution: number;
   readonly detail: ContactDetail;
-  /** Every intact part, once the ship's whole silhouette is made out; none before. */
+  /**
+   * The ship's outline once its whole silhouette is made out, none before: its intact sections,
+   * and any intact mount large enough to make out, such as a deployed radiator.
+   */
   readonly outline: readonly ShapePart[];
   /** The intact sections and mounts made out, each of them aimable; a mount only with its section. */
   readonly parts: readonly ShapePart[];
@@ -107,7 +110,7 @@ export const perceive = (sensors: SensorPower, target: ShipState, range: number)
   return {
     resolution,
     detail: mounts.length > 0 ? 'mounts' : sections.length > 0 ? 'sections' : 'silhouette',
-    outline: intact,
+    outline: intact.filter((part) => part.mount === null || extent(part.min, part.max) >= smallest),
     parts: [...sections, ...mounts],
   };
 };

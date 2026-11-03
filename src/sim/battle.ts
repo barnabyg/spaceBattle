@@ -9,7 +9,7 @@ import {
   type MissileRole,
   type SectionKind,
 } from './design';
-import { pursuitRefused, WITHDRAWAL_TIME, withdrawingRefused } from './engagement';
+import { pursuitRefused, WITHDRAWAL_TIME, withdrawingRefused, type Pursuer } from './engagement';
 import { involves, type BattleEvent, type HitEvent } from './events';
 import {
   manoeuvreCommand,
@@ -46,14 +46,13 @@ import { burn, createShip, fireDrive, noseOf, steer, type ShipState } from './sh
 import { TIME_STEP } from './time';
 import {
   add,
-  cross,
   distance,
   dot,
   length,
   normalize,
   scale,
+  perpendiculars,
   sub,
-  vec3,
   ZERO,
   type Vec3,
 } from './vector';
@@ -384,6 +383,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
     return id === null ? undefined : combatants.find((c) => c.side.id === id);
   };
 
+  /** A ship and the withdrawing enemy it might pursue, as the rules of engagement see them. */
+  const pursuerOf = (ship: ShipState, enemy: ShipState): Pursuer => ({
+    position: ship.position,
+    nose: noseOf(ship),
+    enemy: enemy.position,
+  });
+
   /** The part of a target a ship's sensors make out to aim at, if they make it out now. */
   const aimablePart = (ship: ShipState, target: ShipState, aim: AimPoint) =>
     perceive(sensorPower(ship), target, distance(ship.position, target.position)).parts.find(
@@ -401,9 +407,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
     const aimed = part ? centreOf(part) : ZERO;
     const offset = sub(target.ship.position, ship.position);
     const sight = normalize(offset);
-    const reference = Math.abs(sight.z) < 0.9 ? vec3(0, 0, 1) : vec3(1, 0, 0);
-    const across = normalize(cross(sight, reference));
-    const other = cross(sight, across);
+    const [across, other] = perpendiculars(sight);
     const spread = sensorPower(ship).trackingError * length(offset);
     const error = add(
       scale(across, spread * normal(tracking)),
@@ -719,10 +723,6 @@ export const createBattle = (setup: BattleSetup): Battle => {
   };
 
   /**
-   * How the battle ended in the step, if it did. Ships that lost in it lose together; if all of
-   * them did, nobody wins. A side that loses in the step that reaches the time limit still loses.
-   */
-  /**
    * Withdrawing ships that are gone by the end of the step: out of reach of every enemy weapon,
    * or `WITHDRAWAL_TIME` after their order.
    */
@@ -738,6 +738,10 @@ export const createBattle = (setup: BattleSetup): Battle => {
     }
   };
 
+  /**
+   * How the battle ended in the step, if it did. Ships that lost in it lose together; if all of
+   * them did, nobody wins. A side that loses in the step that reaches the time limit still loses.
+   */
   const judgeStep = (time: number): BattleOutcome | null => {
     const decided = judge(
       time,
@@ -790,11 +794,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
       const { ship } = combatantOf(sideId);
       const checked = checkOrder(order);
       if (outcome) return;
+      const withdrawing = combatants.find(
+        (c) => c.side.id !== sideId && c.ship.withdrawingSince !== null,
+      );
       const refused =
         (ship.withdrawingSince !== null ? withdrawingRefused(checked) : null) ??
-        (combatants.some((c) => c.side.id !== sideId && c.ship.withdrawingSince !== null)
-          ? pursuitRefused(checked)
-          : null);
+        (withdrawing ? pursuitRefused(checked, pursuerOf(ship, withdrawing.ship)) : null);
       if (refused) throw new Error(refused);
       // Manual orders and manoeuvres replace each other: one or the other steers the ship.
       switch (checked.type) {
@@ -831,7 +836,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
             if (!target) throw new Error('Aiming at a part needs a target');
             if (!aimablePart(ship, target.ship, aim)) {
               throw new Error(
-                `The sensors do not make out the ${aim.section} section${aim.mount === null ? '' : ` mount ${String(aim.mount)}`} of the target`,
+                `The sensors do not make out the ${aim.section} section${aim.mount === null ? '' : ` mount ${String(aim.mount)}`} of the contact`,
               );
             }
           }
@@ -853,9 +858,14 @@ export const createBattle = (setup: BattleSetup): Battle => {
           ship.burn = null;
           ship.withdrawingSince = steps * TIME_STEP;
           // The enemy may no longer pursue: its standing orders to do so are called off.
-          for (const c of combatants) {
-            if (c.side.id !== sideId && c.ship.manoeuvre) {
-              if (pursuitRefused(c.ship.manoeuvre.order)) c.ship.manoeuvre = null;
+          for (const { side, ship: enemy } of combatants) {
+            if (side.id === sideId) continue;
+            const pursuer = pursuerOf(enemy, ship);
+            const { manoeuvre, attitude, burn: burning } = enemy;
+            if (manoeuvre && pursuitRefused(manoeuvre.order, pursuer)) enemy.manoeuvre = null;
+            if (attitude && pursuitRefused(attitude, pursuer)) enemy.attitude = null;
+            if (burning && pursuitRefused({ type: 'burn', duration: 1, ...burning }, pursuer)) {
+              enemy.burn = null;
             }
           }
           pending.push({ type: 'withdrawal', time: ship.withdrawingSince, side: sideId });
