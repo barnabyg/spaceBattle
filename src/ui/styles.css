@@ -640,3 +640,24 @@ h3 {
   max-height: 24rem;
   overflow-y: auto;
 }
+
+.sound-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.sound-controls + .end-battle {
+  margin-left: 0;
+}
+
+.sound-mute[aria-pressed='true'] {
+  border-color: #ffb347;
+  color: #ffb347;
+}
+
+.sound-volume {
+  width: 8rem;
+  accent-color: var(--accent);
+}
