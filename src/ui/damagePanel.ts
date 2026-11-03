@@ -19,6 +19,8 @@ export const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
   magazine: 'Magazine',
   'magnetic-shield': 'Magnetic shield',
   'coolant-shield': 'Coolant shield',
+  'long-range-scanner': 'Long-range scanner',
+  'signal-interceptor': 'Signal interceptor',
   radiator: 'Radiator',
   laser: 'Laser',
   'charged-particle-beam': 'Charged particle beam',

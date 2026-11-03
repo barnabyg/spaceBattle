@@ -55,6 +55,8 @@ const DENSITY: Readonly<Record<ComponentType, number>> = {
   magazine: 800,
   'magnetic-shield': 300,
   'coolant-shield': 300,
+  'long-range-scanner': 200,
+  'signal-interceptor': 300,
   radiator: 150,
   laser: 100,
   'charged-particle-beam': 100,

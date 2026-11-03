@@ -45,6 +45,11 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
   await expect(page.getByRole('button', { name: 'Build Lance' })).toBeDisabled();
 
   await page.getByRole('button', { name: 'Fight tier 1' }).click();
+  // The starter designs carry no intelligence components: the report says the ship goes in blind.
+  await expect(page.getByRole('region', { name: 'Intelligence report' })).toContainText(
+    'you go in blind',
+  );
+  await page.getByRole('button', { name: 'Fight', exact: true }).click();
   await expect(page.getByLabel('Own ship')).toContainText('Ship 1 · Quiver');
   const result = await fightToTheEnd(page);
   await expect(result.getByRole('heading')).toHaveText('Ship 1 wins');
@@ -71,6 +76,7 @@ test('a forfeited ship leaves the hangar, and with nothing left to afford the ca
   await page.getByRole('button', { name: 'Build Lance' }).click();
   const left = await credits(page);
   await page.getByRole('button', { name: 'Fight tier 1' }).click();
+  await page.getByRole('button', { name: 'Fight', exact: true }).click();
   await page.getByRole('button', { name: 'End battle' }).click();
   await page.getByRole('button', { name: 'Forfeit' }).click();
   await page.getByRole('button', { name: 'Back to campaign' }).click();

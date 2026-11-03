@@ -26,6 +26,7 @@ import { createBattle } from '../sim/battle';
 import type { Design } from '../sim/design';
 import { createBatchScreen } from './batchScreen';
 import { createBattleScreen } from './battleScreen';
+import { createBriefingScreen } from './briefingScreen';
 import { createCampaignHub } from './campaignHub';
 import { formatCredits } from './format';
 import { createMainMenu } from './mainMenu';
@@ -133,7 +134,7 @@ export const createApp = (root: HTMLElement) => {
             act((c) => sellShip(c, shipId), 'Sold.');
           },
           onFight: (shipId, tier) => {
-            if (campaign) showCampaignBattle(prepareBattle(campaign, shipId, tier));
+            if (campaign) showBriefing(prepareBattle(campaign, shipId, tier));
           },
           onShipyard: () => {
             shipyardReturn = () => {
@@ -156,9 +157,35 @@ export const createApp = (root: HTMLElement) => {
    * Fights a campaign battle, then settles it and goes back to the hub; in test mode `replay`
    * gives the orders of an earlier try again.
    */
+  /** A campaign battle about to be fought, as the battle it will be. */
+  const campaignBattle = (pending: CampaignBattle) =>
+    createBattle(
+      testMode ? { ...pending.setup, timeLimit: testSettings.timeLimit } : pending.setup,
+    );
+
+  /** The intelligence report before a campaign battle, and the choice to fight it or go back. */
+  const showBriefing = (pending: CampaignBattle) => {
+    const battle = campaignBattle(pending);
+    show(
+      createBriefingScreen(
+        pending,
+        battle.observe(PLAYER_SIDE).intelligence[0],
+        tierOf(pending.tier),
+        {
+          onFight: () => {
+            showCampaignBattle(pending);
+          },
+          onBack: () => {
+            showCampaign();
+          },
+        },
+      ),
+    );
+  };
+
   const showCampaignBattle = (pending: CampaignBattle, replay?: readonly RecordedAction[]) => {
     const { setup } = pending;
-    const battle = createBattle(testMode ? { ...setup, timeLimit: testSettings.timeLimit } : setup);
+    const battle = campaignBattle(pending);
     const runner = createBattleRunner(battle, { testMode, ...(replay && { replay }) });
     show(
       createBattleScreen(runner, {

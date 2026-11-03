@@ -33,6 +33,7 @@ import { burstEnergy, pointDefenceRange, type PointDefenceEngagement } from './p
 import { powerPlantOf, type EnergyLedger, type PowerShare, type PowerSystem } from './power';
 import { rotate, type Quat } from './quaternion';
 import type { ShapePart } from './shape';
+import type { IntelligenceReport } from './intelligence';
 import { perceive, sensorPower, type ContactDetail } from './sensors';
 import { coolantCapacity, fullDeflection, shieldsPowered } from './shields';
 import {
@@ -523,6 +524,8 @@ export interface SideObservation {
   readonly events: readonly BattleEvent[];
   /** How the battle ended, or null while it goes on. */
   readonly outcome: BattleOutcome | null;
+  /** What the side learned about each enemy before the battle from its intelligence components. */
+  readonly intelligence: readonly IntelligenceReport[];
 }
 
 /** A ship in the battle as observations see it: its state and what landed on it last step. */

@@ -297,6 +297,21 @@ export const COMPONENT_CATALOGUE: readonly CatalogueEntry[] = [
     name: 'Coolant shield',
     component: { type: 'coolant-shield', mass: 15e3, power: 30e6, capacity: 300e6 },
   },
+  {
+    id: 'long-range-scanner',
+    name: 'Long-range scanner',
+    component: { type: 'long-range-scanner', mass: 20e3 },
+  },
+  {
+    id: 'signal-interceptor-basic',
+    name: 'Signal interceptor, basic',
+    component: { type: 'signal-interceptor', mass: 6e3, quality: 0.3 },
+  },
+  {
+    id: 'signal-interceptor-advanced',
+    name: 'Signal interceptor, advanced',
+    component: { type: 'signal-interceptor', mass: 15e3, quality: 0.7 },
+  },
 ];
 
 /** A catalogue component by id. */

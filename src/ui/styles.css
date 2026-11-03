@@ -1017,3 +1017,7 @@ h3 {
   margin: 0.4rem 0 0;
   color: var(--muted);
 }
+
+.intelligence-report {
+  width: 50rem;
+}

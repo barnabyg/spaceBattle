@@ -21,6 +21,7 @@ import {
   type SpecifiedComponent,
 } from '../shipyard/shipyard';
 import type { DesignLibrary } from './designLibrary';
+import { COMPONENT_TEXT } from './damagePanel';
 import { createDesignPreview } from './designPreview';
 import { designSummary } from './designSummary';
 import { el } from './el';
@@ -52,27 +53,9 @@ const NEW_SPECIFICATION: ShipSpecification = {
   reserve: 10e3,
 };
 
-const TYPE_NAMES: Readonly<Record<ComponentDesign['type'], string>> = {
-  drive: 'Drive',
-  thrusters: 'Thrusters',
-  reactor: 'Reactor',
-  capacitor: 'Capacitor',
-  magazine: 'Magazine',
-  'magnetic-shield': 'Magnetic shield',
-  'coolant-shield': 'Coolant shield',
-  radiator: 'Radiator',
-  laser: 'Laser',
-  'charged-particle-beam': 'Charged particle beam',
-  'neutral-particle-beam': 'Neutral particle beam',
-  'kinetic-gun': 'Kinetic gun',
-  'point-defence': 'Point defence',
-  launcher: 'Launcher',
-  sensor: 'Sensor',
-};
-
 /** A component's catalogue name, or what type it is for one not in the catalogue. */
 export const componentName = (component: ComponentDesign): string =>
-  catalogueEntryOf(component)?.name ?? TYPE_NAMES[component.type];
+  catalogueEntryOf(component)?.name ?? COMPONENT_TEXT[component.type];
 
 /** A labelled control; the control is named by the label alone, not the label and its value. */
 const field = (label: string, control: HTMLElement) => {

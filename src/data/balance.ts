@@ -44,6 +44,8 @@ export const BALANCE = {
     magazine: 10,
     'magnetic-shield': 35,
     'coolant-shield': 30,
+    'long-range-scanner': 50,
+    'signal-interceptor': 50,
     radiator: 10,
     laser: 40,
     'charged-particle-beam': 45,
