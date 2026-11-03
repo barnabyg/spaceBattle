@@ -215,6 +215,9 @@ export const repairCost = (ship: CampaignShip): number =>
 export const restockCost = (ship: CampaignShip): number =>
   conditionRestockCost(ship.design, ship.condition);
 
+/** The smallest share of a ship's damage a repair covers. */
+export const MIN_REPAIR_SHARE = 0.01;
+
 const pay = (campaign: Campaign, cost: number): Campaign => {
   if (cost > campaign.credits) throw new Error('Not enough credits for that.');
   return { ...campaign, credits: campaign.credits - cost };
@@ -225,7 +228,9 @@ const pay = (campaign: Campaign, cost: number): Campaign => {
  * repair cost. What is left unrepaired stays with the ship into its next battle.
  */
 export const repairShip = (campaign: Campaign, shipId: string, share = 1): Campaign => {
-  if (!(share >= 0 && share <= 1)) throw new Error('A repair covers a share of 0 to 1.');
+  if (!(share >= MIN_REPAIR_SHARE && share <= 1)) {
+    throw new Error(`A repair covers a share of ${String(MIN_REPAIR_SHARE)} to 1.`);
+  }
   const ship = shipOf(campaign, shipId);
   return withShip(pay(campaign, share * repairCost(ship)), shipId, (s) => ({
     ...s,
@@ -299,18 +304,35 @@ export const canFight = (ship: CampaignShip): boolean => {
 };
 
 /**
- * Whether the campaign is over: no ship in the hangar can fight, none can be put right (repaired
- * and restocked) with the credits there are and what selling the others would raise, and no
+ * The least it costs to make a ship able to fight: by restocking it, by the smallest repair, or
+ * both, whichever is cheapest of those that work; infinite if none does. The smallest repair
+ * takes every wrecked component and section off zero, which is all a battle asks.
+ */
+const cheapestPutRight = (ship: CampaignShip): number => {
+  const { design, condition } = ship;
+  const repaired = repairedCondition(design, condition, MIN_REPAIR_SHARE);
+  const repair = MIN_REPAIR_SHARE * repairCost(ship);
+  const restock = restockCost(ship);
+  const ways = [
+    { condition: restockedCondition(design, condition), cost: restock },
+    { condition: repaired, cost: repair },
+    { condition: restockedCondition(design, repaired), cost: repair + restock },
+  ];
+  return Math.min(
+    ...ways.filter((way) => canFight({ ...ship, condition: way.condition })).map((w) => w.cost),
+  );
+};
+
+/**
+ * Whether the campaign is over: no ship in the hangar can fight, none can be made able to (see
+ * `cheapestPutRight`) with the credits there are and what selling the others would raise, and no
  * design can be built with the credits and what selling every ship would raise.
  */
 export const campaignOver = (campaign: Campaign): boolean => {
   if (campaign.hangar.some(canFight)) return false;
   const sales = campaign.hangar.reduce((total, ship) => total + saleValue(ship), 0);
   const putRight = (ship: CampaignShip) =>
-    canFight({
-      ...ship,
-      condition: restockedCondition(ship.design, repairedCondition(ship.design, ship.condition, 1)),
-    }) && repairCost(ship) + restockCost(ship) <= campaign.credits + sales - saleValue(ship);
+    cheapestPutRight(ship) <= campaign.credits + sales - saleValue(ship);
   if (campaign.hangar.some(putRight)) return false;
   return !campaign.designs.some((design) => designCost(design) <= campaign.credits + sales);
 };

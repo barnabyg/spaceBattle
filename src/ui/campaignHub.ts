@@ -7,6 +7,7 @@ import {
   type Campaign,
   campaignOver,
   canFight,
+  MIN_REPAIR_SHARE,
   type CampaignShip,
 } from '../campaign/campaign';
 import type { Design } from '../sim/design';
@@ -123,7 +124,7 @@ export const createCampaignHub = (
     const share = el('input', {
       attrs: {
         type: 'number',
-        min: '1',
+        min: String(MIN_REPAIR_SHARE * 100),
         max: '100',
         step: '1',
         'aria-label': `Share of ${ship.name}'s repairs %`,
@@ -131,10 +132,12 @@ export const createCampaignHub = (
     });
     share.value = '100';
     const repairButton = button('Repair', `Repair ${ship.name}`);
-    repairButton.disabled = repair <= 0 || repair * 0.01 > campaign.credits;
+    repairButton.disabled = repair <= 0 || repair * MIN_REPAIR_SHARE > campaign.credits;
     repairButton.addEventListener('click', () => {
       const percent = share.valueAsNumber;
-      if (percent > 0 && percent <= 100) actions.onRepair(ship.id, percent / 100);
+      if (percent >= MIN_REPAIR_SHARE * 100 && percent <= 100) {
+        actions.onRepair(ship.id, percent / 100);
+      }
     });
     const restockButton = button('Restock', `Restock ${ship.name}`);
     restockButton.disabled = restock <= 0 || restock > campaign.credits;

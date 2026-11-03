@@ -5,6 +5,7 @@ import { designCost } from '../shipyard/cost';
 import {
   buildShip,
   campaignOver,
+  MIN_REPAIR_SHARE,
   newCampaign,
   OPPONENT_SIDE,
   PLAYER_SIDE,
@@ -87,19 +88,43 @@ describe('the end of a campaign', () => {
     expect(campaignOver({ ...empty, credits: 0 })).toBe(true);
   });
 
-  it('comes exactly when a ship that cannot fight cannot be repaired, nor sold for another', () => {
+  it('comes exactly when a ship that cannot fight cannot be repaired enough, nor sold for another', () => {
     const campaign = disabled(withShip());
     const ship = campaign.hangar[0];
     if (!ship) throw new Error('No ship');
-    // Enough to put it right again: it can be fielded.
-    const putRight = repairCost(ship) + restockCost(ship);
-    expect(campaignOver({ ...campaign, credits: putRight })).toBe(false);
+    // The smallest repair the campaign takes puts its drive back in working order.
+    expect(MIN_REPAIR_SHARE).toBe(0.01);
+    const least = MIN_REPAIR_SHARE * repairCost(ship);
+    expect(campaignOver({ ...campaign, credits: least })).toBe(false);
     // Short of that, and selling it does not raise enough for the cheapest design.
-    expect(putRight - 1 + saleValue(ship)).toBeLessThan(cheapest(campaign));
-    expect(campaignOver({ ...campaign, credits: putRight - 1 })).toBe(true);
+    expect(least - 1 + saleValue(ship)).toBeLessThan(cheapest(campaign));
+    expect(campaignOver({ ...campaign, credits: least - 1 })).toBe(true);
     // Selling it would raise enough for a new ship.
     expect(campaignOver({ ...campaign, credits: cheapest(campaign) - saleValue(ship) })).toBe(
       false,
     );
+  });
+
+  it('counts a ship short only of propellant as put right by restocking, whatever its repairs cost', () => {
+    const start = withShip();
+    const ship = start.hangar[0];
+    if (!ship) throw new Error('No ship');
+    const dry: Campaign = {
+      ...start,
+      hangar: [
+        {
+          ...ship,
+          condition: {
+            ...ship.condition,
+            propellantMass: 0,
+            sections: { ...ship.condition.sections, forward: { armour: 0, structure: 0.5 } },
+          },
+        },
+      ],
+    };
+    const stranded = dry.hangar[0];
+    if (!stranded) throw new Error('No ship');
+    expect(repairCost(stranded)).toBeGreaterThan(restockCost(stranded));
+    expect(campaignOver({ ...dry, credits: restockCost(stranded) })).toBe(false);
   });
 });
