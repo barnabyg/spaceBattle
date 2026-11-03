@@ -1,4 +1,4 @@
-import type { ContactDetail } from '../sim/battle';
+import type { CaptainSkill, ContactDetail } from '../sim/battle';
 import { KILOTON } from '../sim/design';
 
 const grouped = (value: number, fractionDigits: number): string =>
@@ -71,3 +71,13 @@ export const CONTACT_DETAIL_TEXT: Readonly<Record<ContactDetail, string>> = {
 
 /** An amount of credits. */
 export const formatCredits = (credits: number): string => `${grouped(credits, 0)} cr`;
+
+/** A word with its first letter capitalised, such as a hull size or section for a label. */
+export const capitalise = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** A computer captain's skill, for labels. */
+export const SKILL_TEXT: Readonly<Record<CaptainSkill, string>> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+};

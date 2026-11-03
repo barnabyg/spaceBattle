@@ -1,10 +1,40 @@
+import type { CaptainSkill } from '../sim/captain';
 import type { ArmourType, ComponentType } from '../sim/design';
 
+/** A level of opponent difficulty in the campaign. */
+export interface Tier {
+  /** 1 for the easiest. */
+  readonly tier: number;
+  /** The most an opponent's design may cost, credits. */
+  readonly budget: number;
+  /** How skilled the opponent's computer captain is. */
+  readonly skill: CaptainSkill;
+  /** What a win pays, credits. */
+  readonly reward: number;
+}
+
 /**
- * The game's balance numbers in one place: what things cost. Prices are in credits; a modest
- * frigate costs about 8 million.
+ * The game's balance numbers in one place: what things cost, and what the campaign's tiers field
+ * and pay. Prices are in credits; a modest frigate costs about 8 million.
  */
 export const BALANCE = {
+  /** The campaign's tiers, easiest first. */
+  tiers: [
+    { tier: 1, budget: 8.5e6, skill: 'low', reward: 3e6 },
+    { tier: 2, budget: 10e6, skill: 'medium', reward: 5e6 },
+    { tier: 3, budget: 26e6, skill: 'high', reward: 12e6 },
+  ] satisfies readonly Tier[],
+  /** What a new campaign starts with, credits: enough for a modest frigate and a little over. */
+  startingCredits: 9e6,
+  /**
+   * Repairs cost this share of the price of new for the share of each component, armour and
+   * structure that is wrecked.
+   */
+  repairPriceShare: 0.5,
+  /** A refit's labour costs this share of all the new design's components and armour. */
+  refitLabourShare: 0.2,
+  /** A ship sells for this share of what it would cost new, less its repairs and restocking. */
+  saleShare: 0.25,
   /** Price of each type of component, per kg of it; a magazine's ammunition is extra. */
   componentPrice: {
     drive: 30,
@@ -14,6 +44,8 @@ export const BALANCE = {
     magazine: 10,
     'magnetic-shield': 35,
     'coolant-shield': 30,
+    'long-range-scanner': 50,
+    'signal-interceptor': 50,
     radiator: 10,
     laser: 40,
     'charged-particle-beam': 45,

@@ -38,11 +38,20 @@ import {
 } from './orders';
 import type { PointDefenceEngagement, Threat } from './pointDefence';
 import { POWER_SYSTEMS, settlePowerAndHeat } from './power';
+import { gatherIntelligence } from './intelligence';
 import { endedBy, judge, lossOf, noResult, type BattleOutcome } from './outcome';
 import { conjugate, IDENTITY, rotate, type Quat } from './quaternion';
 import { createRandom, type Random } from './random';
 import { perceive, sensorPower, type ContactDetail } from './sensors';
-import { burn, createShip, fireDrive, noseOf, steer, type ShipState } from './ship';
+import {
+  burn,
+  createShip,
+  fireDrive,
+  noseOf,
+  steer,
+  type ShipCondition,
+  type ShipState,
+} from './ship';
 import { TIME_STEP } from './time';
 import {
   add,
@@ -116,6 +125,8 @@ export type {
 
 export type SideId = string;
 export type { CaptainSkill } from './captain';
+export type { ShipCondition } from './ship';
+export type { IntelligenceFact, IntelligenceReport } from './intelligence';
 export type Commander = 'player' | 'computer';
 
 export interface SideSetup {
@@ -125,6 +136,11 @@ export interface SideSetup {
   readonly design: Design;
   /** How skilled a computer side's captain is; medium if left out. A player side ignores it. */
   readonly skill?: CaptainSkill;
+  /**
+   * The state its ship comes into the battle in, as an earlier battle left it (see
+   * `OwnShipObservation.condition`); as built if left out.
+   */
+  readonly condition?: ShipCondition;
 }
 
 /** Where each side's ship starts, in the same order as the battle's sides. */
@@ -285,6 +301,8 @@ const WITHDRAWAL_ALIGNMENT = Math.cos((10 * Math.PI) / 180);
 const EVENT_LOG_LENGTH = 20;
 /** Mixed into the battle's seed for the errors in fire control's tracks, kept apart from the rest. */
 const TRACKING_SEED = 0x9e3779b9;
+/** Mixed into the battle's seed for what signal interceptors learn before it, kept apart too. */
+const INTELLIGENCE_SEED = 0x85ebca6b;
 
 /** A draw from the standard normal distribution (Box–Muller). */
 const normal = (random: Random): number =>
@@ -315,7 +333,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
     if (!start) throw new Error(`No start for side ${side.id}`);
     return {
       side,
-      ship: createShip(side.design, start.position, start.velocity, start.orientation ?? IDENTITY),
+      ship: createShip(
+        side.design,
+        start.position,
+        start.velocity,
+        start.orientation ?? IDENTITY,
+        side.condition,
+      ),
       beamsLanding: [],
       impacts: [],
       withdrawn: false,
@@ -326,6 +350,18 @@ export const createBattle = (setup: BattleSetup): Battle => {
   // Fire control's tracking errors draw on their own sequence, so they leave every other chance
   // in the battle as it would be without them.
   const tracking = createRandom((setup.seed ^ TRACKING_SEED) >>> 0);
+  // What each side learned before the battle, by the same rules for every side.
+  const intelligence = (() => {
+    const random = createRandom((setup.seed ^ INTELLIGENCE_SEED) >>> 0);
+    return new Map(
+      combatants.map((own) => [
+        own.side.id,
+        combatants
+          .filter((c) => c !== own)
+          .map((enemy) => gatherIntelligence(own.ship, enemy.side.id, enemy.ship, random)),
+      ]),
+    );
+  })();
   /** Beams on their way to their targets, in the order fired. */
   let beams: Beam[] = [];
   /** Slugs in flight, in the order fired. */
@@ -889,6 +925,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
         munitions: observeMunitions(slugs, missiles),
         events: [...(logs.get(sideId) ?? [])],
         outcome,
+        intelligence: intelligence.get(sideId) ?? [],
       };
     },
     endBattle(sideId) {

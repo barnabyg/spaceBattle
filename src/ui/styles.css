@@ -699,6 +699,7 @@ h3 {
 }
 
 .field select,
+.campaign-list select,
 .shipyard-component select {
   font: inherit;
   font-size: 1.1rem;
@@ -921,4 +922,102 @@ h3 {
   width: 1px;
   height: 1px;
   opacity: 0;
+}
+
+/* The campaign hub: credits, then the hangar, the designs to build and the tiers to fight. */
+.campaign-screen {
+  justify-content: flex-start;
+}
+
+.campaign-credits {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.campaign {
+  display: grid;
+  grid-template-columns: repeat(3, 44rem);
+  gap: 2rem;
+  align-items: start;
+}
+
+.campaign-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.2rem 1.6rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+}
+
+.campaign-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.campaign-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.8rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.campaign-list li > button {
+  margin-left: auto;
+}
+
+.campaign-list__name {
+  min-width: 8rem;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.campaign-panel .field select {
+  width: 100%;
+}
+
+.campaign-list__state {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+}
+
+.campaign-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.field--inline {
+  flex-direction: row-reverse;
+  align-items: center;
+}
+
+.field--inline input {
+  width: 4.5em;
+}
+
+.campaign-over {
+  padding: 1rem 2rem;
+  text-align: center;
+  border: 1px solid #ff8a7a;
+  border-radius: 10px;
+}
+
+.campaign-over p {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+}
+
+.intelligence-report {
+  width: 50rem;
 }

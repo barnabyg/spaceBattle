@@ -21,7 +21,7 @@ export interface SpecifiedComponent {
   readonly section?: SectionKind;
 }
 
-/** What the player asks the shipyard for: everything about a design but where its parts go. */
+/** What the player asks the shipyard for: everything about a design but where its components go. */
 export interface ShipSpecification {
   /** The class's name; the design is called "<name> class". */
   readonly name: string;
@@ -55,6 +55,8 @@ const DENSITY: Readonly<Record<ComponentType, number>> = {
   magazine: 800,
   'magnetic-shield': 300,
   'coolant-shield': 300,
+  'long-range-scanner': 200,
+  'signal-interceptor': 300,
   radiator: 150,
   laser: 100,
   'charged-particle-beam': 100,

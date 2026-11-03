@@ -3,6 +3,8 @@ import { componentSlots, integrityOfType } from './components';
 import {
   designComponent,
   designComponents,
+  designComponentsOfType,
+  missileMass,
   SECTION_KINDS,
   type Design,
   type SectionKind,
@@ -233,7 +235,143 @@ const computeMassProperties = (
   };
 };
 
+/**
+ * What a ship carries from one battle to the next: its damage, the propellant it has left and the
+ * ammunition in its magazines. Heat and stored energy are not carried: between battles the ship
+ * cools and its capacitors charge.
+ */
+export interface ShipCondition {
+  /** Each component's integrity (0–1), in the order of `componentSlots`. */
+  readonly integrity: readonly number[];
+  /** Each section's armour thickness left, m, and its structure's integrity (0–1). */
+  readonly sections: Readonly<
+    Record<SectionKind, { readonly armour: number; readonly structure: number }>
+  >;
+  /** kg */
+  readonly propellantMass: number;
+  /** The ammunition left in each of the design's magazines, in the order of its slots. */
+  readonly magazines: readonly {
+    readonly slugs: number;
+    readonly rounds: number;
+    readonly missiles: number;
+  }[];
+}
+
+/** A ship of a design as built: undamaged, with full tanks and magazines. */
+export const fullCondition = (design: Design): ShipCondition => ({
+  integrity: componentSlots(design).map(() => 1),
+  sections: Object.fromEntries(
+    SECTION_KINDS.map((kind) => [
+      kind,
+      { armour: design.sections.find((s) => s.kind === kind)?.armour.thickness ?? 0, structure: 1 },
+    ]),
+  ) as ShipCondition['sections'],
+  propellantMass: design.propellantMass,
+  magazines: designComponentsOfType(design, 'magazine').map(({ slugs, rounds, missiles }) => ({
+    slugs,
+    rounds,
+    missiles,
+  })),
+});
+
+/** A ship's condition now. */
+export const conditionOf = (ship: ShipState): ShipCondition => ({
+  integrity: ship.integrity,
+  sections: Object.fromEntries(
+    SECTION_KINDS.map((kind) => [
+      kind,
+      { armour: ship.sections[kind].armour, structure: ship.sections[kind].structure },
+    ]),
+  ) as ShipCondition['sections'],
+  propellantMass: ship.propellantMass,
+  magazines: ship.ammunition.map(({ slugs, rounds, missiles }) => ({ slugs, rounds, missiles })),
+});
+
+/**
+ * Whether a value is a number from `low` to `high`. A condition may come from a file, where a
+ * number written as text would pass the comparisons alone.
+ */
+const isBetween = (value: unknown, low: number, high: number): boolean =>
+  typeof value === 'number' && value >= low && value <= high;
+
+/** Throws unless `condition` fits a ship of `design`. */
+const checkCondition = (design: Design, condition: ShipCondition): void => {
+  const full = fullCondition(design);
+  const fits =
+    condition.integrity.length === full.integrity.length &&
+    condition.integrity.every((value) => isBetween(value, 0, 1)) &&
+    SECTION_KINDS.every((kind) => {
+      const section = condition.sections[kind];
+      return (
+        isBetween(section.armour, 0, full.sections[kind].armour) &&
+        isBetween(section.structure, 0, 1)
+      );
+    }) &&
+    isBetween(condition.propellantMass, 0, design.propellantMass) &&
+    condition.magazines.length === full.magazines.length &&
+    condition.magazines.every((held, i) => {
+      const most = full.magazines[i];
+      return (
+        most !== undefined &&
+        [held.slugs, held.rounds, held.missiles].every((n) => Number.isInteger(n) && n >= 0) &&
+        held.slugs <= most.slugs &&
+        held.rounds <= most.rounds &&
+        held.missiles <= most.missiles
+      );
+    });
+  if (!fits) throw new Error(`A ship's condition does not fit its design "${design.id}"`);
+};
+
+/**
+ * Mass of the ammunition gone from each section's magazines when they hold `magazines`, kg: a
+ * slug or round weighs as much as the heaviest any of the design's guns fires.
+ */
+const spentFrom = (design: Design, magazines: ShipCondition['magazines']): AmmunitionSpent => {
+  const slug = Math.max(0, ...designComponentsOfType(design, 'kinetic-gun').map((g) => g.slugMass));
+  const round = Math.max(
+    0,
+    ...designComponentsOfType(design, 'point-defence').map((g) => g.roundMass),
+  );
+  const spent = { ...NO_AMMUNITION_SPENT };
+  initialAmmunition(design).forEach((full, i) => {
+    const held = magazines[i];
+    const section = componentSlots(design)[full.slot]?.section;
+    if (!held || !section) return;
+    spent[section] +=
+      (full.slugs - held.slugs) * slug +
+      (full.rounds - held.rounds) * round +
+      (full.missile ? (full.missiles - held.missiles) * missileMass(full.missile) : 0);
+  });
+  return spent;
+};
+
+/**
+ * A ship of a design at a place and motion, in `condition`: as built, if left out, or as the
+ * last battle left it.
+ */
 export const createShip = (
+  design: Design,
+  position: Vec3,
+  velocity: Vec3,
+  orientation: Quat,
+  condition?: ShipCondition,
+): ShipState => {
+  if (condition) checkCondition(design, condition);
+  const ship = createFreshShip(design, position, velocity, orientation);
+  if (!condition) return ship;
+  return {
+    ...ship,
+    propellantMass: condition.propellantMass,
+    integrity: [...condition.integrity],
+    sections: Object.fromEntries(
+      SECTION_KINDS.map((kind) => [kind, { ...condition.sections[kind], struck: null }]),
+    ) as Record<SectionKind, SectionState>,
+    ammunition: ship.ammunition.map((full, i) => ({ ...full, ...condition.magazines[i] })),
+    ammunitionSpent: spentFrom(design, condition.magazines),
+  };
+};
+
+const createFreshShip = (
   design: Design,
   position: Vec3,
   velocity: Vec3,

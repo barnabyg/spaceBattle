@@ -338,6 +338,30 @@ export interface SensorDesign {
 }
 export type ShieldType = ShieldDesign['type'];
 
+/**
+ * An intelligence component that observes the enemy ship before the battle from far off, so its
+ * side goes in knowing the enemy's whole design.
+ */
+export interface LongRangeScannerDesign {
+  readonly type: 'long-range-scanner';
+  /** kg */
+  readonly mass: number;
+}
+
+/**
+ * An intelligence component that cracks enemy communications before the battle, learning a
+ * random selection of facts about the enemy design: the better its quality, the more facts.
+ */
+export interface SignalInterceptorDesign {
+  readonly type: 'signal-interceptor';
+  /** kg */
+  readonly mass: number;
+  /** The share of the facts there are to learn that it learns at full integrity (0–1). */
+  readonly quality: number;
+}
+
+export type IntelligenceComponentDesign = LongRangeScannerDesign | SignalInterceptorDesign;
+
 /** Components that sit inside a section's armour. */
 export type InternalComponentDesign =
   | DriveDesign
@@ -346,7 +370,9 @@ export type InternalComponentDesign =
   | CapacitorDesign
   | MagazineDesign
   | MagneticShieldDesign
-  | CoolantShieldDesign;
+  | CoolantShieldDesign
+  | LongRangeScannerDesign
+  | SignalInterceptorDesign;
 /** Components that must be exposed, on a section's mounts. */
 export type MountedComponentDesign =
   | RadiatorDesign
@@ -368,6 +394,8 @@ const INTERNAL_TYPES = [
   'magazine',
   'magnetic-shield',
   'coolant-shield',
+  'long-range-scanner',
+  'signal-interceptor',
 ] as const;
 const MOUNTED_TYPES = [
   'radiator',
@@ -642,6 +670,10 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
         power: requireNumber(data, 'power', where),
         capacity: requireNumber(data, 'capacity', where),
       };
+    case 'long-range-scanner':
+      return { type, mass };
+    case 'signal-interceptor':
+      return { type, mass, quality: requireFraction(data, 'quality', where) };
   }
 };
 
