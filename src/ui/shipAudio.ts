@@ -14,6 +14,7 @@ const FOLLOW = 0.12;
 const ALARMS: Readonly<Record<AlarmKind, { readonly period: number }>> = {
   overheat: { period: 2.5 },
   'missile-inbound': { period: 1 },
+  reserve: { period: 4 },
 };
 
 const noiseBuffer = (ctx: AudioContext, seconds: number, brown: boolean): AudioBuffer => {
@@ -187,6 +188,9 @@ export const createShipAudio = (): ShipAudio | null => {
     if (kind === 'overheat') {
       sweep(time, 'triangle', 880, 880, 0.15, 0.12);
       sweep(time + 0.2, 'triangle', 880, 880, 0.15, 0.12);
+    } else if (kind === 'reserve') {
+      // A slow falling tone, like a gauge running down.
+      sweep(time, 'sine', 660, 440, 0.12, 0.6);
     } else {
       for (let i = 0; i < 3; i++) sweep(time + i * 0.12, 'sine', 1_320, 1_320, 0.12, 0.07);
     }

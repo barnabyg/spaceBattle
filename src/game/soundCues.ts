@@ -26,10 +26,10 @@ export interface HullHit {
 }
 
 /**
- * An alarm that sounds for as long as its condition lasts. The propellant reserve alarm joins
- * these when ships hold a reserve for withdrawal (#37).
+ * An alarm that sounds for as long as its condition lasts: overheating, an enemy missile about to
+ * arrive, or delta-v coming down towards the reserve while the ship is not withdrawing.
  */
-export type AlarmKind = 'overheat' | 'missile-inbound';
+export type AlarmKind = 'overheat' | 'missile-inbound' | 'reserve';
 
 /** What a frame sounds like inside the own ship. */
 export interface SoundCues {
@@ -183,6 +183,7 @@ export const createSoundCues = (side: SideSetup) => {
       const alarms: AlarmKind[] = [];
       if (running && own.heat.temperature > OVERHEAT_TEMPERATURE) alarms.push('overheat');
       if (running && missileInbound(observation)) alarms.push('missile-inbound');
+      if (running && own.reserveWarning && !own.withdrawing) alarms.push('reserve');
       const landing = own.appearance.beamsLanding.reduce((sum, b) => sum + b.power, 0);
 
       return {

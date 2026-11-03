@@ -208,6 +208,23 @@ describe('the sound cues derive from battle events for the player ship only', ()
     expect(listen(battle, 'red').frame().alarms).toEqual([]);
   });
 
+  it('sound the reserve alarm as the delta-v left nears the reserve, until the ship withdraws', () => {
+    // Red burns most of its propellant away; blue, far off and unarmed, hears nothing.
+    const battle = duel(testDesign(), { ...testDesign(), reserve: 40e3 }, 10_000 * KM);
+    battle.giveOrder('red', { type: 'burn', throttle: 1, duration: 36_000 });
+    const red = listen(battle, 'red');
+    expect(red.frame().alarms).toEqual([]);
+    while (!battle.observe('red').ownShip.reserveWarning) {
+      if (battle.time > 36_000) throw new Error('Never near the reserve');
+      red.frame(10);
+    }
+    const cues = red.frame();
+    expect(cues.alarms).toEqual(['reserve']);
+    expect(listen(battle, 'blue').frame().alarms).toEqual([]);
+    battle.giveOrder('red', { type: 'withdraw' });
+    expect(red.frame(1).alarms).toEqual([]);
+  });
+
   it('fall silent while paused and once the battle is over', () => {
     const battle = duel(armedTestDesign(), testDesign(), 50_000 * KM);
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
