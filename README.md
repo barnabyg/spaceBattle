@@ -36,10 +36,13 @@ In battle, the captain of a player side hears only what reaches their own hull, 
 
 **Test mode**, for testing the game rather than playing it, is switched on with the **Test mode** switch on the main menu and is unavailable otherwise. With it on, free battle setup adds a **Seed** (blank for a new one each battle), a **Time limit** in hours (12 by default; a battle that reaches it ends with no result) and **Battles** for a batch run. A battle in test mode shows its seed, the enemy's full design and state (the instrument view draws it in full, whatever the sensors make out), and a test log of every event, and offers time compression up to 10000× and **Replay**: the same battle again from the same seed, with the player's orders given again at the same moments. **Run batch** fights the chosen designs against each other in the chosen scenario, the computer commanding both sides, without graphics and in parallel, then shows each side's wins, draws, no results, how sides lost and each battle's seed; enter a battle's seed with the computer commanding both sides to watch it again.
 
+**Shipyard** on the main menu designs ships. Name the class, choose a hull size, add components from the catalogue, and set each section's armour, the propellant and the reserve. The shipyard places the components itself (the reactor buried in the middle, weapons spread over the sections, radiators along the middle's sides); choose a section for any component to place it there by hand, or **Place all automatically** to undo that. It shows each section's volume used, the mass, cost, delta-v and acceleration, anything that makes the design invalid, and a model of it. **Save design** keeps a valid design, as "<name> class", in the browser; free battle setup offers saved designs beside the hand-made ones. **Export** saves a design to a file to keep or share, and **Import design** reads one back, from this or an older version of the game.
+
 ## Layout
 
 - `src/sim/` — the battle simulation: fixed time step, deterministic, SI units, no rendering or DOM (ADR-0001). Lint and a DOM-free type check enforce this. Computer captains command their sides here, through the same orders as the player.
 - `src/game/` — headless glue around the simulation, such as the battle runner (pause and time compression) and test mode batch runs.
-- `src/data/` — hand-made designs (JSON data files) and scenarios.
+- `src/shipyard/` — the shipyard: a specification in, a design out, with its volume, mass, cost and validation. Headless, like the simulation.
+- `src/data/` — hand-made designs (JSON data files), scenarios, the shipyard's component catalogue and the balance numbers (prices).
 - `src/ui/` — the browser UI: menus in HTML/CSS, views in Three.js. It reads simulation state and gives orders; it never changes state directly.
 - `e2e/` — Playwright tests in Firefox.

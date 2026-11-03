@@ -698,7 +698,8 @@ h3 {
   border-bottom: 1px solid var(--panel-border);
 }
 
-.field select {
+.field select,
+.shipyard-component select {
   font: inherit;
   font-size: 1.1rem;
   color: var(--text);
@@ -825,4 +826,99 @@ h3 {
 .sound-volume {
   width: 8rem;
   accent-color: var(--accent);
+}
+
+/* The shipyard: saved designs, the specification being edited, and the design it builds. */
+.shipyard-screen {
+  justify-content: flex-start;
+}
+
+.shipyard {
+  display: grid;
+  grid-template-columns: 26rem 60rem 50rem;
+  gap: 2rem;
+  align-items: start;
+}
+
+.shipyard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.2rem 1.6rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+}
+
+.shipyard-panel .field input[type='text'] {
+  width: 16em;
+}
+
+.shipyard-library-list,
+.shipyard-components,
+.shipyard-problems {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shipyard-library-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.shipyard-library-list li > span {
+  flex: 1;
+}
+
+.shipyard-component {
+  display: grid;
+  grid-template-columns: 1fr 19rem 15rem auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.shipyard-component__numbers,
+.shipyard-component__section {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.shipyard-problems li {
+  color: #ff8a7a;
+}
+
+.shipyard-problems[hidden] {
+  display: none;
+}
+
+.design-preview {
+  height: 22rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* A file picker that looks like a menu button; its input stays reachable but unseen. */
+.file-picker {
+  position: relative;
+  text-align: center;
+}
+
+.file-picker:focus-within {
+  border-color: var(--accent);
+}
+
+.file-picker__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
 }

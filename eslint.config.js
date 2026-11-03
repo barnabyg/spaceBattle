@@ -57,7 +57,7 @@ export default defineConfig(
     languageOptions: { globals: globals.node },
   },
   {
-    files: ['src/sim/**', 'src/game/**'],
+    files: ['src/sim/**', 'src/game/**', 'src/shipyard/**', 'src/campaign/**'],
     rules: headlessRestrictions,
   },
 );

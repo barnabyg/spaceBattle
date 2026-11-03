@@ -68,3 +68,6 @@ export const CONTACT_DETAIL_TEXT: Readonly<Record<ContactDetail, string>> = {
   sections: 'sections',
   mounts: 'mounts',
 };
+
+/** An amount of credits. */
+export const formatCredits = (credits: number): string => `${grouped(credits, 0)} cr`;

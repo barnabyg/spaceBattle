@@ -2,6 +2,7 @@ import { el } from './el';
 
 export interface MainMenuActions {
   readonly onFreeBattle: () => void;
+  readonly onShipyard: () => void;
   /** Whether test mode is on now. */
   readonly testMode: boolean;
   /** Test mode is switched on and off here, and nowhere else. */
@@ -9,7 +10,12 @@ export interface MainMenuActions {
 }
 
 /** The first screen: the game's title, where to go from here, and the test mode switch. */
-export const createMainMenu = ({ onFreeBattle, testMode, onTestModeChange }: MainMenuActions) => {
+export const createMainMenu = ({
+  onFreeBattle,
+  onShipyard,
+  testMode,
+  onTestModeChange,
+}: MainMenuActions) => {
   const freeBattle = el('button', {
     className: 'menu-button',
     text: 'Free battle',
@@ -21,6 +27,12 @@ export const createMainMenu = ({ onFreeBattle, testMode, onTestModeChange }: Mai
     attrs: { type: 'button', disabled: '', 'aria-describedby': 'campaign-note' },
   });
   freeBattle.addEventListener('click', onFreeBattle);
+  const shipyard = el('button', {
+    className: 'menu-button',
+    text: 'Shipyard',
+    attrs: { type: 'button' },
+  });
+  shipyard.addEventListener('click', onShipyard);
   const testModeSwitch = el('input', {
     attrs: { type: 'checkbox', 'aria-describedby': 'test-mode-note' },
   });
@@ -47,6 +59,15 @@ export const createMainMenu = ({ onFreeBattle, testMode, onTestModeChange }: Mai
         el('span', {
           className: 'menu-note',
           text: 'Any two designs, each side commanded by you or the computer.',
+        }),
+      ),
+      el(
+        'div',
+        { className: 'menu-item' },
+        shipyard,
+        el('span', {
+          className: 'menu-note',
+          text: 'Design your own ships and use them in free battles.',
         }),
       ),
       el(
