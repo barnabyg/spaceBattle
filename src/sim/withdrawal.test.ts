@@ -126,7 +126,7 @@ describe('the reserve', () => {
       battle.advance(MINUTE);
     }
     expect(red().deltaV).toBeGreaterThan(red().reserve);
-  });
+  }, 20_000); // Simulates hours of burning; takes a second or two.
 });
 
 describe('stranding', () => {
