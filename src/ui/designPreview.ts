@@ -69,7 +69,7 @@ export const createDesignPreview = () => {
       }
       turntable.add(model);
       const length = hullLength(HULLS[design.hullSize]);
-      camera.position.set(length * 0.9, length * 0.6, length * 1.4);
+      camera.position.set(length * 0.65, length * 0.5, length * 1.05);
       camera.lookAt(0, 0, 0);
     },
     dispose() {

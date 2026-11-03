@@ -3,6 +3,8 @@ import type { ShipAppearance } from '../sim/battle';
 import { designComponent, type Design, type SectionKind } from '../sim/design';
 import { shipShape, type ShapePart } from '../sim/shape';
 import { massProperties, NO_AMMUNITION_SPENT } from '../sim/ship';
+import { mountDetail, sectionGeometry, shipSurface } from './shipDetail';
+import { hullFittings } from './shipFittings';
 
 /** What a mesh of a ship model stands for. */
 export type ShipModelPartKind = 'section' | 'mount' | 'nozzle' | 'exhaust';
@@ -94,6 +96,7 @@ interface ModelParts {
   readonly glow: THREE.Sprite;
   readonly fullThrust: number;
   readonly nozzleRadius: number;
+  readonly materials: readonly THREE.Material[];
 }
 
 const models = new WeakMap<THREE.Group, ModelParts>();
@@ -104,7 +107,10 @@ const boxMesh = (part: ShapePart, material: THREE.Material, data: ShipModelPartD
     part.max.y - part.min.y,
     part.max.z - part.min.z,
   );
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
+  const mesh = new THREE.Mesh<THREE.BufferGeometry>(
+    new THREE.BoxGeometry(size.x, size.y, size.z),
+    material,
+  );
   mesh.position.set(
     (part.max.x + part.min.x) / 2,
     (part.max.y + part.min.y) / 2,
@@ -116,8 +122,8 @@ const boxMesh = (part: ShapePart, material: THREE.Material, data: ShipModelPartD
 
 /**
  * A ship model built from its design, in the ship's body frame (centre of mass at the origin, nose
- * along +x), from the same shape the simulation's beams hit: one box mesh per section and one per
- * mount, a drive nozzle at the tail sized by the drive's thrust, and an exhaust plume behind it.
+ * along +x), with a core matching the simulation's section and mount envelopes. Exterior fittings
+ * are purely decorative and belong to their section; they never change hits or mass properties.
  * Rebuild it when the radiators deploy or retract; `updateShipModel` handles everything else.
  */
 export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): THREE.Group => {
@@ -127,20 +133,63 @@ export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): T
   const shape = shipShape(design, propellantMass, radiatorsDeployed, ammunitionSpent);
 
   const armourMaterial = {
-    heavy: new THREE.MeshStandardMaterial({ color: '#8b929c', metalness: 0.6, roughness: 0.45 }),
-    ablative: new THREE.MeshStandardMaterial({ color: '#5d564e', metalness: 0.1, roughness: 0.9 }),
+    heavy: new THREE.MeshStandardMaterial({
+      color: '#8b929c',
+      metalness: 0.6,
+      roughness: 0.45,
+      map: shipSurface('armour'),
+    }),
+    ablative: new THREE.MeshStandardMaterial({
+      color: '#737d86',
+      metalness: 0.1,
+      roughness: 0.9,
+      map: shipSurface('ablative'),
+    }),
   };
-  const bare = new THREE.MeshStandardMaterial({ color: '#9aa0a8', metalness: 0.7, roughness: 0.4 });
+  const bare = new THREE.MeshStandardMaterial({
+    color: '#9aa0a8',
+    metalness: 0.7,
+    roughness: 0.4,
+    map: shipSurface('armour'),
+  });
   const turret = new THREE.MeshStandardMaterial({
     color: '#3a4250',
     metalness: 0.5,
     roughness: 0.5,
   });
   const radiator = new THREE.MeshStandardMaterial({
-    color: '#202226',
+    color: '#42464e',
+    map: shipSurface('radiator'),
     metalness: 0.3,
     roughness: 0.7,
     emissive: '#000000',
+  });
+  const trim = new THREE.MeshStandardMaterial({
+    color: '#9aa5b2',
+    metalness: 0.75,
+    roughness: 0.3,
+    side: THREE.DoubleSide,
+  });
+  const optic = new THREE.MeshStandardMaterial({
+    color: '#163e53',
+    metalness: 0.8,
+    roughness: 0.18,
+  });
+  const structure = new THREE.MeshStandardMaterial({
+    color: '#303a46',
+    metalness: 0.65,
+    roughness: 0.55,
+    side: THREE.DoubleSide,
+  });
+  const recess = new THREE.MeshStandardMaterial({
+    color: '#111820',
+    metalness: 0.25,
+    roughness: 0.85,
+  });
+  const marking = new THREE.MeshStandardMaterial({
+    color: '#c1b58a',
+    metalness: 0.15,
+    roughness: 0.7,
   });
 
   const model = new THREE.Group();
@@ -153,13 +202,70 @@ export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): T
     if (part.mount === null) {
       const armour = section?.armour;
       const material = armour && armour.thickness > 0 ? armourMaterial[armour.type] : bare;
-      hull.add(boxMesh(part, material, { kind: 'section', section: part.section }));
+      const mesh = boxMesh(part, material, { kind: 'section', section: part.section });
+      mesh.geometry.dispose();
+      mesh.geometry = sectionGeometry(
+        new THREE.Vector3(
+          part.max.x - part.min.x,
+          part.max.y - part.min.y,
+          part.max.z - part.min.z,
+        ),
+      );
+      const mountClearance = [false, true].flatMap((deployed) =>
+        shipShape(design, propellantMass, deployed, ammunitionSpent)
+          .filter((candidate) => candidate.section === part.section && candidate.mount !== null)
+          .map((candidate) =>
+            new THREE.Box3(
+              new THREE.Vector3(candidate.min.x, candidate.min.y, candidate.min.z).sub(
+                mesh.position,
+              ),
+              new THREE.Vector3(candidate.max.x, candidate.max.y, candidate.max.z).sub(
+                mesh.position,
+              ),
+            ).expandByScalar(0.15),
+          ),
+      );
+      mesh.add(
+        hullFittings(
+          new THREE.Vector3(
+            part.max.x - part.min.x,
+            part.max.y - part.min.y,
+            part.max.z - part.min.z,
+          ),
+          part.section,
+          mountClearance,
+          [material, structure, recess, marking],
+        ),
+      );
+      hull.add(mesh);
     } else {
       const component = section?.mounts[part.mount];
-      const material = component?.type === 'radiator' ? radiator : turret;
-      hull.add(
-        boxMesh(part, material, { kind: 'mount', section: part.section, mount: part.mount }),
-      );
+      const data: ShipModelPartData = { kind: 'mount', section: part.section, mount: part.mount };
+      if (!component || component.type === 'radiator') {
+        hull.add(boxMesh(part, radiator, data));
+      } else {
+        const mesh = mountDetail(component.type, turret, trim, optic);
+        mesh.userData = data;
+        mesh.position.set(
+          (part.min.x + part.max.x) / 2,
+          (part.min.y + part.max.y) / 2,
+          (part.min.z + part.max.z) / 2,
+        );
+        const onY = Math.abs(mesh.position.y) > Math.abs(mesh.position.z);
+        mesh.scale.set(
+          part.max.x - part.min.x,
+          onY ? part.max.y - part.min.y : part.max.z - part.min.z,
+          onY ? part.max.z - part.min.z : part.max.y - part.min.y,
+        );
+        mesh.rotation.x = onY
+          ? mesh.position.y < 0
+            ? Math.PI
+            : 0
+          : mesh.position.z > 0
+            ? Math.PI / 2
+            : -Math.PI / 2;
+        hull.add(mesh);
+      }
     }
   }
 
@@ -187,6 +293,14 @@ export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): T
   nozzle.rotation.z = Math.PI / 2;
   nozzle.position.x = tail - nozzleLength / 2;
   nozzle.userData = { kind: 'nozzle' } satisfies ShipModelPartData;
+  // Reinforcement rings follow the bell and disappear with the engine section.
+  for (const fraction of [0.15, 0.5, 0.85]) {
+    const radius = nozzleRadius * (1 - 0.65 * fraction);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, nozzleRadius * 0.035, 6, 24), trim);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = nozzleLength * (0.5 - fraction);
+    nozzle.add(ring);
+  }
   hull.add(nozzle);
 
   // The exhaust: an additive plume whose length follows the thrust, and a glow at the exit.
@@ -231,6 +345,18 @@ export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): T
     glow,
     fullThrust: drive.thrust,
     nozzleRadius,
+    materials: [
+      armourMaterial.heavy,
+      armourMaterial.ablative,
+      bare,
+      turret,
+      radiator,
+      trim,
+      optic,
+      structure,
+      recess,
+      marking,
+    ],
   });
   updateShipModel(model, {
     propellantMass,
@@ -286,13 +412,21 @@ export const updateShipModel = (model: THREE.Group, look: ShipLook): void => {
 
 /** Frees a model's geometry and materials; the glow texture and sprite geometry are shared. */
 export const disposeShipModel = (model: THREE.Group): void => {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>(models.get(model)?.materials);
   model.traverse((object) => {
     if (object instanceof THREE.Mesh) {
-      (object.geometry as THREE.BufferGeometry).dispose();
-      (object.material as THREE.Material).dispose();
+      geometries.add(object.geometry as THREE.BufferGeometry);
+      materials.add(object.material as THREE.Material);
     } else if (object instanceof THREE.Sprite) {
-      object.material.dispose();
+      materials.add(object.material);
     }
+  });
+  geometries.forEach((geometry) => {
+    geometry.dispose();
+  });
+  materials.forEach((material) => {
+    material.dispose();
   });
   models.delete(model);
 };
