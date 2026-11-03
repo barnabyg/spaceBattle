@@ -7,7 +7,6 @@ import {
   BEAM_OPACITY,
   BEAM_STYLES,
   BURST_COLOUR,
-  HEADING_COLOUR,
   INTERCEPT_COLOUR,
   MISSILE_SIZE,
   MUNITION_SIZE,
@@ -35,7 +34,7 @@ const line = (
   [x1, y1]: readonly [number, number],
   [x2, y2]: readonly [number, number],
   colour: string,
-  { dashed = false, opacity = 1 } = {},
+  { dashed = false, opacity = 1, width = 1.5 } = {},
 ) =>
   svg('line', {
     x1,
@@ -43,7 +42,7 @@ const line = (
     x2,
     y2,
     stroke: colour,
-    'stroke-width': 1.5,
+    'stroke-width': width,
     'stroke-opacity': opacity,
     ...(dashed ? { 'stroke-dasharray': DASHED } : {}),
   });
@@ -78,14 +77,28 @@ const bothShips = (colours: Colours, draw: (colour: string, y: number) => SVGEle
 const ENTRIES: Readonly<Record<MapLayer, LegendEntry>> = {
   velocity: {
     name: 'Velocity',
-    description: `Where each ship would drift in ${formatDuration(VECTOR_SECONDS)}, in the battle's fixed frame rather than relative to your ship. The longer the arrow, the faster.`,
+    description: `Where each ship would drift in ${formatDuration(VECTOR_SECONDS)}, in the battle's fixed frame rather than relative to your ship. The only arrow whose length means something: the longer, the faster.`,
     sample: (colours) => bothShips(colours, (colour, y) => arrow(4, 36, y, colour)),
   },
   heading: {
     name: 'Heading',
     description:
-      "The way each ship's nose points; its length means nothing. Shown for a contact once its silhouette is made out.",
-    sample: (colours) => bothShips(colours, (_, y) => [line([12, y], [28, y], HEADING_COLOUR)]),
+      "The way each ship's nose points: a tick on its symbol, in its side's colour. It keeps its size; it shortens only as the nose turns towards or away from you. Shown for a contact once its silhouette is made out.",
+    sample: ([own = '#ffffff', contact = '#ffffff']) => [
+      svg('circle', { cx: 8, cy: 9, r: 3.5, fill: 'none', stroke: own, 'stroke-width': 1.5 }),
+      line([11, 7], [17, 3], own, { width: 2 }),
+      svg('rect', {
+        x: 25,
+        y: 6,
+        width: 6,
+        height: 6,
+        transform: 'rotate(45 28 9)',
+        fill: 'none',
+        stroke: contact,
+        'stroke-width': 1.5,
+      }),
+      line([32, 9], [38, 9], contact, { width: 2 }),
+    ],
   },
   trail: {
     name: 'Trail',
@@ -125,8 +138,16 @@ const ENTRIES: Readonly<Record<MapLayer, LegendEntry>> = {
   'planned-burns': {
     name: 'Planned burns',
     description:
-      'Where, when and which way the autopilot will burn; the arrow’s length means nothing.',
-    sample: () => arrow(10, 30, HEIGHT / 2, PLANNED_BURN_COLOUR),
+      'Where, when and which way the autopilot will burn: chevrons pointing the way the drive will push. Their size means nothing.',
+    sample: () =>
+      [14, 21].map((x) =>
+        svg('polyline', {
+          points: `${x},3 ${x + 5},8 ${x},13`,
+          fill: 'none',
+          stroke: PLANNED_BURN_COLOUR,
+          'stroke-width': 2,
+        }),
+      ),
   },
   'range-rings': {
     name: 'Range rings',

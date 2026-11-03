@@ -12,13 +12,7 @@ import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { CONTACT_DETAIL_TEXT, formatDuration, formatKm, formatKmPerS } from './format';
 import { createMapLegend } from './mapLegend';
-import {
-  loadMapLayers,
-  MAP_LAYERS,
-  saveMapLayers,
-  type MapLayer,
-  type MapLayers,
-} from './mapLayers';
+import { loadMapLayers, MAP_LAYERS, saveMapLayers, type MapLayer } from './mapLayers';
 import {
   ANTI_MISSILE_PALENESS,
   ANTI_MISSILE_SIZE,
@@ -27,7 +21,6 @@ import {
   BURST_COLOUR,
   BURST_FLASH_SIZE,
   DROP_LINE_DASH,
-  HEADING_COLOUR,
   INTERCEPT_COLOUR,
   INTERCEPT_FLASH_SIZE,
   MISSILE_SIZE,
@@ -56,8 +49,8 @@ const MAX_PROJECTION_HORIZON = 24 * 3_600;
 const PROJECTION_POINTS = 121;
 /** Planned burns shown on the map, in order. */
 const MAX_PLANNED_BURNS = 4;
-/** Heading lines are this fraction of the camera's distance from the own ship. */
-const HEADING_SCALE = 0.06;
+/** A heading shortens on screen as it turns towards or away from the camera, down to this share. */
+const MIN_FORESHORTENING = 0.25;
 const WHITE = new THREE.Color('#ffffff');
 
 /**
@@ -80,7 +73,11 @@ interface ShipMarker {
   readonly label: HTMLElement;
   readonly velocity: THREE.ArrowHelper;
   readonly dropLine: THREE.Line;
-  readonly heading: THREE.Line;
+  /** The nose marker on the symbol, turned to the ship's heading as seen on screen. */
+  readonly heading: HTMLElement;
+  /** The ship's position and which way its nose points, or null if not made out. */
+  readonly at: THREE.Vector3;
+  nose: THREE.Vector3 | null;
   readonly trail: THREE.Line;
   readonly trailPositions: Float32Array;
   trailCount: number;
@@ -128,16 +125,17 @@ export const createTacticalMap = (
   controls.minDistance = 2_000;
   controls.maxDistance = 5_000_000;
 
-  const showLayers = (layers: MapLayers) => {
+  let layers = loadMapLayers();
+  const showLayers = () => {
     for (const layer of MAP_LAYERS) {
       if (layers[layer]) camera.layers.enable(cameraLayer(layer));
       else camera.layers.disable(cameraLayer(layer));
     }
   };
-  const initialLayers = loadMapLayers();
-  showLayers(initialLayers);
-  const legend = createMapLegend(colours, initialLayers, (layers) => {
-    showLayers(layers);
+  showLayers();
+  const legend = createMapLegend(colours, layers, (shown) => {
+    layers = shown;
+    showLayers();
     saveMapLayers(layers);
   });
   element.append(legend.element);
@@ -171,6 +169,10 @@ export const createTacticalMap = (
   sides.forEach((side, index) => {
     const colour = colours[index] ?? '#ffffff';
     const label = el('span', { className: 'ship-symbol__label' });
+    const heading = el('span', {
+      className: 'ship-symbol__heading',
+      attrs: { 'aria-hidden': 'true' },
+    });
     const symbol = new CSS2DObject(
       el(
         'div',
@@ -179,6 +181,7 @@ export const createTacticalMap = (
           attrs: { 'data-side': side.id, style: `--side-colour: ${colour}` },
         },
         el('span', { className: 'ship-symbol__glyph', attrs: { 'aria-hidden': 'true' } }),
+        heading,
         label,
       ),
     );
@@ -200,15 +203,10 @@ export const createTacticalMap = (
       trailGeometry,
       new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: TRAIL_OPACITY }),
     );
-    const heading = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-      new THREE.LineBasicMaterial({ color: HEADING_COLOUR }),
-    );
     scene.add(
       symbol,
       onLayer(velocity, 'velocity'),
       onLayer(dropLine, 'drop-lines'),
-      onLayer(heading, 'heading'),
       onLayer(trail, 'trail'),
     );
     markers.set(side.id, {
@@ -217,6 +215,8 @@ export const createTacticalMap = (
       velocity,
       dropLine,
       heading,
+      at: new THREE.Vector3(),
+      nose: null,
       trail,
       trailPositions,
       trailCount: 0,
@@ -234,20 +234,31 @@ export const createTacticalMap = (
   );
   scene.add(onLayer(projection, 'projected-path'));
 
-  // Where and which way the autopilot plans to burn, along the projected path.
+  // Where and which way the autopilot plans to burn, along the projected path: chevrons pointing
+  // the way it will burn, unlike the velocity arrows, since their size means nothing.
   const plannedBurnMarkers = Array.from({ length: MAX_PLANNED_BURNS }, () => {
-    const arrow = new THREE.ArrowHelper(
-      new THREE.Vector3(1, 0, 0),
-      new THREE.Vector3(),
-      1,
-      PLANNED_BURN_COLOUR,
+    const chevrons = el('span', {
+      className: 'planned-burn__chevrons',
+      attrs: { 'aria-hidden': 'true' },
+    });
+    const text = el('span', { className: 'planned-burn__text' });
+    const label = new CSS2DObject(
+      el(
+        'div',
+        { className: 'planned-burn', attrs: { style: `--burn-colour: ${PLANNED_BURN_COLOUR}` } },
+        chevrons,
+        text,
+      ),
     );
-    const text = el('span', { className: 'planned-burn' });
-    const label = new CSS2DObject(text);
-    arrow.visible = false;
     label.visible = false;
-    scene.add(onLayer(arrow, 'planned-burns'), onLayer(label, 'planned-burns'));
-    return { arrow, label, text };
+    scene.add(onLayer(label, 'planned-burns'));
+    return {
+      label,
+      text,
+      chevrons,
+      at: new THREE.Vector3(),
+      direction: new THREE.Vector3(),
+    };
   });
   const ownDrive = sides[0] ? designComponent(sides[0].design, 'drive') : undefined;
 
@@ -388,12 +399,10 @@ export const createTacticalMap = (
   ) => {
     const { position, velocity } = ship;
     const p = toScene(position);
-    const headingLength = camera.position.distanceTo(controls.target) * HEADING_SCALE;
-    marker.heading.visible = ship.orientation !== null;
-    if (ship.orientation) {
-      const nose = toScene(rotate(ship.orientation, vec3(1, 0, 0))).normalize();
-      marker.heading.geometry.setFromPoints([p, p.clone().addScaledVector(nose, headingLength)]);
-    }
+    marker.at.copy(p);
+    marker.nose = ship.orientation
+      ? toScene(rotate(ship.orientation, vec3(1, 0, 0))).normalize()
+      : null;
 
     marker.symbol.position.copy(p);
     marker.label.textContent = text;
@@ -437,6 +446,37 @@ export const createTacticalMap = (
     const barKm = niceLength(kmPerPixel * 400);
     scaleBar.style.width = `${barKm / kmPerPixel}px`;
     scaleLabel.textContent = formatKm(barKm * KM);
+  };
+
+  /**
+   * Turns a mark at `at` to point along `direction` (a unit vector) as seen on screen, shortened
+   * as the direction turns towards or away from the camera.
+   */
+  const pointOnScreen = (mark: HTMLElement, at: THREE.Vector3, direction: THREE.Vector3) => {
+    const view = at.clone().sub(camera.position).normalize();
+    const across = Math.sqrt(Math.max(0, 1 - direction.dot(view) ** 2));
+    const step = camera.position.distanceTo(at) * 0.01;
+    const from = at.clone().project(camera);
+    const to = at.clone().addScaledVector(direction, step).project(camera);
+    // Screen y runs down, normalised device y up.
+    const angle = Math.atan2(
+      -(to.y - from.y) * element.clientHeight,
+      (to.x - from.x) * element.clientWidth,
+    );
+    mark.style.setProperty('--angle', `${angle}rad`);
+    mark.style.setProperty('--length', String(Math.max(across, MIN_FORESHORTENING)));
+  };
+
+  /** Turns the heading and planned-burn marks to the camera's view; run once it has moved. */
+  const pointMarks = () => {
+    for (const marker of markers.values()) {
+      marker.heading.hidden = marker.nose === null || !layers.heading;
+      if (marker.nose && !marker.heading.hidden)
+        pointOnScreen(marker.heading, marker.at, marker.nose);
+    }
+    for (const marker of plannedBurnMarkers) {
+      if (marker.label.visible) pointOnScreen(marker.chevrons, marker.at, marker.direction);
+    }
   };
 
   const sideName = (id: SideId) => sides.find((s) => s.id === id)?.name ?? id;
@@ -511,17 +551,13 @@ export const createTacticalMap = (
         projection.computeLineDistances();
 
         const burns = projectBurns(own, ownDrive, horizon);
-        const arrowLength = camera.position.distanceTo(controls.target) * HEADING_SCALE * 1.5;
         plannedBurnMarkers.forEach((marker, i) => {
           const planned = burns[i];
-          marker.arrow.visible = planned !== undefined;
           marker.label.visible = planned !== undefined;
           if (!planned) return;
-          const at = toScene(planned.position);
-          marker.arrow.position.copy(at);
-          marker.arrow.setDirection(toScene(planned.burn.direction).normalize());
-          marker.arrow.setLength(arrowLength, arrowLength * 0.3, arrowLength * 0.15);
-          marker.label.position.copy(at);
+          marker.at.copy(toScene(planned.position));
+          marker.direction.copy(toScene(planned.burn.direction)).normalize();
+          marker.label.position.copy(marker.at);
           marker.text.textContent =
             planned.burn.start < 1
               ? `Burn ${formatDuration(planned.burn.duration)}`
@@ -531,6 +567,7 @@ export const createTacticalMap = (
     },
     render() {
       controls.update();
+      pointMarks();
       updateScaleBar();
       renderer.render(scene, camera);
       labelRenderer.render(scene, camera);

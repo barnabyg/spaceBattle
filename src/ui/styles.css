@@ -199,21 +199,34 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* The symbol is the glyph's size, so the map centres the glyph on the ship's position. */
 .ship-symbol {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  position: relative;
+  width: 1rem;
+  height: 1rem;
   color: var(--side-colour);
   pointer-events: none;
-  /* Centre the glyph, not the whole symbol, on the ship's position. */
-  transform: translateX(calc(50% - 0.5rem));
 }
 
 .ship-symbol__glyph {
+  display: block;
   width: 1rem;
   height: 1rem;
   border: 3px solid var(--side-colour);
   background: color-mix(in srgb, var(--side-colour) 30%, transparent);
+}
+
+/* The nose marker: a tick out from the glyph, turned to the heading as seen on screen. */
+.ship-symbol__heading {
+  position: absolute;
+  top: calc(50% - 0.125rem);
+  left: 50%;
+  width: 1.1rem;
+  height: 0.25rem;
+  border-radius: 0.125rem;
+  background: var(--side-colour);
+  transform-origin: 0 50%;
+  transform: rotate(var(--angle, 0rad)) translateX(0.6rem) scaleX(var(--length, 1));
 }
 
 .ship-symbol--own .ship-symbol__glyph {
@@ -225,6 +238,11 @@ button {
 }
 
 .ship-symbol__label {
+  position: absolute;
+  top: 50%;
+  /* Clear of the nose marker, whichever way it points. */
+  left: 2.4rem;
+  transform: translateY(-50%);
   font-size: 0.8rem;
   white-space: nowrap;
   text-shadow: 0 0 4px #000;
@@ -379,14 +397,49 @@ h3 {
   padding: 0.2rem 0.4rem;
 }
 
+/* A planned burn: hollow chevrons pointing the way the drive will push, centred on where. */
 .planned-burn {
-  color: #ffb347;
+  position: relative;
+  width: 1.4rem;
+  height: 1.4rem;
+  color: var(--burn-colour);
+  pointer-events: none;
+}
+
+.planned-burn__chevrons {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--angle, 0rad)) scaleX(var(--length, 1));
+}
+
+.planned-burn__chevrons::before,
+.planned-burn__chevrons::after {
+  content: '';
+  position: absolute;
+  top: 0.4rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-top: 3px solid var(--burn-colour);
+  border-right: 3px solid var(--burn-colour);
+  transform: rotate(45deg);
+}
+
+.planned-burn__chevrons::before {
+  left: 0.1rem;
+}
+
+.planned-burn__chevrons::after {
+  left: 0.6rem;
+}
+
+.planned-burn__text {
+  position: absolute;
+  bottom: 1.6rem;
+  left: 50%;
+  transform: translateX(-50%);
   font-size: 0.75rem;
   white-space: nowrap;
   text-shadow: 0 0 4px #000;
-  pointer-events: none;
-  /* Sit above the arrow's base rather than on top of it. */
-  margin-top: -2rem;
 }
 
 .priority-list {

@@ -9,8 +9,6 @@ export const SIDE_COLOURS = ['#4fa3ff', '#ff5a4f'] as const;
 
 /** Velocity vectors show where a ship would drift in this many seconds. */
 export const VECTOR_SECONDS = 20_000;
-/** Heading lines are drawn in this colour, whichever ship they belong to. */
-export const HEADING_COLOUR = '#ffffff';
 /** Trails are drawn in their side's colour, this opaque. */
 export const TRAIL_OPACITY = 0.45;
 /** Drop lines are dashed in their side's colour. */

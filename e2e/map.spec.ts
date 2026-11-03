@@ -59,3 +59,19 @@ test('hiding planned burns hides their labels', async ({ page }) => {
   await toggle.check();
   await expect(burns.first()).toBeVisible();
 });
+
+test("each ship's heading is a nose marker on its symbol, hidden with the heading layer", async ({
+  page,
+}) => {
+  await startFreeBattle(page);
+  await page.keyboard.press(' ');
+  const map = page.getByRole('region', { name: 'Tactical map' });
+  const ownHeading = map.locator('[data-side="blue"] .ship-symbol__heading');
+  await expect(ownHeading).toBeVisible();
+  await map.getByRole('button', { name: 'Legend' }).click();
+  const toggle = map.getByRole('checkbox', { name: 'Heading' });
+  await toggle.uncheck();
+  await expect(ownHeading).toBeHidden();
+  await toggle.check();
+  await expect(ownHeading).toBeVisible();
+});
