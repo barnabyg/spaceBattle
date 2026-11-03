@@ -105,15 +105,30 @@ export interface CampaignBattle {
   readonly setup: BattleSetup;
 }
 
+/** FNV-1a: a 32-bit hash of some text. */
+const hash = (text: string): number => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return h >>> 0;
+};
+
+/**
+ * What draws a battle: the campaign's seed and battles fought, and which ship goes against which
+ * tier. Each ship has its own draw, so what a long-range scanner shows of one ship's opponent
+ * says nothing of the opponent another ship would meet.
+ */
+const battleSeed = (campaign: Campaign, shipId: string, tier: number): number =>
+  (campaign.seed ^ hash(`${String(campaign.battles)} ${shipId} ${String(tier)}`)) >>> 0;
+
 /**
  * The next battle for one of the player's ships against an opponent of a tier, picked with the
- * starting scenario and the battle's seed from the campaign's seed and the battles fought, so
- * preparing it again gives the same battle.
+ * starting scenario and the battle's seed (see `battleSeed`), so preparing it again gives the
+ * same battle.
  */
 export const prepareBattle = (campaign: Campaign, shipId: string, tier: number): CampaignBattle => {
   const ship = shipOf(campaign, shipId);
   const { skill } = tierOf(tier);
-  const random = createRandom((campaign.seed ^ Math.imul(campaign.battles + 1, 0x9e3779b1)) >>> 0);
+  const random = createRandom(battleSeed(campaign, shipId, tier));
   const pick = <T>(options: readonly T[]): T => {
     const choice = options[Math.floor(random() * options.length)];
     if (choice === undefined) throw new Error('Nothing to pick from');

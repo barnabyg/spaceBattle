@@ -88,6 +88,17 @@ describe('a campaign', () => {
     expect(prepareBattle(campaign, ship.id, 1)).toEqual(prepareBattle(campaign, ship.id, 1));
   });
 
+  it('draws each ship its own battle, so a scanned opponent cannot be sent another ship', () => {
+    const one = withFirstShip();
+    const design = one.hangar[0]?.design;
+    if (!design) throw new Error('No ship');
+    const two = buildShip({ ...one, credits: 100e6 }, design);
+    const seeds = ['ship-1', 'ship-2'].flatMap((shipId) =>
+      [1, 2].map((tier) => prepareBattle(two, shipId, tier).setup.seed),
+    );
+    expect(new Set(seeds).size).toBe(4);
+  });
+
   it('pays the tier’s reward for a win and nothing for a loss', () => {
     const campaign = withFirstShip();
     const ship = campaign.hangar[0];
