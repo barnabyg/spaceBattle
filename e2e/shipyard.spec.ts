@@ -43,3 +43,30 @@ test('a design made in the shipyard is saved and fights a free battle', async ({
   await page.getByRole('button', { name: 'Start battle' }).click();
   await expect(page.getByLabel('Own ship')).toContainText('Blue · Heron class');
 });
+
+test('a design exported, deleted and imported again is the same design', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Shipyard' }).click();
+  await page.getByLabel('Class name').fill('Plover');
+  await page.getByRole('button', { name: 'Save design' }).click();
+  const library = page.getByRole('region', { name: 'Saved designs' });
+
+  const download = page.waitForEvent('download');
+  await library.getByRole('button', { name: 'Export Plover class' }).click();
+  const file = await (await download).path();
+  await library.getByRole('button', { name: 'Delete Plover class' }).click();
+  await expect(library).not.toContainText('Plover class');
+
+  await library.getByLabel('Import design').setInputFiles(file);
+  await expect(page.getByRole('status')).toHaveText('Imported Plover class.');
+  await expect(library).toContainText('Plover class');
+  await expect(page.getByLabel('Class name')).toHaveValue('Plover');
+
+  // Something that is not a design is refused with a reason.
+  await library.getByLabel('Import design').setInputFiles({
+    name: 'notes.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{"hello": "world"}'),
+  });
+  await expect(page.getByRole('status')).toHaveText('This is not a design file.');
+});

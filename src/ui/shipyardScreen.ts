@@ -12,6 +12,7 @@ import {
 import { designComponent } from '../sim/design';
 import { deltaVWith } from '../sim/ship';
 import { componentCost } from '../shipyard/cost';
+import { exportDesign, importDesign } from '../shipyard/designFile';
 import {
   buildDesign,
   componentVolume,
@@ -23,6 +24,7 @@ import type { DesignLibrary } from './designLibrary';
 import { createDesignPreview } from './designPreview';
 import { designSummary } from './designSummary';
 import { el } from './el';
+import { downloadText, textFilePicker } from './files';
 import { formatCredits, formatKmPerS, formatTonnes } from './format';
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
@@ -302,7 +304,15 @@ export const createShipyardScreen = (library: DesignLibrary, actions: ShipyardSc
           library.remove(design.id);
           showLibrary();
         });
-        return el('li', {}, el('span', { text: design.name }), edit, remove);
+        const exportButton = el('button', {
+          className: 'order-button',
+          text: 'Export',
+          attrs: { type: 'button', 'aria-label': `Export ${design.name}` },
+        });
+        exportButton.addEventListener('click', () => {
+          downloadText(`${design.id}.json`, exportDesign(design));
+        });
+        return el('li', {}, el('span', { text: design.name }), edit, exportButton, remove);
       }),
     );
     if (designs.length === 0) {
@@ -354,6 +364,17 @@ export const createShipyardScreen = (library: DesignLibrary, actions: ShipyardSc
     components = components.map(({ component }) => ({ component }));
     refresh();
   });
+  const importPicker = textFilePicker('Import design', (text) => {
+    try {
+      const design = importDesign(text);
+      library.save(design);
+      showLibrary();
+      load(specificationOf(design));
+      saved.textContent = `Imported ${design.name}.`;
+    } catch (error) {
+      saved.textContent = error instanceof Error ? error.message : String(error);
+    }
+  });
   const newDesign = el('button', {
     className: 'menu-button',
     text: 'New design',
@@ -378,6 +399,7 @@ export const createShipyardScreen = (library: DesignLibrary, actions: ShipyardSc
         el('h2', { text: 'Saved designs' }),
         libraryList,
         newDesign,
+        importPicker,
       ),
       el(
         'section',

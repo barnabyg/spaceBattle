@@ -905,3 +905,20 @@ h3 {
   border-radius: 6px;
   overflow: hidden;
 }
+
+/* A file picker that looks like a menu button; its input stays reachable but unseen. */
+.file-picker {
+  position: relative;
+  text-align: center;
+}
+
+.file-picker:focus-within {
+  border-color: var(--accent);
+}
+
+.file-picker__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
