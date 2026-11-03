@@ -20,6 +20,7 @@ import {
   type Campaign,
   type CampaignBattle,
 } from '../campaign/campaign';
+import { loadCampaign, saveCampaign } from '../campaign/campaignFile';
 import { HAND_MADE_DESIGNS } from '../data/designs';
 import { createBattleRunner } from '../game/battleRunner';
 import { createBattle } from '../sim/battle';
@@ -28,6 +29,7 @@ import { createBatchScreen } from './batchScreen';
 import { createBattleScreen } from './battleScreen';
 import { createBriefingScreen } from './briefingScreen';
 import { createCampaignHub } from './campaignHub';
+import { downloadText } from './files';
 import { formatCredits } from './format';
 import { createMainMenu } from './mainMenu';
 import { createDesignLibrary, localStore } from './designLibrary';
@@ -70,12 +72,23 @@ export const createApp = (root: HTMLElement) => {
     screen.focus?.();
   };
 
-  const showMainMenu = () => {
+  const showMainMenu = (message = '') => {
     show(
       createMainMenu({
+        message,
+        onLoadCampaign: (text) => {
+          try {
+            campaign = loadCampaign(text);
+            showCampaign('Campaign loaded.');
+          } catch (error) {
+            showMainMenu(error instanceof Error ? error.message : String(error));
+          }
+        },
         onFreeBattle: showSetup,
         onShipyard: () => {
-          shipyardReturn = showMainMenu;
+          shipyardReturn = () => {
+            showMainMenu();
+          };
           showShipyard();
         },
         onCampaign: () => {
@@ -142,7 +155,17 @@ export const createApp = (root: HTMLElement) => {
             };
             showShipyard();
           },
-          onMainMenu: showMainMenu,
+          onMainMenu: () => {
+            showMainMenu();
+          },
+          onSave: () => {
+            if (!campaign) return;
+            downloadText(
+              `space-battle-campaign-${String(campaign.battles)}-battles.json`,
+              saveCampaign(campaign),
+            );
+            showCampaign('Campaign saved.');
+          },
           onNewCampaign: () => {
             campaign = newCampaign(newSeed());
             showCampaign('A new campaign.');

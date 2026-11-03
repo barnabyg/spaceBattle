@@ -1,10 +1,15 @@
 import { el } from './el';
+import { textFilePicker } from './files';
 
 export interface MainMenuActions {
   readonly onFreeBattle: () => void;
   readonly onShipyard: () => void;
   /** Goes to the campaign under way, or starts a new one. */
   readonly onCampaign: () => void;
+  /** Loads a campaign from the text of a campaign file. */
+  readonly onLoadCampaign: (text: string) => void;
+  /** What the last action came to, such as a file that would not load. */
+  readonly message?: string;
   /** Whether test mode is on now. */
   readonly testMode: boolean;
   /** Test mode is switched on and off here, and nowhere else. */
@@ -16,6 +21,8 @@ export const createMainMenu = ({
   onFreeBattle,
   onShipyard,
   onCampaign,
+  onLoadCampaign,
+  message = '',
   testMode,
   onTestModeChange,
 }: MainMenuActions) => {
@@ -83,7 +90,14 @@ export const createMainMenu = ({
           text: 'Build ships, fight ever more capable opponents and earn credits.',
         }),
       ),
+      el(
+        'div',
+        { className: 'menu-item' },
+        textFilePicker('Load campaign', onLoadCampaign),
+        el('span', { className: 'menu-note', text: 'Carry on a campaign saved to a file.' }),
+      ),
     ),
+    el('p', { className: 'menu-note', text: message, attrs: { role: 'status' } }),
     el(
       'div',
       { className: 'menu-item test-mode-switch' },

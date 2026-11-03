@@ -31,7 +31,7 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
   await page.goto('/');
   // Test mode for its faster time compression; the campaign plays the same.
   await page.getByRole('checkbox', { name: 'Test mode' }).check();
-  await page.getByRole('button', { name: 'Campaign' }).click();
+  await page.getByRole('button', { name: 'Campaign', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Campaign' })).toBeVisible();
   await expect(page.getByLabel('Credits', { exact: true })).toHaveText('9,000,000 cr');
   await expect(page.getByRole('region', { name: 'Hangar' })).toContainText('No ships yet');
@@ -72,7 +72,7 @@ test('a forfeited ship leaves the hangar, and with nothing left to afford the ca
   page,
 }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Campaign' }).click();
+  await page.getByRole('button', { name: 'Campaign', exact: true }).click();
   await page.getByRole('button', { name: 'Build Lance' }).click();
   const left = await credits(page);
   await page.getByRole('button', { name: 'Fight tier 1' }).click();
@@ -90,4 +90,40 @@ test('a forfeited ship leaves the hangar, and with nothing left to afford the ca
   await page.getByRole('button', { name: 'New campaign' }).click();
   await expect(page.getByLabel('Credits', { exact: true })).toHaveText('9,000,000 cr');
   await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('a campaign saved to a file loads again after the page is reloaded, and carries on', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Campaign', exact: true }).click();
+  await page.getByRole('button', { name: 'Build Sling' }).click();
+  const saved = await credits(page);
+
+  const download = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Save campaign' }).click();
+  const file = await (await download).path();
+  await expect(page.getByRole('status')).toHaveText('Campaign saved.');
+
+  // Nothing is kept by the page itself: after a reload the campaign is only in the file.
+  await page.reload();
+  await page.getByLabel('Load campaign').setInputFiles(file);
+  await expect(page.getByRole('status')).toHaveText('Campaign loaded.');
+  expect(await credits(page)).toBe(saved);
+  await expect(page.getByRole('region', { name: 'Hangar' })).toContainText('Ship 1');
+  await expect(page.getByRole('region', { name: 'Hangar' })).toContainText('Sling');
+
+  // And it carries on: the ship goes into its next battle.
+  await page.getByRole('button', { name: 'Fight tier 1' }).click();
+  await page.getByRole('button', { name: 'Fight', exact: true }).click();
+  await expect(page.getByLabel('Own ship')).toContainText('Ship 1 · Sling');
+
+  // A file that is not a campaign is refused on the main menu.
+  await page.reload();
+  await page.getByLabel('Load campaign').setInputFiles({
+    name: 'notes.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{"hello": "world"}'),
+  });
+  await expect(page.getByRole('status')).toHaveText('This is not a campaign file.');
 });

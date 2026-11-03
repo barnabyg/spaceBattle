@@ -35,6 +35,8 @@ export interface CampaignHubActions {
   readonly onMainMenu: () => void;
   /** Gives up this campaign for a new one. */
   readonly onNewCampaign: () => void;
+  /** Saves the campaign to a file; nothing is saved without it. */
+  readonly onSave: () => void;
 }
 
 const region = (label: string, ...children: Node[]) =>
@@ -225,6 +227,12 @@ export const createCampaignHub = (
     }),
   );
 
+  const save = el('button', {
+    className: 'menu-button',
+    text: 'Save campaign',
+    attrs: { type: 'button' },
+  });
+  save.addEventListener('click', actions.onSave);
   const newCampaign = el('button', {
     className: over ? 'menu-button menu-button--primary' : 'menu-button',
     text: 'New campaign',
@@ -285,7 +293,7 @@ export const createCampaignHub = (
         tiers,
       ),
     ),
-    el('div', { className: 'setup-actions' }, mainMenu, newCampaign),
+    el('div', { className: 'setup-actions' }, mainMenu, save, newCampaign),
   );
 
   return {
