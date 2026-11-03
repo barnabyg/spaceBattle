@@ -9,20 +9,25 @@ export type DestroyedCause = 'reactor-breach' | 'structural-failure';
 export type DisabledCause = 'no-working-weapons' | 'no-working-drive';
 
 /**
- * How a side lost a battle. Destroyed and forfeited ships are lost; a disabled ship survives the
- * battle it has lost. Withdrawal and stranding join these in later phases.
+ * How a side lost a battle. Destroyed, stranded and forfeited ships are lost; a disabled or
+ * withdrawn ship survives the battle it has lost.
  */
 export type Loss =
   | { readonly result: 'destroyed'; readonly cause: DestroyedCause }
   | { readonly result: 'disabled'; readonly cause: DisabledCause }
+  | { readonly result: 'withdrawn' }
+  | { readonly result: 'stranded' }
   | { readonly result: 'forfeit' };
+
+/** Losses in which the ship is lost. */
+const SHIP_LOST: ReadonlySet<Loss['result']> = new Set(['destroyed', 'stranded', 'forfeit']);
 
 /** How the battle ended for one side. */
 export interface SideOutcome {
   readonly side: SideId;
   /** How the side lost, or null if it did not. */
   readonly loss: Loss | null;
-  /** Whether its ship is lost: destroyed, or treated as destroyed after a forfeit. */
+  /** Whether its ship is lost: destroyed, stranded, or treated as destroyed after a forfeit. */
   readonly shipLost: boolean;
 }
 
@@ -57,7 +62,8 @@ const WEAPON_TYPES: ReadonlySet<ComponentType> = new Set([
  * Whether a ship has lost the battle, and how. A reactor breach or structural failure of the
  * middle section destroys it; failing that, it is disabled once it has no working drive or none
  * of its weapons left working. A design built without weapons is never disabled for want of
- * them: it cannot lose what it never had.
+ * them: it cannot lose what it never had. Failing those, a ship that has run out of propellant
+ * without withdrawing is stranded. Withdrawal is judged by the battle (see `WithdrawOrder`).
  */
 export const lossOf = (ship: ShipState): Loss | null => {
   if (ship.sections.middle.structure <= 0) {
@@ -75,10 +81,11 @@ export const lossOf = (ship: ShipState): Loss | null => {
   if (weapons.length > 0 && weapons.every((integrity) => integrity <= 0)) {
     return { result: 'disabled', cause: 'no-working-weapons' };
   }
+  if (ship.propellantMass <= 0 && ship.withdrawingSince === null) return { result: 'stranded' };
   return null;
 };
 
-/** Each side's outcome from its loss, if any: a ship is lost when destroyed or forfeited. */
+/** Each side's outcome from its loss, if any: a ship is lost when destroyed, stranded or forfeited. */
 const outcome = (
   time: number,
   losses: readonly { readonly side: SideId; readonly loss: Loss | null }[],
@@ -91,7 +98,7 @@ const outcome = (
     sides: losses.map(({ side, loss }) => ({
       side,
       loss,
-      shipLost: loss !== null && (loss.result === 'destroyed' || loss.result === 'forfeit'),
+      shipLost: loss !== null && SHIP_LOST.has(loss.result),
     })),
   };
 };

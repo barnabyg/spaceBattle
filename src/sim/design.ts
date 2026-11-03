@@ -411,6 +411,8 @@ export interface Design {
   readonly sections: readonly SectionDesign[];
   /** Propellant carried at the start of a battle, kg. */
   readonly propellantMass: number;
+  /** The delta-v held back for withdrawal, m/s. */
+  readonly reserve: number;
 }
 
 const componentsOf = new WeakMap<
@@ -774,12 +776,13 @@ export const parseDesign = (data: unknown): Design => {
   const name = requireString(data, 'name', where);
   const hullSize = requireOneOf(data, 'hullSize', HULL_SIZES, where);
   const propellantMass = requireNumber(data, 'propellantMass', where, { positive: false });
+  const reserve = requireNumber(data, 'reserve', where, { positive: false });
   if (!Array.isArray(data.sections)) throw new Error(`${where}: "sections" must be a list`);
   const sections = data.sections.map((s) => parseSection(s, where));
   if (sections.map((s) => s.kind).join() !== SECTION_KINDS.join()) {
     throw new Error(`${where}: needs exactly the sections ${SECTION_KINDS.join(', ')}, in order`);
   }
-  const design: Design = { id, name, hullSize, sections, propellantMass };
+  const design: Design = { id, name, hullSize, sections, propellantMass, reserve };
   for (const type of ['drive', 'thrusters', 'reactor'] as const) {
     const count = designComponentsOfType(design, type).length;
     if (count !== 1) throw new Error(`${where}: needs exactly one ${type}, has ${count}`);

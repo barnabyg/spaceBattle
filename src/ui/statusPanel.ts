@@ -99,7 +99,18 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   ],
   ['Own speed', (o) => formatKmPerS(length(o.ownShip.velocity))],
   ['Contact speed', (o) => (o.contacts[0] ? formatKmPerS(length(o.contacts[0].velocity)) : '—')],
-  ['Delta-v', (o) => formatKmPerS(o.ownShip.deltaV)],
+  [
+    'Delta-v',
+    ({ ownShip }) =>
+      ownShip.withdrawing
+        ? `${formatKmPerS(ownShip.deltaV)} · withdrawing`
+        : ownShip.deltaV <= ownShip.reserve
+          ? `${formatKmPerS(ownShip.deltaV)} · into reserve`
+          : ownShip.reserveWarning
+            ? `${formatKmPerS(ownShip.deltaV)} · near reserve`
+            : formatKmPerS(ownShip.deltaV),
+  ],
+  ['Reserve', (o) => formatKmPerS(o.ownShip.reserve)],
   ['Propellant', (o) => formatTonnes(o.ownShip.propellantMass)],
   ['Mass', (o) => formatTonnes(o.ownShip.mass)],
   ['Drive thrust', (o) => formatMN(o.ownShip.thrust)],

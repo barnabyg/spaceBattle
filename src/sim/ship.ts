@@ -72,6 +72,8 @@ export interface ShipState {
   burn: BurnState | null;
   /** A standing manoeuvre order; while it is set the autopilot owns attitude and drive. */
   manoeuvre: ManoeuvreState | null;
+  /** When the ship was ordered to withdraw, s; null unless it is withdrawing. */
+  withdrawingSince: number | null;
   /** What the ship applied during the last step. */
   thrust: number;
   torque: Vec3;
@@ -247,6 +249,7 @@ export const createShip = (
   attitude: null,
   burn: null,
   manoeuvre: null,
+  withdrawingSince: null,
   thrust: 0,
   torque: ZERO,
   driveEnergy: { wanted: 0, used: 0 },
@@ -310,6 +313,13 @@ export const deltaVOf = (ship: ShipState): number => {
   const { mass, dryMass } = shipMassProperties(ship);
   return designComponent(ship.design, 'drive').exhaustVelocity * Math.log(mass / dryMass);
 };
+
+/** The ship warns once its delta-v left is within this many times its reserve. */
+export const RESERVE_WARNING = 1.5;
+
+/** Whether a ship's delta-v left is coming down towards its reserve: within `RESERVE_WARNING`. */
+export const reserveWarning = (ship: ShipState): boolean =>
+  deltaVOf(ship) <= RESERVE_WARNING * ship.design.reserve;
 
 /** Delta-v of a design carrying `propellantMass` (its full load by default), m/s. */
 export const deltaVWith = (design: Design, propellantMass = design.propellantMass): number => {

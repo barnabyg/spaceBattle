@@ -8,6 +8,7 @@ import {
   type MissileRole,
   type SectionKind,
 } from './design';
+import { pursuitRefused, WITHDRAWAL_TIME, withdrawingRefused } from './engagement';
 import { involves, type BattleEvent, type HitEvent } from './events';
 import {
   manoeuvreCommand,
@@ -40,12 +41,13 @@ import { endedBy, judge, lossOf, noResult, type BattleOutcome } from './outcome'
 import { conjugate, IDENTITY, rotate, type Quat } from './quaternion';
 import { createRandom, type Random } from './random';
 import { perceive, sensorPower, type ContactDetail } from './sensors';
-import { burn, createShip, fireDrive, steer, type ShipState } from './ship';
+import { burn, createShip, fireDrive, noseOf, steer, type ShipState } from './ship';
 import { TIME_STEP } from './time';
 import {
   add,
   cross,
   distance,
+  dot,
   length,
   normalize,
   scale,
@@ -66,6 +68,7 @@ import {
   type PointDefenceBurst,
   type PointDefenceTargets,
   type Salvo,
+  workingReach,
 } from './weapons';
 
 export { TIME_STEP };
@@ -180,6 +183,8 @@ interface Combatant {
   beamsLanding: BeamLanding[];
   /** Slugs and missiles that struck the ship in the last step. */
   impacts: ImpactLanding[];
+  /** Whether it has withdrawn: left the battle by withdrawal. */
+  withdrawn: boolean;
 }
 
 /**
@@ -266,10 +271,13 @@ const checkOrder = (order: Order): Order => {
     case 'anti-missile':
     case 'radiators':
     case 'shields':
+    case 'withdraw':
       return order;
   }
 };
 
+/** A withdrawing ship burns once its nose is within this angle of away from the enemy (cosine). */
+const WITHDRAWAL_ALIGNMENT = Math.cos((10 * Math.PI) / 180);
 /** How many recent events each side's observation keeps. */
 const EVENT_LOG_LENGTH = 20;
 /** Mixed into the battle's seed for the errors in fire control's tracks, kept apart from the rest. */
@@ -307,6 +315,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
       ship: createShip(side.design, start.position, start.velocity, start.orientation ?? IDENTITY),
       beamsLanding: [],
       impacts: [],
+      withdrawn: false,
     };
   });
   let steps = 0;
@@ -329,6 +338,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
   const munitions = createMunitions(combatants, launchedFrom);
   const logs = new Map<SideId, BattleEvent[]>(setup.sides.map((side) => [side.id, []]));
   let outcome: BattleOutcome | null = null;
+  /** Events from orders given since the last step, reported with that step's. */
+  let pending: BattleEvent[] = [];
 
   /** Keeps each side's latest events about it. */
   const record = (events: readonly BattleEvent[]) => {
@@ -544,6 +555,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
    * plans before any steers, from the same positions, so the order of sides never matters.
    */
   const plan = (c: Combatant): Plan => {
+    if (c.ship.withdrawingSince !== null) {
+      const enemy = enemyOf(c);
+      return {
+        heading: enemy ? normalize(sub(c.ship.position, enemy.ship.position)) : null,
+        command: null,
+      };
+    }
     const state = c.ship.manoeuvre;
     if (!state) return { heading: attitudeTarget(c), command: null };
     const command = manoeuvreCommand(c.ship, state, contactOf(c));
@@ -554,7 +572,11 @@ export const createBattle = (setup: BattleSetup): Battle => {
   const drive = ({ ship }: Combatant, { heading, command }: Plan) => {
     steer(ship, heading, TIME_STEP);
     const coasting = ship.velocity;
-    if (command && ship.manoeuvre) {
+    if (ship.withdrawingSince !== null) {
+      // Withdrawing, it burns at full thrust once turned away from the enemy.
+      const away = heading && dot(noseOf(ship), heading) >= WITHDRAWAL_ALIGNMENT;
+      fireDrive(ship, away ? 1 : 0, TIME_STEP);
+    } else if (command && ship.manoeuvre) {
       ship.manoeuvre = { ...ship.manoeuvre, correcting: command.correcting };
       fireDrive(ship, manoeuvreThrottle(ship, command, TIME_STEP), TIME_STEP);
     } else {
@@ -696,10 +718,29 @@ export const createBattle = (setup: BattleSetup): Battle => {
    * How the battle ended in the step, if it did. Ships that lost in it lose together; if all of
    * them did, nobody wins. A side that loses in the step that reaches the time limit still loses.
    */
+  /**
+   * Withdrawing ships that are gone by the end of the step: out of reach of every enemy weapon,
+   * or `WITHDRAWAL_TIME` after their order.
+   */
+  const leave = (time: number) => {
+    for (const c of combatants) {
+      const since = c.ship.withdrawingSince;
+      if (since === null || c.withdrawn) continue;
+      const reached = combatants.some(
+        (enemy) =>
+          enemy !== c && distance(c.ship.position, enemy.ship.position) <= workingReach(enemy.ship),
+      );
+      c.withdrawn = !reached || time - since >= WITHDRAWAL_TIME - 1e-9;
+    }
+  };
+
   const judgeStep = (time: number): BattleOutcome | null => {
     const decided = judge(
       time,
-      combatants.map(({ side, ship }) => ({ side: side.id, loss: lossOf(ship) })),
+      combatants.map(({ side, ship, withdrawn }) => ({
+        side: side.id,
+        loss: lossOf(ship) ?? (withdrawn ? { result: 'withdrawn' as const } : null),
+      })),
     );
     if (decided) return decided;
     return timeLimit !== undefined && time >= timeLimit - 1e-9 ? noResult(time, setup.sides) : null;
@@ -721,10 +762,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
     steps += 1;
 
     const time = steps * TIME_STEP;
-    const events: BattleEvent[] = [...launches];
+    const events: BattleEvent[] = [...pending, ...launches];
+    pending = [];
     const ctx = { time, random, events };
     resolveArrivals(before, ctx);
     overheatShips(ctx);
+    leave(time);
     outcome = judgeStep(time);
     if (outcome) events.push({ type: 'battle-ended', time, outcome });
     record(events);
@@ -743,6 +786,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
       const { ship } = combatantOf(sideId);
       const checked = checkOrder(order);
       if (outcome) return;
+      const refused =
+        (ship.withdrawingSince !== null ? withdrawingRefused(checked) : null) ??
+        (combatants.some((c) => c.side.id !== sideId && c.ship.withdrawingSince !== null)
+          ? pursuitRefused(checked)
+          : null);
+      if (refused) throw new Error(refused);
       // Manual orders and manoeuvres replace each other: one or the other steers the ship.
       switch (checked.type) {
         case 'manoeuvre':
@@ -794,6 +843,20 @@ export const createBattle = (setup: BattleSetup): Battle => {
         case 'anti-missile':
           ship.weapons = { ...ship.weapons, automaticDefence: checked.automatic };
           break;
+        case 'withdraw': {
+          ship.manoeuvre = null;
+          ship.attitude = null;
+          ship.burn = null;
+          ship.withdrawingSince = steps * TIME_STEP;
+          // The enemy may no longer pursue: its standing orders to do so are called off.
+          for (const c of combatants) {
+            if (c.side.id !== sideId && c.ship.manoeuvre) {
+              if (pursuitRefused(c.ship.manoeuvre.order)) c.ship.manoeuvre = null;
+            }
+          }
+          pending.push({ type: 'withdrawal', time: ship.withdrawingSince, side: sideId });
+          break;
+        }
       }
     },
     step,

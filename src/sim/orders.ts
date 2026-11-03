@@ -142,6 +142,17 @@ export interface PointDefenceOrder {
   readonly priority: PointDefencePriority;
 }
 
+/**
+ * Leave the battle, spending the reserve and whatever propellant is left: the autopilot turns the
+ * ship away from the enemy and burns at full thrust. It cannot be taken back, and the ship takes
+ * no other order to move. The enemy may keep firing at it, launches included, but may not pursue
+ * it (see `pursuitRefused`). It is gone once out of reach of every enemy weapon, or
+ * `WITHDRAWAL_TIME` after the order, whichever comes first: a loss in which the ship survives.
+ */
+export interface WithdrawOrder {
+  readonly type: 'withdraw';
+}
+
 /** An instruction from a side's captain to its ship. */
 export type Order =
   | AttitudeOrder
@@ -153,4 +164,5 @@ export type Order =
   | WeaponsOrder
   | LaunchOrder
   | AntiMissileOrder
-  | PointDefenceOrder;
+  | PointDefenceOrder
+  | WithdrawOrder;

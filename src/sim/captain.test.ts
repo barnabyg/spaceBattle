@@ -528,9 +528,10 @@ describe('computer captain', () => {
   });
 
   it('closes in when nothing has happened for a while', () => {
-    // Without propellant neither ship can move, so the Lance cannot reach its standoff range.
-    const stranded = (id: string): Design => ({ ...handMadeDesign(id), propellantMass: 0 });
-    const setup = duelSetup(stranded('lance'), stranded('bastion'), 250_000 * KM);
+    // With a drive of a newton neither ship gets anywhere, so the Lance cannot reach its standoff
+    // range.
+    const stuck = (id: string): Design => withComponent(handMadeDesign(id), 'drive', { thrust: 1 });
+    const setup = duelSetup(stuck('lance'), stuck('bastion'), 250_000 * KM);
     const battle = runBattle(
       { ...setup, sides: setup.sides.map((side) => ({ ...side, commander: 'computer' })) },
       { maxTime: 60 },

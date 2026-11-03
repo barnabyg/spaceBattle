@@ -36,6 +36,7 @@ import {
   burstSpread,
   missileHitChance,
   pointDefencePower,
+  pointDefenceRange,
   pointDefenceSolution,
   type PointDefenceEngagement,
   type Threat,
@@ -70,6 +71,34 @@ export const designReach = (design: Design): number =>
           .map(missileReach)
       : []),
   );
+
+/**
+ * How far a ship's working weapons reach now, m: its beam weapons, its kinetic guns and point
+ * defence while they have ammunition, and its launchers while it has anti-ship missiles left.
+ * Zero once none is left.
+ */
+export const workingReach = (ship: ShipState): number => {
+  const working = (slot: number) => (ship.integrity[slot] ?? 0) > 0;
+  const { weapons } = ship;
+  const launching = weapons.launchers.some((l) => working(l.slot));
+  return Math.max(
+    0,
+    ...weapons.beamWeapons.filter((w) => working(w.slot)).map((w) => effectiveRange(w.weapon)),
+    ...(slugsLeft(ship) > 0
+      ? weapons.kineticGuns.filter((g) => working(g.slot)).map((g) => kineticGunRange(g.gun))
+      : []),
+    ...(roundsLeft(ship) > 0
+      ? weapons.pointDefence.filter((g) => working(g.slot)).map((g) => pointDefenceRange(g.gun))
+      : []),
+    ...(launching
+      ? ship.ammunition.flatMap(({ missile, missiles }) =>
+          missile && missiles > 0 && missileRole(missile) === 'anti-ship'
+            ? [missileReach(missile)]
+            : [],
+        )
+      : []),
+  );
+};
 
 /** One beam weapon's state: a laser's or a particle beam's. */
 export interface BeamWeaponState {

@@ -38,6 +38,7 @@ import { coolantCapacity, fullDeflection, shieldsPowered } from './shields';
 import {
   deltaVOf,
   driveLimit,
+  reserveWarning,
   noseOf,
   shipMassProperties,
   temperatureOf,
@@ -375,6 +376,12 @@ export interface OwnShipObservation {
   readonly propellantMass: number;
   /** m/s */
   readonly deltaV: number;
+  /** The delta-v its design holds back for withdrawal, m/s. */
+  readonly reserve: number;
+  /** Whether the delta-v left is coming down towards the reserve (see `reserveWarning`). */
+  readonly reserveWarning: boolean;
+  /** Whether it is withdrawing from the battle. */
+  readonly withdrawing: boolean;
   /** Drive thrust applied in the last step, N. */
   readonly thrust: number;
   /** Thruster torque applied in the last step (body frame), N·m. */
@@ -444,6 +451,8 @@ export interface ContactObservation {
   readonly velocity: Vec3;
   /** Its acceleration over the last step, m/s². */
   readonly acceleration: Vec3;
+  /** Whether it is withdrawing, so it may be fired on but not pursued. */
+  readonly withdrawing: boolean;
   /** The finest detail the side's sensors make out at its range, m; infinite when blind. */
   readonly resolution: number;
   readonly detail: ContactDetail;
@@ -754,6 +763,9 @@ export const observeOwnShip = (
     mass: shipMassProperties(ship).mass,
     propellantMass: ship.propellantMass,
     deltaV: deltaVOf(ship),
+    reserve: ship.design.reserve,
+    reserveWarning: reserveWarning(ship),
+    withdrawing: ship.withdrawingSince !== null,
     thrust: ship.thrust,
     torque: ship.torque,
     attitude: ship.attitude,
@@ -790,6 +802,7 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
     position: ship.position,
     velocity: ship.velocity,
     acceleration: ship.acceleration,
+    withdrawing: ship.withdrawingSince !== null,
     resolution: seen.resolution,
     detail: seen.detail,
     orientation: silhouette ? ship.orientation : null,

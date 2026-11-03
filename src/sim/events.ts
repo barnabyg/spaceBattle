@@ -91,6 +91,13 @@ export interface LaunchEvent {
   readonly mount: number;
 }
 
+/** A side's ship began to withdraw from the battle; every side sees it go. */
+export interface WithdrawalEvent {
+  readonly type: 'withdrawal';
+  readonly time: number;
+  readonly side: SideId;
+}
+
 /** A side's weapon shot down an enemy missile in flight; it leaves the battle. */
 export interface InterceptEvent {
   readonly type: 'intercept';
@@ -247,6 +254,7 @@ export type BattleEvent =
   | ArmourBreachedEvent
   | ComponentLostEvent
   | StructuralFailureEvent
+  | WithdrawalEvent
   | BattleEndedEvent;
 
 /**
@@ -264,6 +272,7 @@ export const involves = (event: BattleEvent, side: SideId): boolean => {
     case 'detonation':
       return event.attacker === side || event.target === side;
     case 'battle-ended':
+    case 'withdrawal':
       return true;
     default:
       return event.side === side;

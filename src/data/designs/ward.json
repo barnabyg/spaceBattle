@@ -3,6 +3,7 @@
   "name": "Ward",
   "hullSize": "frigate",
   "propellantMass": 400000,
+  "reserve": 10000,
   "sections": [
     {
       "kind": "forward",

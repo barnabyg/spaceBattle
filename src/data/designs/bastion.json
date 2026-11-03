@@ -3,6 +3,7 @@
   "name": "Bastion",
   "hullSize": "cruiser",
   "propellantMass": 1600000,
+  "reserve": 10000,
   "sections": [
     {
       "kind": "forward",

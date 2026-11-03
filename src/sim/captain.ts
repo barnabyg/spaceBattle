@@ -256,6 +256,8 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
     }
     case 'anti-missile':
       return ship.weapons.antiMissile.automatic === order.automatic;
+    case 'withdraw':
+      return ship.withdrawing;
     case 'power':
       return order.priorities.every((system, i) => ship.power.priorities[i] === system);
     case 'point-defence':
@@ -492,8 +494,11 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         priority: lastResort ? 'missiles-then-ship' : 'missiles',
       };
       const antiMissile: AntiMissileOrder = { type: 'anti-missile', automatic: true };
-      const dodge = jink(observation, side, enemy);
-      const course = dodge ?? manoeuvre(ship, reach, enemyReach);
+      // A withdrawing ship takes no other course, and the rules forbid pursuing one.
+      const dodge = ship.withdrawing ? null : jink(observation, side, enemy);
+      const course =
+        dodge ??
+        (ship.withdrawing || enemy.withdrawing ? null : manoeuvre(ship, reach, enemyReach));
       const orders: Order[] = [
         weapons,
         pointDefence,

@@ -66,7 +66,13 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   const status = createStatusPanel();
   const damage = createDamagePanel(viewer.id);
   const orders = createOrdersPanel((order) => {
-    battle.giveOrder(viewer.id, order);
+    // The battle refuses orders the rules forbid, such as pursuing a withdrawing enemy.
+    try {
+      battle.giveOrder(viewer.id, order);
+      orders.refused('');
+    } catch (error) {
+      orders.refused(error instanceof Error ? error.message : String(error));
+    }
   });
   const { test } = options;
   const enemy = ordered[1];

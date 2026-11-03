@@ -16,6 +16,10 @@ export const describeLoss = (name: string, loss: Loss): string => {
     case 'destroyed':
     case 'disabled':
       return `${name} ${loss.result}: ${CAUSE_TEXT[loss.cause]}`;
+    case 'withdrawn':
+      return `${name} withdrew`;
+    case 'stranded':
+      return `${name} stranded: out of propellant`;
     case 'forfeit':
       return `${name} forfeited`;
   }

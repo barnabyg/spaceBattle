@@ -105,6 +105,7 @@ describe('parseDesign', () => {
     name: 'X',
     hullSize: 'frigate',
     propellantMass: 1000,
+    reserve: 100,
     sections: [
       { kind: 'forward', components: [] },
       {
@@ -140,6 +141,8 @@ describe('parseDesign', () => {
     expect(() => parseDesign({ ...valid, hullSize: 'dreadnought' })).toThrow(/hullSize/);
     expect(() => parseDesign({ ...valid, name: undefined })).toThrow(/name/);
     expect(() => parseDesign({ ...valid, propellantMass: -1 })).toThrow(/propellantMass/);
+    expect(() => parseDesign({ ...valid, reserve: undefined })).toThrow(/reserve/);
+    expect(() => parseDesign({ ...valid, reserve: -1 })).toThrow(/reserve/);
   });
 
   it('needs every section in order and exactly one drive, in the engine section', () => {

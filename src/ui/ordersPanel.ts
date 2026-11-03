@@ -234,6 +234,32 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     attrs: { 'aria-label': 'Manoeuvre plan' },
   });
 
+  // Withdrawal cannot be taken back, so it takes a second click to confirm.
+  const withdraw = button('Withdraw');
+  let withdrawArmed = false;
+  const disarmWithdraw = () => {
+    withdrawArmed = false;
+    withdraw.textContent = 'Withdraw';
+  };
+  withdraw.addEventListener('click', () => {
+    if (!withdrawArmed) {
+      withdrawArmed = true;
+      withdraw.textContent = 'Confirm withdrawal';
+      return;
+    }
+    disarmWithdraw();
+    giveOrder({ type: 'withdraw' });
+  });
+  withdraw.addEventListener('blur', disarmWithdraw);
+  const withdrawState = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Withdrawal state' },
+  });
+  const refusal = el('p', {
+    className: 'order-state order-refusal',
+    attrs: { 'aria-label': 'Order refused', role: 'status' },
+  });
+
   // One row per rank; each update shows the system now at that rank.
   let priorities: readonly PowerSystem[] = DEFAULT_PRIORITIES;
   const swapRanks = (rank: number, other: number) => {
@@ -470,6 +496,10 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     ),
     manoeuvreState,
     planState,
+    el('h3', { text: 'Withdrawal' }),
+    el('div', { className: 'order-row' }, withdraw),
+    withdrawState,
+    refusal,
     el('h3', { text: 'Power' }),
     priorityList,
     el('h3', { text: 'Radiators' }),
@@ -498,6 +528,10 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
 
   return {
     element,
+    /** Shows why the battle refused the latest order. */
+    refused(reason: string) {
+      refusal.textContent = reason;
+    },
     update(observation: SideObservation) {
       const ship = observation.ownShip;
       const { attitude, manoeuvre } = ship;
@@ -523,7 +557,19 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       }
       manual.classList.toggle('active', !manoeuvre);
       manoeuvreState.textContent = manoeuvre ? describeGoal(manoeuvre) : 'Manual control';
-      planState.textContent = manoeuvre ? describePlan(manoeuvre) : '';
+      planState.textContent = manoeuvre
+        ? `${describePlan(manoeuvre)}${ship.reserveWarning ? ' · Δv near reserve' : ''}`
+        : '';
+      withdraw.disabled = ship.withdrawing;
+      withdraw.classList.toggle('active', ship.withdrawing);
+      const enemyWithdrawing = observation.contacts.some((c) => c.withdrawing);
+      withdrawState.textContent = ship.withdrawing
+        ? 'Withdrawing: burning away from the enemy'
+        : enemyWithdrawing
+          ? 'Enemy withdrawing: fire on it, but no pursuit'
+          : ship.reserveWarning
+            ? `Δv near the ${formatMetresPerS(ship.reserve)} reserve`
+            : `Reserve ${formatMetresPerS(ship.reserve)}`;
 
       priorities = ship.power.priorities;
       labelPriorityRows();

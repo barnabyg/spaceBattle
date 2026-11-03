@@ -49,6 +49,7 @@ export const testDesign = (overrides: Partial<Design> = {}): Design => ({
     name: 'Test',
     hullSize: 'frigate',
     propellantMass: 300e3,
+    reserve: 10e3,
     sections: [
       { kind: 'forward', components: [] },
       {
