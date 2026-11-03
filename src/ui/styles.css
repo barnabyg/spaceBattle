@@ -983,3 +983,24 @@ h3 {
 .campaign-panel .field select {
   width: 100%;
 }
+
+.campaign-list__state {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+}
+
+.campaign-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.field--inline {
+  flex-direction: row-reverse;
+  align-items: center;
+}
+
+.field--inline input {
+  width: 4.5em;
+}

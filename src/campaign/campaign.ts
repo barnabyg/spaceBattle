@@ -6,7 +6,14 @@ import type { BattleSetup } from '../sim/battle';
 import type { Design } from '../sim/design';
 import type { BattleOutcome } from '../sim/outcome';
 import { createRandom } from '../sim/random';
+import { fullCondition, type ShipCondition } from '../sim/ship';
 import { designCost } from '../shipyard/cost';
+import {
+  conditionRepairCost,
+  conditionRestockCost,
+  repairedCondition,
+  restockedCondition,
+} from './upkeep';
 
 /** The player's side in a campaign battle. */
 export const PLAYER_SIDE = 'player';
@@ -19,6 +26,8 @@ export interface CampaignShip {
   /** "Ship 1", "Ship 2" and so on, in the order built. */
   readonly name: string;
   readonly design: Design;
+  /** Its damage, propellant and ammunition, as its last battle and any repairs left them. */
+  readonly condition: ShipCondition;
 }
 
 /**
@@ -76,7 +85,10 @@ export const buildShip = (campaign: Campaign, design: Design): Campaign => {
   return {
     ...campaign,
     credits: campaign.credits - cost,
-    hangar: [...campaign.hangar, { id: `ship-${number}`, name: `Ship ${number}`, design }],
+    hangar: [
+      ...campaign.hangar,
+      { id: `ship-${number}`, name: `Ship ${number}`, design, condition: fullCondition(design) },
+    ],
     designs: known
       ? campaign.designs.map((d) => (d.id === design.id ? design : d))
       : [...campaign.designs, design],
@@ -117,7 +129,13 @@ export const prepareBattle = (campaign: Campaign, shipId: string, tier: number):
       seed: Math.floor(random() * 2 ** 32),
       scenario,
       sides: [
-        { id: PLAYER_SIDE, name: ship.name, commander: 'player', design: ship.design },
+        {
+          id: PLAYER_SIDE,
+          name: ship.name,
+          commander: 'player',
+          design: ship.design,
+          condition: ship.condition,
+        },
         {
           id: OPPONENT_SIDE,
           name: 'Opponent',
@@ -133,15 +151,71 @@ export const prepareBattle = (campaign: Campaign, shipId: string, tier: number):
 /** What came of a campaign battle. */
 export interface CampaignBattleResult {
   readonly outcome: BattleOutcome;
+  /**
+   * The player's ship's condition at the end (see `OwnShipObservation.condition`); as it went
+   * in if left out.
+   */
+  readonly condition?: ShipCondition;
 }
 
-/** Settles a battle fought: a win pays the tier's reward, anything else pays nothing. */
+/** A campaign with one of its ships changed. */
+const withShip = (
+  campaign: Campaign,
+  shipId: string,
+  change: (ship: CampaignShip) => CampaignShip,
+): Campaign => ({
+  ...campaign,
+  hangar: campaign.hangar.map((ship) => (ship.id === shipId ? change(ship) : ship)),
+});
+
+/**
+ * Settles a battle fought: a win pays the tier's reward, anything else pays nothing. The ship
+ * keeps whatever damage it took and whatever it used until repaired and restocked.
+ */
 export const recordBattle = (
   campaign: Campaign,
   battle: CampaignBattle,
-  { outcome }: CampaignBattleResult,
+  { outcome, condition }: CampaignBattleResult,
 ): Campaign => ({
-  ...campaign,
+  ...withShip(campaign, battle.shipId, (ship) => ({
+    ...ship,
+    condition: condition ?? ship.condition,
+  })),
   credits: campaign.credits + (outcome.winner === PLAYER_SIDE ? tierOf(battle.tier).reward : 0),
   battles: campaign.battles + 1,
 });
+
+/** What repairing all of a ship's damage costs, credits (see `conditionRepairCost`). */
+export const repairCost = (ship: CampaignShip): number =>
+  conditionRepairCost(ship.design, ship.condition);
+
+/** What refilling a ship's tanks and magazines costs: the propellant and ammunition used. */
+export const restockCost = (ship: CampaignShip): number =>
+  conditionRestockCost(ship.design, ship.condition);
+
+const pay = (campaign: Campaign, cost: number): Campaign => {
+  if (cost > campaign.credits) throw new Error('Not enough credits for that.');
+  return { ...campaign, credits: campaign.credits - cost };
+};
+
+/**
+ * Repairs `share` (0–1) of every damage a ship has, all of it by default, for that share of the
+ * repair cost. What is left unrepaired stays with the ship into its next battle.
+ */
+export const repairShip = (campaign: Campaign, shipId: string, share = 1): Campaign => {
+  if (!(share >= 0 && share <= 1)) throw new Error('A repair covers a share of 0 to 1.');
+  const ship = shipOf(campaign, shipId);
+  return withShip(pay(campaign, share * repairCost(ship)), shipId, (s) => ({
+    ...s,
+    condition: repairedCondition(s.design, s.condition, share),
+  }));
+};
+
+/** Refills a ship's propellant and ammunition, paying for what it used. */
+export const restockShip = (campaign: Campaign, shipId: string): Campaign => {
+  const ship = shipOf(campaign, shipId);
+  return withShip(pay(campaign, restockCost(ship)), shipId, (s) => ({
+    ...s,
+    condition: restockedCondition(s.design, s.condition),
+  }));
+};

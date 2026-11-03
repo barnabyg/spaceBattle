@@ -53,4 +53,12 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
   await expect(page.getByRole('status')).toHaveText('Won: paid 3,000,000 cr.');
   expect(await credits(page)).toBe(afterBuilding + 3_000_000);
   await expect(page.getByText('1 battle fought')).toBeVisible();
+
+  // The missiles it launched are paid for to restock it.
+  const condition = page.getByLabel('Ship 1 condition');
+  await expect(condition).toContainText('restocking');
+  const beforeRestock = await credits(page);
+  await page.getByRole('button', { name: 'Restock Ship 1' }).click();
+  await expect(condition).toContainText('full');
+  expect(await credits(page)).toBeLessThan(beforeRestock);
 });

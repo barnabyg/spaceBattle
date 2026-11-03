@@ -12,6 +12,8 @@ import {
   PLAYER_SIDE,
   prepareBattle,
   recordBattle,
+  repairShip,
+  restockShip,
   tierOf,
   type Campaign,
   type CampaignBattle,
@@ -89,6 +91,17 @@ export const createApp = (root: HTMLElement) => {
     show(createShipyardScreen(library, { onBack: shipyardReturn }));
   };
 
+  /** Takes a campaign action, then shows the hub with what came of it. */
+  const act = (action: (c: Campaign) => Campaign, done: string) => {
+    if (!campaign) return;
+    try {
+      campaign = action(campaign);
+      showCampaign(done);
+    } catch (error) {
+      showCampaign(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const showCampaign = (message = '') => {
     if (!campaign) return;
     show(
@@ -104,6 +117,12 @@ export const createApp = (root: HTMLElement) => {
             } catch (error) {
               showCampaign(error instanceof Error ? error.message : String(error));
             }
+          },
+          onRepair: (shipId, share) => {
+            act((c) => repairShip(c, shipId, share), 'Repaired.');
+          },
+          onRestock: (shipId) => {
+            act((c) => restockShip(c, shipId), 'Restocked.');
           },
           onFight: (shipId, tier) => {
             if (campaign) showCampaignBattle(prepareBattle(campaign, shipId, tier));
@@ -135,7 +154,10 @@ export const createApp = (root: HTMLElement) => {
         onContinue: () => {
           const { outcome } = battle;
           if (!campaign || !outcome) return;
-          campaign = recordBattle(campaign, pending, { outcome });
+          campaign = recordBattle(campaign, pending, {
+            outcome,
+            condition: battle.observe(PLAYER_SIDE).ownShip.condition,
+          });
           showCampaign(
             outcome.winner === PLAYER_SIDE
               ? `Won: paid ${formatCredits(tierOf(pending.tier).reward)}.`

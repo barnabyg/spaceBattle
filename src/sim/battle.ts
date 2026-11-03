@@ -42,7 +42,15 @@ import { endedBy, judge, lossOf, noResult, type BattleOutcome } from './outcome'
 import { conjugate, IDENTITY, rotate, type Quat } from './quaternion';
 import { createRandom, type Random } from './random';
 import { perceive, sensorPower, type ContactDetail } from './sensors';
-import { burn, createShip, fireDrive, noseOf, steer, type ShipState } from './ship';
+import {
+  burn,
+  createShip,
+  fireDrive,
+  noseOf,
+  steer,
+  type ShipCondition,
+  type ShipState,
+} from './ship';
 import { TIME_STEP } from './time';
 import {
   add,
@@ -116,6 +124,7 @@ export type {
 
 export type SideId = string;
 export type { CaptainSkill } from './captain';
+export type { ShipCondition } from './ship';
 export type Commander = 'player' | 'computer';
 
 export interface SideSetup {
@@ -125,6 +134,11 @@ export interface SideSetup {
   readonly design: Design;
   /** How skilled a computer side's captain is; medium if left out. A player side ignores it. */
   readonly skill?: CaptainSkill;
+  /**
+   * The state its ship comes into the battle in, as an earlier battle left it (see
+   * `OwnShipObservation.condition`); as built if left out.
+   */
+  readonly condition?: ShipCondition;
 }
 
 /** Where each side's ship starts, in the same order as the battle's sides. */
@@ -315,7 +329,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
     if (!start) throw new Error(`No start for side ${side.id}`);
     return {
       side,
-      ship: createShip(side.design, start.position, start.velocity, start.orientation ?? IDENTITY),
+      ship: createShip(
+        side.design,
+        start.position,
+        start.velocity,
+        start.orientation ?? IDENTITY,
+        side.condition,
+      ),
       beamsLanding: [],
       impacts: [],
       withdrawn: false,

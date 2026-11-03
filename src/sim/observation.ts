@@ -36,6 +36,7 @@ import type { ShapePart } from './shape';
 import { perceive, sensorPower, type ContactDetail } from './sensors';
 import { coolantCapacity, fullDeflection, shieldsPowered } from './shields';
 import {
+  conditionOf,
   deltaVOf,
   driveLimit,
   reserveWarning,
@@ -44,6 +45,7 @@ import {
   temperatureOf,
   type AmmunitionSpent,
   type BurnState,
+  type ShipCondition,
   type ShipState,
 } from './ship';
 import { distance, type Vec3 } from './vector';
@@ -399,6 +401,8 @@ export interface OwnShipObservation {
   readonly sections: readonly SectionObservation[];
   readonly weapons: WeaponsObservation;
   readonly appearance: ShipAppearance;
+  /** What the ship would carry into another battle: its damage, propellant and ammunition. */
+  readonly condition: ShipCondition;
 }
 
 /** How a contact looks from outside, as far as the side's sensors make it out. */
@@ -778,6 +782,7 @@ export const observeOwnShip = (
     sections: observeSections(ship),
     weapons: observeWeapons(ship, engagements),
     appearance: observeAppearance(own),
+    condition: conditionOf(ship),
   };
 };
 

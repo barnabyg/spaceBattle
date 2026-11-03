@@ -26,6 +26,11 @@ export const BALANCE = {
   ] satisfies readonly Tier[],
   /** What a new campaign starts with, credits: enough for a modest frigate and a little over. */
   startingCredits: 9e6,
+  /**
+   * Repairs cost this share of the price of new for the share of each component, armour and
+   * structure that is wrecked.
+   */
+  repairPriceShare: 0.5,
   /** Price of each type of component, per kg of it; a magazine's ammunition is extra. */
   componentPrice: {
     drive: 30,

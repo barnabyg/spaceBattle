@@ -1,5 +1,5 @@
 import { BALANCE } from '../data/balance';
-import type { Campaign } from '../campaign/campaign';
+import { repairCost, restockCost, type Campaign, type CampaignShip } from '../campaign/campaign';
 import type { Design } from '../sim/design';
 import { designCost } from '../shipyard/cost';
 import { el } from './el';
@@ -10,6 +10,10 @@ const SKILL_TEXT = { low: 'Low', medium: 'Medium', high: 'High' } as const;
 export interface CampaignHubActions {
   /** Builds a ship of a design into the hangar. */
   readonly onBuild: (design: Design) => void;
+  /** Repairs a share (0–1) of a ship's damage. */
+  readonly onRepair: (shipId: string, share: number) => void;
+  /** Refills a ship's propellant and ammunition. */
+  readonly onRestock: (shipId: string) => void;
   /** Sends a ship from the hangar against an opponent of a tier. */
   readonly onFight: (shipId: string, tier: number) => void;
   /** Goes to the shipyard to design ships to build. */
@@ -46,17 +50,61 @@ export const createCampaignHub = (
   /** What the last action or battle came to, if anything. */
   message = '',
 ) => {
-  const hangar = el('ul', { className: 'campaign-list' });
-  hangar.replaceChildren(
-    ...campaign.hangar.map((ship) =>
+  /**
+   * A ship in the hangar: its design, what its damage would cost to repair and its used propellant
+   * and ammunition to restock, and the buttons to pay for them; a share of the repair can be paid.
+   */
+  const hangarEntry = (ship: CampaignShip) => {
+    const repair = repairCost(ship);
+    const restock = restockCost(ship);
+    const share = el('input', {
+      attrs: {
+        type: 'number',
+        min: '1',
+        max: '100',
+        step: '1',
+        'aria-label': `Share of ${ship.name}'s repairs %`,
+      },
+    });
+    share.value = '100';
+    const repairButton = button('Repair', `Repair ${ship.name}`);
+    repairButton.disabled = repair <= 0 || repair * 0.01 > campaign.credits;
+    repairButton.addEventListener('click', () => {
+      const percent = share.valueAsNumber;
+      if (percent > 0 && percent <= 100) actions.onRepair(ship.id, percent / 100);
+    });
+    const restockButton = button('Restock', `Restock ${ship.name}`);
+    restockButton.disabled = restock <= 0 || restock > campaign.credits;
+    restockButton.addEventListener('click', () => {
+      actions.onRestock(ship.id);
+    });
+    const state = [
+      repair > 0 ? `Damaged: repairs ${formatCredits(repair)}` : 'Undamaged',
+      restock > 0 ? `restocking ${formatCredits(restock)}` : 'full',
+    ].join(' · ');
+    return el(
+      'li',
+      { attrs: { 'aria-label': ship.name } },
+      el('span', { className: 'campaign-list__name', text: ship.name }),
+      el('span', { text: ship.design.name }),
+      el('span', {
+        className: 'campaign-list__state',
+        text: state,
+        attrs: { 'aria-label': `${ship.name} condition` },
+      }),
       el(
-        'li',
-        { attrs: { 'aria-label': ship.name } },
-        el('span', { className: 'campaign-list__name', text: ship.name }),
-        el('span', { text: ship.design.name }),
+        'span',
+        { className: 'campaign-list__actions' },
+        ...(repair > 0
+          ? [el('label', { className: 'field field--inline' }, el('span', { text: '%' }), share)]
+          : []),
+        repairButton,
+        restockButton,
       ),
-    ),
-  );
+    );
+  };
+  const hangar = el('ul', { className: 'campaign-list' });
+  hangar.replaceChildren(...campaign.hangar.map(hangarEntry));
   if (campaign.hangar.length === 0) {
     hangar.append(el('li', { className: 'menu-note', text: 'No ships yet: build one below.' }));
   }
