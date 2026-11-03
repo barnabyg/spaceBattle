@@ -7,6 +7,7 @@ import { createEndBattle } from './endBattle';
 import { createInstrumentView } from './instrumentView';
 import { createOrdersPanel } from './ordersPanel';
 import { createResultScreen } from './resultScreen';
+import { createShipSound } from './shipSound';
 import { createStatusPanel } from './statusPanel';
 import { formatDuration } from './format';
 import { createTacticalMap, SIDE_COLOURS } from './tacticalMap';
@@ -78,6 +79,8 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   const enemy = ordered[1];
   const enemyPanel = test && enemy ? createEnemyPanel(enemy) : null;
   const testLog = test ? createTestLog(battle.sides) : null;
+  // Only a player side's captain hears their ship; a battle between computer sides is silent.
+  const sound = viewer.commander === 'player' ? createShipSound(viewer) : null;
   const endBattle = createEndBattle(runner, viewer, () => {
     const events = battle.endBattle(viewer.id);
     testLog?.add(events);
@@ -109,6 +112,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
             }),
           ]
         : []),
+      ...(sound ? [sound.element] : []),
       endBattle.button,
     ),
     map.element,
@@ -148,6 +152,8 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     map.render();
     endBattle.update(observation.outcome !== null);
     if (observation.outcome) result.show(observation.outcome);
+    const running = !runner.paused && !observation.outcome;
+    sound?.update({ observation, events, running, realTime: now / 1000 });
     instruments.update(observation, test && enemy ? battle.observe(enemy.id).ownShip : undefined);
     instruments.render();
     frame = requestAnimationFrame(tick);
@@ -162,6 +168,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
       timeControls.dispose();
       map.dispose();
       instruments.dispose();
+      sound?.dispose();
       element.remove();
     },
   };
