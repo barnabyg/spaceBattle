@@ -13,7 +13,7 @@ import { firstHit, shipShape, type ShapePart } from './shape';
 import { absorbLaser, deflectedShare } from './shields';
 import type { ShipState } from './ship';
 import { TIME_STEP } from './time';
-import { add, length, normalize, scale, sub, vec3, type Vec3 } from './vector';
+import { add, dot, length, normalize, scale, sub, vec3, type Vec3 } from './vector';
 import type { Beam, MagazineState } from './weapons';
 
 /**
@@ -254,8 +254,9 @@ const damageMount = (ship: ShipState, part: ShapePart, energy: number, ctx: Dama
 };
 
 /**
- * A beam reaching a ship. It is aimed at the centre of mass and lands on whatever its line of
- * fire reaches first on the ship's actual shape. The part takes the beam's intensity over the
+ * A beam reaching a ship. Its line of fire runs from where it was fired through the point it was
+ * aimed at (see `Beam.aim`), and it lands on whatever that line reaches first on the ship's
+ * actual shape, or misses. The part takes the beam's intensity over the
  * part's silhouette, or the whole beam if its spot is smaller. On a section it burns through the
  * armour at the rate its intensity allows, I / (ρ·e) metres per second, e being the energy per
  * kilogram that the beam's kind needs (see `beamResistance`). Mounts sit outside the armour, so a
@@ -269,7 +270,9 @@ const damageMount = (ship: ShipState, part: ShapePart, energy: number, ctx: Dama
 export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike | null => {
   const direction = normalize(sub(ship.position, beam.origin));
   const body = rotate(conjugate(ship.orientation), direction);
-  const hit = firstHit(intactShape(ship), scale(body, -RAY_START), body);
+  // Where the line of fire crosses the plane through the centre of mass square to it.
+  const through = sub(beam.aim, scale(body, dot(beam.aim, body)));
+  const hit = firstHit(intactShape(ship), add(through, scale(body, -RAY_START)), body);
   if (!hit) return null;
   const radius = spotRadius(beam.weapon, beam.range);
   const reaching = Math.min(beam.power, (beam.power / (Math.PI * radius ** 2)) * hit.projectedArea);
@@ -300,7 +303,7 @@ export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike 
   } else {
     damageMount(ship, hit.part, energy, ctx);
   }
-  const point = scale(body, hit.distance - RAY_START);
+  const point = add(through, scale(body, hit.distance - RAY_START));
   return { part: hit.part, power, deflected, absorbed, intensity, spotRadius: radius, point };
 };
 

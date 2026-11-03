@@ -1,3 +1,4 @@
+import type { ContactDetail } from '../sim/battle';
 import { KILOTON } from '../sim/design';
 
 const grouped = (value: number, fractionDigits: number): string =>
@@ -59,3 +60,11 @@ export const formatMm = (metres: number): string => `${grouped(metres * 1000, 0)
 
 /** A fraction from 0 to 1 as a whole percentage. */
 export const formatPercent = (fraction: number): string => `${Math.round(fraction * 100)}%`;
+
+/** How much of a contact the sensors make out, in words. */
+export const CONTACT_DETAIL_TEXT: Readonly<Record<ContactDetail, string>> = {
+  position: 'position only',
+  silhouette: 'silhouette',
+  sections: 'sections',
+  mounts: 'mounts',
+};

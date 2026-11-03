@@ -6,7 +6,10 @@
   "sections": [
     {
       "kind": "forward",
-      "armour": { "type": "heavy", "thickness": 0.012 },
+      "armour": {
+        "type": "heavy",
+        "thickness": 0.012
+      },
       "components": [
         {
           "type": "capacitor",
@@ -25,17 +28,42 @@
             "propellantMass": 2500,
             "thrust": 150000,
             "exhaustVelocity": 25000,
-            "warhead": { "type": "nuclear", "yield": 41840000000000, "detonationDistance": 1000 }
+            "warhead": {
+              "type": "nuclear",
+              "yield": 41840000000000,
+              "detonationDistance": 1000
+            }
           }
+        }
+      ],
+      "mounts": [
+        {
+          "type": "sensor",
+          "mass": 4000,
+          "aperture": 4,
+          "wavelength": 5e-8,
+          "trackingError": 3e-9
         }
       ]
     },
     {
       "kind": "middle",
-      "armour": { "type": "ablative", "thickness": 0.02 },
+      "armour": {
+        "type": "ablative",
+        "thickness": 0.02
+      },
       "components": [
-        { "type": "thrusters", "mass": 20000, "torque": 8000000 },
-        { "type": "reactor", "mass": 40000, "output": 2000000000, "efficiency": 0.75 }
+        {
+          "type": "thrusters",
+          "mass": 20000,
+          "torque": 8000000
+        },
+        {
+          "type": "reactor",
+          "mass": 40000,
+          "output": 2000000000,
+          "efficiency": 0.75
+        }
       ],
       "mounts": [
         {
@@ -52,13 +80,24 @@
           "retractedArea": 600,
           "emissivity": 0.9
         },
-        { "type": "launcher", "mass": 8000, "reloadTime": 30 },
-        { "type": "launcher", "mass": 8000, "reloadTime": 30 }
+        {
+          "type": "launcher",
+          "mass": 8000,
+          "reloadTime": 30
+        },
+        {
+          "type": "launcher",
+          "mass": 8000,
+          "reloadTime": 30
+        }
       ]
     },
     {
       "kind": "engine",
-      "armour": { "type": "ablative", "thickness": 0.01 },
+      "armour": {
+        "type": "ablative",
+        "thickness": 0.01
+      },
       "components": [
         {
           "type": "drive",

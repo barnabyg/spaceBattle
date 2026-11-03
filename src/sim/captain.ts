@@ -9,13 +9,12 @@ import type {
 import { effectiveRange } from './beams';
 import {
   designComponents,
-  designComponentsOfType,
-  missileRole,
   type Design,
+  type MountedComponentDesign,
   type ShieldType,
 } from './design';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE } from './heat';
-import { missileReach } from './missile';
+import { reachOfDeltaV } from './missile';
 import type {
   AntiMissileOrder,
   AttitudeOrder,
@@ -95,27 +94,15 @@ const COUNTERED: Readonly<Record<ShieldType, 'laser' | 'charged-particle-beam'>>
   'coolant-shield': 'laser',
 };
 
-/**
- * How far the enemy's weapons that a design's shields counter reach, m; zero when its shields
- * counter none of them, or it has none.
- */
-const counteredReach = (own: Design, enemies: readonly SideSetup[]): number => {
-  const shields = new Set(
+/** The kinds of enemy beam weapon a design's shields counter. */
+const counteredBy = (own: Design): ReadonlySet<'laser' | 'charged-particle-beam'> =>
+  new Set(
     designComponents(own).flatMap(({ component }) =>
       component.type === 'magnetic-shield' || component.type === 'coolant-shield'
         ? [COUNTERED[component.type]]
         : [],
     ),
   );
-  return Math.max(
-    0,
-    ...enemies.flatMap((enemy) =>
-      [...shields].flatMap((type) =>
-        designComponentsOfType(enemy.design, type).map(effectiveRange),
-      ),
-    ),
-  );
-};
 
 /** How far a kinetic gun's slugs fly before they could be dodged, m. */
 const sureRange = (muzzleVelocity: number): number => muzzleVelocity * DODGE_TIME;
@@ -163,83 +150,86 @@ const ownReach = (ship: OwnShipObservation): number =>
 const pointDefenceReach = ({ weapons }: OwnShipObservation): number =>
   weapons.ammunition.rounds > 0 ? reachOf(weapons.pointDefence, (gun) => gun.effectiveRange) : 0;
 
-/**
- * What the captain makes of the enemy's arms: it knows the enemy's design, sees which of its
- * mounts are wrecked, and counts the slugs and missiles it has seen the enemy fire.
- */
-const enemyArsenal = (enemy: SideSetup) => {
-  const slugsCarried = designComponentsOfType(enemy.design, 'magazine').reduce(
-    (total, magazine) => total + magazine.slugs,
-    0,
-  );
-  const missilesCarried = new Map<string, number>();
-  for (const magazine of designComponentsOfType(enemy.design, 'magazine')) {
-    if (magazine.missile) {
-      const { name } = magazine.missile;
-      missilesCarried.set(name, (missilesCarried.get(name) ?? 0) + magazine.missiles);
-    }
-  }
-  const slugsSeen = new Set<number>();
-  const missilesSeen = new Map<string, Set<number>>();
+/** A mount of the enemy's the captain has made out, and how finely it saw it then. */
+interface KnownMount {
+  readonly component: MountedComponentDesign;
+  /** The resolution it was made out at, m. */
+  readonly resolution: number;
+}
 
-  /** Notes the enemy's slugs and missiles in flight. */
-  const watch = (observation: SideObservation) => {
+/**
+ * What the captain makes of the enemy's arms from its contact alone: the mounts its sensors have
+ * made out, remembered once the range opens and they blur again, and the anti-ship missiles it
+ * has seen the enemy launch. It forgets a mount once it sees the contact at least as finely as it
+ * saw the mount and the mount is gone: wrecked, or lost with its section. What it has not made
+ * out it does not know: it neither sees nor guesses at weapons too small for its sensors.
+ */
+const enemyArsenal = () => {
+  const mounts = new Map<string, KnownMount>();
+  /** The longest reach of the enemy anti-ship missiles seen in flight, m. */
+  let missileReachSeen = 0;
+  /** Whether it has ever made out a launcher of the enemy's. */
+  let launcherSeen = false;
+
+  /** Notes the mounts made out on the contact and the enemy's missiles in flight. */
+  const watch = (observation: SideObservation, contact: ContactObservation) => {
+    const seen = new Set<string>();
+    for (const mount of contact.mounts) {
+      const key = `${mount.section}/${String(mount.mount)}`;
+      seen.add(key);
+      mounts.set(key, { component: mount.component, resolution: contact.resolution });
+      if (mount.component.type === 'launcher') launcherSeen = true;
+    }
+    for (const [key, known] of mounts) {
+      if (!seen.has(key) && contact.resolution <= known.resolution) mounts.delete(key);
+    }
     for (const munition of observation.munitions) {
-      if (munition.attacker !== enemy.id) continue;
-      if (munition.kind === 'slug') slugsSeen.add(munition.id);
-      else {
-        const seen = missilesSeen.get(munition.name) ?? new Set<number>();
-        seen.add(munition.id);
-        missilesSeen.set(munition.name, seen);
+      if (
+        munition.attacker === contact.sideId &&
+        munition.kind === 'missile' &&
+        munition.role === 'anti-ship'
+      ) {
+        missileReachSeen = Math.max(missileReachSeen, reachOfDeltaV(munition.deltaV));
       }
     }
   };
 
+  /** The enemy's known beam weapons: lasers and particle beams. */
+  const beamWeapons = () =>
+    [...mounts.values()].flatMap(({ component }) =>
+      component.type === 'laser' ||
+      component.type === 'charged-particle-beam' ||
+      component.type === 'neutral-particle-beam'
+        ? [component]
+        : [],
+    );
+
   /**
-   * How far the enemy's weapons can still hurt the ship, m: its intact beam weapons, its intact
-   * kinetic guns out to where their slugs cannot be dodged while it may have slugs left, and its
-   * anti-ship missiles while it has an intact launcher and may have some left.
+   * How far the enemy's known weapons can hurt the ship, m: its beam weapons, its kinetic guns
+   * out to where their slugs cannot be dodged, and its launchers as far as the missiles it has
+   * been seen to launch reach. A missile seen in flight shows a launcher, made out or not, until
+   * every launcher made out is gone.
    */
-  const reach = (contact: ContactObservation): number => {
-    const intact = new Set(
-      contact.appearance.parts.flatMap((part) =>
-        part.mount === null ? [] : [`${part.section}/${String(part.mount)}`],
-      ),
-    );
-    const mounted = enemy.design.sections.flatMap((section) =>
-      section.mounts.flatMap((component, i) =>
-        intact.has(`${section.kind}/${String(i)}`) ? [component] : [],
-      ),
-    );
-    const slugsLeft = slugsSeen.size < slugsCarried;
-    const launcher = mounted.some((component) => component.type === 'launcher');
+  const reach = (): number => {
+    const known = [...mounts.values()].map(({ component }) => component);
     return Math.max(
       0,
-      ...mounted.map((component) => {
-        switch (component.type) {
-          case 'laser':
-          case 'charged-particle-beam':
-          case 'neutral-particle-beam':
-            return effectiveRange(component);
-          case 'kinetic-gun':
-            return slugsLeft ? sureRange(component.muzzleVelocity) : 0;
-          default:
-            return 0;
-        }
-      }),
-      ...(launcher
-        ? designComponentsOfType(enemy.design, 'magazine').flatMap(({ missile }) =>
-            missile &&
-            missileRole(missile) === 'anti-ship' &&
-            (missilesSeen.get(missile.name)?.size ?? 0) < (missilesCarried.get(missile.name) ?? 0)
-              ? [missileReach(missile)]
-              : [],
-          )
-        : []),
+      ...beamWeapons().map(effectiveRange),
+      ...known.map((c) => (c.type === 'kinetic-gun' ? sureRange(c.muzzleVelocity) : 0)),
+      known.some((c) => c.type === 'launcher') || !launcherSeen ? missileReachSeen : 0,
     );
   };
 
-  return { watch, reach };
+  /** How far the enemy's known beam weapons of the kinds in `kinds` reach, m; zero if none. */
+  const reachOfKinds = (kinds: ReadonlySet<string>): number =>
+    Math.max(
+      0,
+      ...beamWeapons()
+        .filter((weapon) => kinds.has(weapon.type))
+        .map(effectiveRange),
+    );
+
+  return { watch, reach, reachOfKinds };
 };
 
 /** Whether an order is already standing, so giving it again would change nothing. */
@@ -346,10 +336,9 @@ const jink = (
 };
 
 /**
- * A basic computer captain for one side. It knows the designs in the battle, so it knows how far
- * the enemy's weapons reach (contacts show every detail until sensors arrive), and otherwise
- * decides only from its side's observations: it sees which enemy mounts are wrecked and counts
- * the slugs and missiles the enemy fires, so it knows when a weapon of the enemy's is spent.
+ * A basic computer captain for one side. It knows its own ship's design, and of the enemy only
+ * what its side observes: the weapons its sensors make out on the contact and the missiles the
+ * enemy launches (see `enemyArsenal`). A weapon it has not made out, it does not allow for.
  *
  * Range: if it outranges the enemy it holds just inside its own reach, out of the enemy's;
  * otherwise it closes to where its weapons bite hard. It heads there at a fifth of its delta-v,
@@ -374,12 +363,10 @@ const jink = (
  * shields raised only while an enemy weapon they counter can reach it, saving their power and
  * heat the rest of the time.
  */
-export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[]): Captain => {
-  const enemies = sides.filter((s) => s.id !== side);
-  const enemySetup = enemies[0];
-  const arsenal = enemySetup ? enemyArsenal(enemySetup) : null;
-  const own = sides.find((s) => s.id === side)?.design;
-  const shieldedReach = own ? counteredReach(own, enemies) : 0;
+export const createComputerCaptain = (setup: SideSetup): Captain => {
+  const side = setup.id;
+  const arsenal = enemyArsenal();
+  const countered = counteredBy(setup.design);
   /** When the battle last got somewhere, s, and the range to measure progress from, m. */
   let progress: { time: number; range: number } | null = null;
   let pressing = false;
@@ -469,11 +456,11 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
     decide(observation) {
       const enemy = observation.contacts[0];
       if (observation.outcome || !enemy) return [];
-      arsenal?.watch(observation);
+      arsenal.watch(observation, enemy);
       const ship = observation.ownShip;
       const range = distance(ship.position, enemy.position);
       notice(observation, range);
-      const enemyReach = arsenal?.reach(enemy) ?? 0;
+      const enemyReach = arsenal.reach();
       const threats = missileThreats(observation, side);
       // With nothing else left to fight with, point defence turns on the ship.
       const lastResort = ownReach(ship) === 0 && pointDefenceReach(ship) > 0;
@@ -518,7 +505,7 @@ export const createComputerCaptain = (side: SideId, sides: readonly SideSetup[])
       if (ship.shields.shields.length > 0) {
         const shields: ShieldsOrder = {
           type: 'shields',
-          raised: range <= FIGHTING_FRACTION * shieldedReach,
+          raised: range <= FIGHTING_FRACTION * arsenal.reachOfKinds(countered),
         };
         orders.push(shields);
       }

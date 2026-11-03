@@ -8,7 +8,8 @@ import type {
 } from '../sim/battle';
 import type { BeamKind } from '../sim/events';
 import { HULLS, hullLength } from '../sim/hull';
-import type { Quat } from '../sim/quaternion';
+import { IDENTITY, type Quat } from '../sim/quaternion';
+import { NO_AMMUNITION_SPENT } from '../sim/ship';
 import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vector';
 import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
@@ -496,7 +497,12 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       missileGlints.clear();
       antiMissileGlints.clear();
       if (seen) {
-        updateShipView(contact, seen.orientation, seen.appearance);
+        // Drawn in full for now, posed as the sensors see it.
+        updateShipView(contact, seen.orientation ?? IDENTITY, {
+          ...seen.appearance,
+          propellantMass: contactSide.design.propellantMass,
+          ammunitionSpent: NO_AMMUNITION_SPENT,
+        });
         contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${formatKm(distance(seen.position, ship.position))}`;
         for (const munition of observation.munitions) {
           const at = telescopePosition(munition, ship.position, seen.position);

@@ -7,6 +7,7 @@ import {
   type BattleEvent,
   type BattleSetup,
   type SideObservation,
+  type SideSetup,
 } from './battle';
 import { createComputerCaptain } from './captain';
 import { DECISION_INTERVAL, runBattle, withComputerCaptains } from './command';
@@ -63,6 +64,12 @@ const frozen = <T>(value: T): T => {
   return value;
 };
 
+const redOf = (setup: BattleSetup): SideSetup => {
+  const red = setup.sides.find((side) => side.id === 'red');
+  if (!red) throw new Error('No red side');
+  return red;
+};
+
 const range = (observation: SideObservation) =>
   distance(observation.ownShip.position, observation.contacts[0]?.position ?? { x: 0, y: 0, z: 0 });
 
@@ -84,7 +91,7 @@ describe('computer captain', () => {
     // The same battle with each captain handed a frozen copy of its side's observation, and the
     // orders it returns given by hand: the battle accepts each one, and it plays out the same.
     const battle = createBattle(setup);
-    const captains = setup.sides.map((side) => createComputerCaptain(side.id, setup.sides));
+    const captains = setup.sides.map((side) => createComputerCaptain(side));
     const given = new Set<Order['type']>();
     while (battle.time < duration - 1e-9 && !battle.outcome) {
       for (const captain of captains) {
@@ -142,6 +149,7 @@ describe('computer captain', () => {
     );
     battle.advance(10);
     let red = battle.observe('red').ownShip;
+    // Its sensor makes out the Lance's laser even this far off, so it knows it is outranged.
     expect(red.manoeuvre?.goal).toBe('close');
     expect(red.manoeuvre?.range).toBeLessThan(BASTION_REACH);
     expect(red.power.priorities[0]).toBe('drive');
@@ -475,7 +483,7 @@ describe('computer captain', () => {
       },
     });
     const radiators = (temperature: number, deployed: boolean) =>
-      createComputerCaptain('red', setup.sides)
+      createComputerCaptain(redOf(setup))
         .decide(withHeat(temperature, deployed))
         .find((order) => order.type === 'radiators');
 
@@ -490,7 +498,7 @@ describe('computer captain', () => {
     /** The shields order the computer in red gives at a range against blue's design. */
     const shieldsOrder = (blue: string, red: string, at: number) => {
       const setup = duelSetup(handMadeDesign(blue), handMadeDesign(red), at);
-      return createComputerCaptain('red', setup.sides)
+      return createComputerCaptain(redOf(setup))
         .decide(createBattle(setup).observe('red'))
         .find((order) => order.type === 'shields');
     };
@@ -511,7 +519,7 @@ describe('computer captain', () => {
       type: 'power',
       priorities: ['drive', 'weapons', 'capacitors', 'shields'],
     });
-    const orders = createComputerCaptain('red', setup.sides).decide(battle.observe('red'));
+    const orders = createComputerCaptain(redOf(setup)).decide(battle.observe('red'));
     expect(orders).toContainEqual({ type: 'shields', raised: true });
     expect(orders.find((order) => order.type === 'power')).toEqual({
       type: 'power',

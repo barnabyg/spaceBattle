@@ -29,7 +29,7 @@ import {
   type Slug,
 } from './kinetic';
 import { launchMissile, missileReach, type Missile, type MissileTarget } from './missile';
-import type { FireMode, PointDefencePriority } from './orders';
+import type { AimPoint, FireMode, PointDefencePriority } from './orders';
 import {
   assignPointDefence,
   burstEnergy,
@@ -139,6 +139,8 @@ export interface Salvo {
 export interface WeaponsState {
   readonly target: SideId | null;
   readonly mode: FireMode;
+  /** The part of the target the captain has the weapons aim at; null for the whole ship. */
+  readonly aim: AimPoint | null;
   /** Lasers and particle beams, in the order of the ship's component slots. */
   readonly beamWeapons: readonly BeamWeaponState[];
   readonly kineticGuns: readonly KineticGunState[];
@@ -258,6 +260,11 @@ export interface Beam {
   readonly power: number;
   /** Where the attacker was when it fired. */
   readonly origin: Vec3;
+  /**
+   * Where its line of fire passes the target, in the target's body frame as it was when fired:
+   * the point fire control aimed at, thrown off by the error in its track of the target, m.
+   */
+  readonly aim: Vec3;
   /** Distance to the target when fired, m. */
   readonly range: number;
   /** Battle time it reaches the target, s. */
@@ -273,6 +280,7 @@ export interface Beam {
 export const initialWeapons = (design: Design): WeaponsState => ({
   target: null,
   mode: 'hold-fire',
+  aim: null,
   beamWeapons: componentSlots(design).flatMap((slot, i) =>
     slot.component.type === 'laser' ||
     slot.component.type === 'charged-particle-beam' ||
@@ -408,12 +416,13 @@ const weaponsShare = (ship: ShipState): number =>
  * Sends out this step's beams once power is settled: each firing beam weapon gets its share of
  * the power the weapons were given, and puts its efficiency's part of that into its beam (for a
  * neutral particle beam, only what survives the stripping). The beam reaches the target R/c
- * later; fire control leads the target by its known motion.
+ * later; fire control leads the target by its known motion, aiming its line of fire through
+ * `aim` in the target's body frame.
  */
 export const emitBeams = (
   ship: ShipState,
   attacker: SideId,
-  target: { readonly id: SideId; readonly position: Vec3 } | null,
+  target: { readonly id: SideId; readonly position: Vec3; readonly aim: Vec3 } | null,
   time: number,
 ): Beam[] => {
   const { weapons } = ship;
@@ -434,6 +443,7 @@ export const emitBeams = (
       weapon: state.weapon,
       power,
       origin: ship.position,
+      aim: target.aim,
       range,
       arrival: time + range / SPEED_OF_LIGHT,
       continuing: state.firedAt === target.id,

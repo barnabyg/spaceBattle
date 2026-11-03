@@ -1,4 +1,5 @@
 import type {
+  ContactObservation,
   MissileDesignObservation,
   MissileObservation,
   SideObservation,
@@ -7,9 +8,10 @@ import type {
 import type { MissileRole } from '../sim/design';
 import type { ManoeuvreObservation } from '../sim/manoeuvre';
 import { targetsMissile } from '../sim/missile';
-import type { FireMode, ManoeuvreGoal, Order, PointDefencePriority } from '../sim/orders';
+import type { AimPoint, FireMode, ManoeuvreGoal, Order, PointDefencePriority } from '../sim/orders';
 import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/power';
 import { distance, length, vec3 } from '../sim/vector';
+import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
 import { formatDuration, formatKm, formatMetresPerS, formatMW } from './format';
 
@@ -25,6 +27,26 @@ const numberInput = (label: string, value: number, attrs: Record<string, string>
 
 const button = (text: string) =>
   el('button', { className: 'order-button', text, attrs: { type: 'button' } });
+
+/** An aim point as the value of an option: "whole", "middle" or "forward/0". */
+const aimValue = (aim: AimPoint | null): string =>
+  aim === null ? 'whole' : aim.mount === null ? aim.section : `${aim.section}/${String(aim.mount)}`;
+
+/** What the weapons can aim at on a contact: the whole ship, and each part the sensors make out. */
+export const aimOptions = (
+  contact: ContactObservation | undefined,
+): readonly { readonly aim: AimPoint | null; readonly text: string }[] => [
+  { aim: null, text: 'Whole ship' },
+  ...(contact?.sections ?? []).flatMap((section) => [
+    { aim: { section: section.kind, mount: null }, text: `${SECTION_TEXT[section.kind]} section` },
+    ...(contact?.mounts ?? [])
+      .filter((mount) => mount.section === section.kind)
+      .map((mount) => ({
+        aim: { section: mount.section, mount: mount.mount },
+        text: `${SECTION_TEXT[mount.section]} mount ${String(mount.mount + 1)} · ${COMPONENT_TEXT[mount.component.type]}`,
+      })),
+  ]),
+];
 
 const GOAL_TEXT: Readonly<Record<ManoeuvreGoal, string>> = {
   close: 'Closing to',
@@ -298,6 +320,10 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     className: 'order-state',
     attrs: { 'aria-label': 'Weapons state' },
   });
+  const aimSelect = el('select', { attrs: { 'aria-label': 'Aim at' } });
+  const aimField = el('label', { className: 'field' }, el('span', { text: 'Aim at' }), aimSelect);
+  /** The parts on offer to aim at, by option value, as last shown. */
+  let aims = new Map<string, AimPoint | null>();
   const salvoSize = numberInput('Missiles', 2, { min: '1', step: '1' });
   const launch = button('Launch');
   const callOff = button('Call off');
@@ -338,19 +364,31 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     attrs: { 'aria-label': 'Point defence state' },
   });
   // The latest weapons order and contact, so each button changes only its own part.
-  let weapons: { target: string | null; mode: FireMode } = { target: null, mode: 'hold-fire' };
+  let weapons: { target: string | null; mode: FireMode; aim: AimPoint | null } = {
+    target: null,
+    mode: 'hold-fire',
+    aim: null,
+  };
   let enemy: string | null = null;
+  /** A weapons order, keeping the aim ordered while the sensors still make that part out. */
+  const giveWeapons = (target: string | null, mode: FireMode, aim = weapons.aim) => {
+    const kept = target !== null && aim !== null && aims.has(aimValue(aim)) ? { aim } : {};
+    giveOrder({ type: 'weapons', target, mode, ...kept });
+  };
   targetEnemy.addEventListener('click', () => {
-    giveOrder({ type: 'weapons', target: enemy, mode: weapons.mode });
+    giveWeapons(enemy, weapons.mode);
   });
   noTarget.addEventListener('click', () => {
-    giveOrder({ type: 'weapons', target: null, mode: weapons.mode });
+    giveWeapons(null, weapons.mode);
   });
   fireFreely.addEventListener('click', () => {
-    giveOrder({ type: 'weapons', target: weapons.target ?? enemy, mode: 'fire-freely' });
+    giveWeapons(weapons.target ?? enemy, 'fire-freely');
   });
   holdFire.addEventListener('click', () => {
-    giveOrder({ type: 'weapons', target: weapons.target, mode: 'hold-fire' });
+    giveWeapons(weapons.target, 'hold-fire');
+  });
+  aimSelect.addEventListener('change', () => {
+    giveWeapons(weapons.target ?? enemy, weapons.mode, aims.get(aimSelect.value) ?? null);
   });
   launch.addEventListener('click', () => {
     const missiles = salvoSize.input.valueAsNumber;
@@ -441,6 +479,7 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     el('h3', { text: 'Weapons' }),
     el('div', { className: 'order-row' }, targetEnemy, noTarget),
     el('div', { className: 'order-row' }, fireFreely, holdFire),
+    el('div', { className: 'order-row' }, aimField),
     weaponsState,
     el('div', { className: 'order-row' }, salvoSize.element, launch, callOff),
     launchState,
@@ -501,8 +540,22 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       raiseShields.classList.toggle('active', shielded && ship.shields.raised);
       lowerShields.classList.toggle('active', shielded && !ship.shields.raised);
 
-      weapons = { target: ship.weapons.target, mode: ship.weapons.mode };
+      weapons = { target: ship.weapons.target, mode: ship.weapons.mode, aim: ship.weapons.aim };
       enemy = observation.contacts[0]?.sideId ?? null;
+      // Offer the parts the sensors make out, rebuilding the list only when it changes.
+      const offered = aimOptions(observation.contacts[0]);
+      const values = offered.map(({ aim }) => aimValue(aim));
+      if (values.join() !== [...aims.keys()].join()) {
+        aims = new Map(offered.map(({ aim }) => [aimValue(aim), aim]));
+        aimSelect.replaceChildren(
+          ...offered.map(({ aim, text }) =>
+            el('option', { text, attrs: { value: aimValue(aim) } }),
+          ),
+        );
+      }
+      // An aim not made out any more shows as the whole ship, which the weapons fall back on.
+      const shown = aimValue(weapons.aim);
+      aimSelect.value = aims.has(shown) ? shown : 'whole';
       targetEnemy.classList.toggle('active', weapons.target !== null);
       noTarget.classList.toggle('active', weapons.target === null);
       fireFreely.classList.toggle('active', weapons.mode === 'fire-freely');

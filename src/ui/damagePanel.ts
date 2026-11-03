@@ -26,6 +26,7 @@ export const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
   'kinetic-gun': 'Kinetic gun',
   'point-defence': 'Point defence',
   launcher: 'Launcher',
+  sensor: 'Sensor',
 };
 
 /** Each kind of beam, as a weapon's name. */

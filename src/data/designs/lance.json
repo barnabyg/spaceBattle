@@ -6,7 +6,10 @@
   "sections": [
     {
       "kind": "forward",
-      "armour": { "type": "ablative", "thickness": 0.05 },
+      "armour": {
+        "type": "ablative",
+        "thickness": 0.05
+      },
       "components": [
         {
           "type": "capacitor",
@@ -15,14 +18,35 @@
           "maxCharge": 500000000,
           "maxDischarge": 5000000000
         }
+      ],
+      "mounts": [
+        {
+          "type": "sensor",
+          "mass": 4000,
+          "aperture": 4,
+          "wavelength": 5e-8,
+          "trackingError": 3e-9
+        }
       ]
     },
     {
       "kind": "middle",
-      "armour": { "type": "ablative", "thickness": 0.02 },
+      "armour": {
+        "type": "ablative",
+        "thickness": 0.02
+      },
       "components": [
-        { "type": "thrusters", "mass": 20000, "torque": 8000000 },
-        { "type": "reactor", "mass": 40000, "output": 2000000000, "efficiency": 0.75 }
+        {
+          "type": "thrusters",
+          "mass": 20000,
+          "torque": 8000000
+        },
+        {
+          "type": "reactor",
+          "mass": 40000,
+          "output": 2000000000,
+          "efficiency": 0.75
+        }
       ],
       "mounts": [
         {
@@ -51,7 +75,10 @@
     },
     {
       "kind": "engine",
-      "armour": { "type": "ablative", "thickness": 0.01 },
+      "armour": {
+        "type": "ablative",
+        "thickness": 0.01
+      },
       "components": [
         {
           "type": "drive",

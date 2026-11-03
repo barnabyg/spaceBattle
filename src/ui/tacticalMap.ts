@@ -10,7 +10,7 @@ import { length, vec3, type Vec3 } from '../sim/vector';
 import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
-import { formatDuration, formatKm, formatKmPerS } from './format';
+import { CONTACT_DETAIL_TEXT, formatDuration, formatKm, formatKmPerS } from './format';
 import { softGlowTexture } from './shipModel';
 
 /** Scene units are kilometres; the simulation works in metres. */
@@ -344,7 +344,8 @@ export const createTacticalMap = (
 
   const placeShip = (
     marker: ShipMarker,
-    ship: { position: Vec3; velocity: Vec3; orientation: Quat },
+    /** Its orientation is null for a contact whose silhouette is not made out yet. */
+    ship: { position: Vec3; velocity: Vec3; orientation: Quat | null },
     planeZ: number,
     text: string,
     time: number,
@@ -352,8 +353,11 @@ export const createTacticalMap = (
     const { position, velocity } = ship;
     const p = toScene(position);
     const headingLength = camera.position.distanceTo(controls.target) * HEADING_SCALE;
-    const nose = toScene(rotate(ship.orientation, vec3(1, 0, 0))).normalize();
-    marker.heading.geometry.setFromPoints([p, p.clone().addScaledVector(nose, headingLength)]);
+    marker.heading.visible = ship.orientation !== null;
+    if (ship.orientation) {
+      const nose = toScene(rotate(ship.orientation, vec3(1, 0, 0))).normalize();
+      marker.heading.geometry.setFromPoints([p, p.clone().addScaledVector(nose, headingLength)]);
+    }
 
     marker.symbol.position.copy(p);
     marker.label.textContent = text;
@@ -430,7 +434,7 @@ export const createTacticalMap = (
           marker,
           contact,
           centre.z,
-          `${sideName(contact.sideId)} · ${formatKmPerS(length(contact.velocity))}`,
+          `${sideName(contact.sideId)} · ${formatKmPerS(length(contact.velocity))} · ${CONTACT_DETAIL_TEXT[contact.detail]}`,
           observation.time,
         );
       }

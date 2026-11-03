@@ -18,6 +18,7 @@ import {
   type PointDefenceDesign,
   type SectionDesign,
   type SectionKind,
+  type SensorDesign,
 } from './design';
 import { fromAxisAngle, type Quat } from './quaternion';
 import { vec3, ZERO } from './vector';
@@ -25,7 +26,20 @@ import { vec3, ZERO } from './vector';
 /** Test helpers for building battles. Not used by the game itself. */
 
 /**
- * A frigate with a drive, thrusters, a reactor, a capacitor and a radiator, and nothing else.
+ * A sensor for test designs: a 2 m telescope in visible light that tracks to 0.1 nrad, so fire
+ * control's aim is as good as perfect at any range a test fights at.
+ */
+export const TEST_SENSOR: SensorDesign = {
+  type: 'sensor',
+  mass: 1e3,
+  aperture: 2,
+  wavelength: 500e-9,
+  trackingError: 1e-10,
+};
+
+/**
+ * A frigate with a drive, thrusters, a reactor, a capacitor, a radiator and the test sensor on its
+ * engine section, and nothing else.
  * Its reactor covers the drive at full throttle and its radiator sheds that heat even when
  * retracted, so power and heat never hold it back unless a test changes them.
  */
@@ -56,6 +70,7 @@ export const testDesign = (overrides: Partial<Design> = {}): Design => ({
       },
       {
         kind: 'engine',
+        mounts: [TEST_SENSOR],
         components: [
           {
             type: 'drive',

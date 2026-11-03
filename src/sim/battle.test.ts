@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createBattle, TIME_STEP } from './battle';
-import { duelSetup, TEST_LASER, testDesign, testSetup, withSection } from './testing';
+import { duelSetup, TEST_LASER, TEST_SENSOR, testDesign, testSetup, withSection } from './testing';
 import { distance } from './vector';
 
 describe('battle simulation', () => {
@@ -19,7 +19,7 @@ describe('battle simulation', () => {
 
   it('gives identical damage from the same seed when lasers fire', () => {
     // Nothing armoured, so beams soon reach components and the seeded chance of which is struck.
-    const design = withSection(testDesign(), 'engine', { mounts: [TEST_LASER] });
+    const design = withSection(testDesign(), 'engine', { mounts: [TEST_LASER, TEST_SENSOR] });
     const run = () => {
       const battle = createBattle({ ...duelSetup(design, design, 20_000e3), seed: 7 });
       battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });

@@ -1,7 +1,13 @@
 import { incomingMissiles } from './antiMissile';
 import { componentSlots } from './components';
 import { overheat, strike, type DamageContext } from './damage';
-import { missileRole, type Design, type MissileRole, type SectionKind } from './design';
+import {
+  missileRole,
+  SECTION_KINDS,
+  type Design,
+  type MissileRole,
+  type SectionKind,
+} from './design';
 import { involves, type BattleEvent, type HitEvent } from './events';
 import {
   manoeuvreCommand,
@@ -23,6 +29,7 @@ import {
 } from './observation';
 import {
   POINT_DEFENCE_PRIORITIES,
+  type AimPoint,
   type LaunchOrder,
   type Order,
   type PointDefencePriority,
@@ -30,11 +37,23 @@ import {
 import type { PointDefenceEngagement, Threat } from './pointDefence';
 import { POWER_SYSTEMS, settlePowerAndHeat } from './power';
 import { endedBy, judge, lossOf, noResult, type BattleOutcome } from './outcome';
-import { IDENTITY, type Quat } from './quaternion';
-import { createRandom } from './random';
+import { conjugate, IDENTITY, rotate, type Quat } from './quaternion';
+import { createRandom, type Random } from './random';
+import { perceive, sensorPower, type ContactDetail } from './sensors';
 import { burn, createShip, fireDrive, steer, type ShipState } from './ship';
 import { TIME_STEP } from './time';
-import { add, distance, length, normalize, scale, sub, type Vec3 } from './vector';
+import {
+  add,
+  cross,
+  distance,
+  length,
+  normalize,
+  scale,
+  sub,
+  vec3,
+  ZERO,
+  type Vec3,
+} from './vector';
 import {
   aimWeapons,
   designMissiles,
@@ -51,8 +70,10 @@ import {
 
 export { TIME_STEP };
 export type {
+  AimPoint,
   BattleEvent,
   BattleOutcome,
+  ContactDetail,
   MissileRole,
   MissileTarget,
   PointDefenceEngagement,
@@ -65,7 +86,10 @@ export type {
   BeamLanding,
   BeamWeaponObservation,
   ComponentObservation,
+  ContactAppearance,
+  ContactMountObservation,
   ContactObservation,
+  ContactSectionObservation,
   HeatObservation,
   ImpactLanding,
   KineticGunObservation,
@@ -227,16 +251,45 @@ const checkOrder = (order: Order): Order => {
         );
       }
       return order;
+    case 'weapons': {
+      const { aim } = order;
+      if (aim === undefined) return order;
+      const mount = aim.mount;
+      if (
+        !SECTION_KINDS.includes(aim.section) ||
+        (mount !== null && !(Number.isInteger(mount) && mount >= 0))
+      ) {
+        throw new Error('An aim point needs a section and a mount number or null');
+      }
+      return order;
+    }
     case 'anti-missile':
     case 'radiators':
     case 'shields':
-    case 'weapons':
       return order;
   }
 };
 
 /** How many recent events each side's observation keeps. */
 const EVENT_LOG_LENGTH = 20;
+/** Mixed into the battle's seed for the errors in fire control's tracks, kept apart from the rest. */
+const TRACKING_SEED = 0x9e3779b9;
+
+/** A draw from the standard normal distribution (Box–Muller). */
+const normal = (random: Random): number =>
+  Math.sqrt(-2 * Math.log(1 - random())) * Math.cos(2 * Math.PI * random());
+
+/** The middle of a part's box. */
+const centreOf = (part: { readonly min: Vec3; readonly max: Vec3 }): Vec3 =>
+  scale(add(part.min, part.max), 0.5);
+
+/** Where fire control aims at a target this step. */
+interface Aim {
+  /** In the target's body frame, m. */
+  readonly body: Vec3;
+  /** From the target's centre of mass, in world axes, m. */
+  readonly world: Vec3;
+}
 
 export const createBattle = (setup: BattleSetup): Battle => {
   if (setup.sides.length !== setup.scenario.starts.length) {
@@ -258,6 +311,9 @@ export const createBattle = (setup: BattleSetup): Battle => {
   });
   let steps = 0;
   const random = createRandom(setup.seed);
+  // Fire control's tracking errors draw on their own sequence, so they leave every other chance
+  // in the battle as it would be without them.
+  const tracking = createRandom((setup.seed ^ TRACKING_SEED) >>> 0);
   /** Beams on their way to their targets, in the order fired. */
   let beams: Beam[] = [];
   /** Slugs in flight, in the order fired. */
@@ -311,6 +367,38 @@ export const createBattle = (setup: BattleSetup): Battle => {
   const targetOf = (combatant: Combatant): Combatant | undefined => {
     const id = combatant.ship.weapons.target;
     return id === null ? undefined : combatants.find((c) => c.side.id === id);
+  };
+
+  /** The part of a target a ship's sensors make out to aim at, if they make it out now. */
+  const aimablePart = (ship: ShipState, target: ShipState, aim: AimPoint) =>
+    perceive(sensorPower(ship), target, distance(ship.position, target.position)).parts.find(
+      (part) => part.section === aim.section && part.mount === aim.mount,
+    );
+
+  /**
+   * Where fire control aims at its target this step: the middle of the part the captain aims at
+   * while the sensors make it out, or else the centre of mass, thrown off across the line of
+   * sight by the error in the sensors' track of the target (see `SensorDesign.trackingError`).
+   */
+  const aimAt = ({ ship }: Combatant, target: Combatant): Aim => {
+    const { aim } = ship.weapons;
+    const part = aim ? aimablePart(ship, target.ship, aim) : undefined;
+    const aimed = part ? centreOf(part) : ZERO;
+    const offset = sub(target.ship.position, ship.position);
+    const sight = normalize(offset);
+    const reference = Math.abs(sight.z) < 0.9 ? vec3(0, 0, 1) : vec3(1, 0, 0);
+    const across = normalize(cross(sight, reference));
+    const other = cross(sight, across);
+    const spread = sensorPower(ship).trackingError * length(offset);
+    const error = add(
+      scale(across, spread * normal(tracking)),
+      scale(other, spread * normal(tracking)),
+    );
+    const { orientation } = target.ship;
+    return {
+      body: add(aimed, rotate(conjugate(orientation), error)),
+      world: add(rotate(orientation, aimed), error),
+    };
   };
 
   /** Whether a missile's target is still in the battle: a ship, or a missile in flight. */
@@ -483,11 +571,17 @@ export const createBattle = (setup: BattleSetup): Battle => {
   const fire = (combatant: Combatant, seen: Snapshot, start: number): BattleEvent[] => {
     const { ship } = combatant;
     const target = targetOf(combatant);
+    const shooting =
+      ship.weapons.beamWeapons.some((w) => w.firing) ||
+      ship.weapons.kineticGuns.some((g) => g.firing);
+    const aim = target && shooting ? aimAt(combatant, target) : null;
     beams.push(
       ...emitBeams(
         ship,
         combatant.side.id,
-        target ? { id: target.side.id, position: target.ship.position } : null,
+        target && aim
+          ? { id: target.side.id, position: target.ship.position, aim: aim.body }
+          : null,
         start,
       ),
     );
@@ -496,7 +590,9 @@ export const createBattle = (setup: BattleSetup): Battle => {
       ...fireKineticGuns(
         ship,
         combatant.side.id,
-        target && motion ? { id: target.side.id, motion } : null,
+        target && motion && aim
+          ? { id: target.side.id, motion: { ...motion, position: add(motion.position, aim.world) } }
+          : null,
         TIME_STEP,
         nextMunitionId,
       ),
@@ -674,12 +770,21 @@ export const createBattle = (setup: BattleSetup): Battle => {
         case 'shields':
           ship.shieldsRaised = checked.raised;
           break;
-        case 'weapons':
-          if (checked.target !== null && combatantOf(checked.target).side.id === sideId) {
-            throw new Error('A ship cannot target itself');
+        case 'weapons': {
+          const target = checked.target === null ? null : combatantOf(checked.target);
+          if (target?.side.id === sideId) throw new Error('A ship cannot target itself');
+          const aim = checked.aim ?? null;
+          if (aim) {
+            if (!target) throw new Error('Aiming at a part needs a target');
+            if (!aimablePart(ship, target.ship, aim)) {
+              throw new Error(
+                `The sensors do not make out the ${aim.section} section${aim.mount === null ? '' : ` mount ${String(aim.mount)}`} of the target`,
+              );
+            }
           }
-          ship.weapons = { ...ship.weapons, target: checked.target, mode: checked.mode };
+          ship.weapons = { ...ship.weapons, target: checked.target, mode: checked.mode, aim };
           break;
+        }
         case 'point-defence':
           ship.weapons = { ...ship.weapons, pointDefencePriority: checked.priority };
           break;
@@ -703,7 +808,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
       return {
         time: steps * TIME_STEP,
         ownShip: observeOwnShip(own, contactOf(own), antiMissileEngagements(sideId, missiles)),
-        contacts: combatants.filter((c) => c !== own).map(observeContact),
+        contacts: combatants.filter((c) => c !== own).map((c) => observeContact(own.ship, c)),
         munitions: observeMunitions(slugs, missiles),
         events: [...(logs.get(sideId) ?? [])],
         outcome,

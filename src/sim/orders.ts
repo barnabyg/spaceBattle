@@ -1,4 +1,5 @@
 import type { SideId } from './battle';
+import type { SectionKind } from './design';
 import type { MissileTarget } from './missile';
 import type { PowerSystem } from './power';
 import type { Vec3 } from './vector';
@@ -67,15 +68,28 @@ export interface ShieldsOrder {
 /** Fire at the target whenever the weapons can, or hold fire. */
 export type FireMode = 'fire-freely' | 'hold-fire';
 
+/** A part of the target to aim at: one of its sections, or a mount on that section. */
+export interface AimPoint {
+  readonly section: SectionKind;
+  /** The mount's place in the section's mounts, or null for the section itself. */
+  readonly mount: number | null;
+}
+
 /**
  * Choose the contact the weapons aim at (a side, or null for none) and whether they fire at it.
  * Firing freely, each laser fires while the target is within its effective range, drawing power
  * under the 'weapons' priority. Every ship starts with no target, holding fire.
+ *
+ * The weapons aim at the whole ship, its centre of mass, unless `aim` names a part of it: a
+ * section once the sensors make it out, then a mount (see `ContactObservation`). Aiming at a part
+ * not made out is refused; if a part aimed at drops out of view again, the weapons aim at the
+ * whole ship until it is made out once more.
  */
 export interface WeaponsOrder {
   readonly type: 'weapons';
   readonly target: SideId | null;
   readonly mode: FireMode;
+  readonly aim?: AimPoint;
 }
 
 /**

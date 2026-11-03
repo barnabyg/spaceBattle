@@ -17,7 +17,7 @@ export const withComputerCaptains = (battle: Battle): Battle => {
   if (commanded.has(battle)) return battle;
   const captains = battle.sides
     .filter((side) => side.commander === 'computer')
-    .map((side) => createComputerCaptain(side.id, battle.sides));
+    .map((side) => createComputerCaptain(side));
   let nextDecision = 0;
 
   const step = (): readonly BattleEvent[] => {

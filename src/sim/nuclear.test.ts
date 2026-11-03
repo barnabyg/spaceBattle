@@ -141,7 +141,7 @@ describe('nuclear warheads', () => {
     const lost = events.flatMap((e) =>
       e.type === 'component-lost' && e.side === 'red' ? [e.component] : [],
     );
-    expect(lost.sort()).toEqual(['laser', 'radiator']);
+    expect(lost.sort()).toEqual(['laser', 'radiator', 'sensor']);
     for (const section of sections) {
       for (const mount of section.mounts) expect(mount.integrity).toBe(0);
       for (const component of section.components) expect(component.integrity).toBe(1);
