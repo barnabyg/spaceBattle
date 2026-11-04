@@ -32,7 +32,7 @@ it('flashes only new damage, retains a damage outline, and clears when detail is
   const damage = {
     section: 'forward' as const,
     mount: null,
-    severity: 0.2,
+    wear: 0.2,
     destroyed: false,
     point: vec3(5, 0, 0),
     size: vec3(10, 4, 4),
@@ -46,9 +46,14 @@ it('flashes only new damage, retains a damage outline, and clears when detail is
   effects.update([], [damage], 2, [part]);
   expect(flash?.visible).toBe(false);
   expect(scar?.visible).toBe(true);
-  effects.update([], [], 3, []);
+  effects.update([], [{ ...damage, wear: 1 }], 3, [part]);
+  effects.update([], [{ ...damage, wear: 1 }], 4, [part]);
+  expect(flash?.visible).toBe(false);
+  effects.update([], [{ ...damage, wear: 1.1 }], 5, [part]);
+  expect(flash?.visible).toBe(true);
+  effects.update([], [], 6, []);
   expect(scar?.visible).toBe(false);
-  effects.update([], [damage], 4, [part]);
+  effects.update([], [damage], 7, [part]);
   expect(flash?.visible).toBe(false);
   effects.dispose();
 });

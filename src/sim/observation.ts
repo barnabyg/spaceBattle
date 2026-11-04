@@ -365,7 +365,7 @@ export interface SurfaceDamage {
   readonly section: SectionKind;
   readonly mount: number | null;
   /** Fraction of exterior integrity lost (0–1), never internal component state. */
-  readonly severity: number;
+  readonly wear: number;
   readonly destroyed: boolean;
   readonly point: Vec3;
   /** Size of the affected part, m. */
@@ -907,16 +907,14 @@ const observeSurfaceDamage = (ship: ShipState): SurfaceDamage[] => {
       (s) => s.mounted && s.section === part.section && s.index === part.mount,
     );
     const integrity = part.mount === null ? section.structure : (ship.integrity[slot] ?? 0);
-    const severity = Math.max(
-      1 - integrity,
-      part.mount === null && designed > 0 ? 1 - section.armour / designed : 0,
-    );
-    if (severity <= 0) return [];
+    const wear =
+      1 - integrity + (part.mount === null && designed > 0 ? 1 - section.armour / designed : 0);
+    if (wear <= 0) return [];
     return [
       {
         section: part.section,
         mount: part.mount,
-        severity,
+        wear,
         destroyed: integrity <= 0 || section.structure <= 0,
         point: {
           x: (part.min.x + part.max.x) / 2,

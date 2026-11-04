@@ -89,12 +89,12 @@ export const createShipEffects = () => {
           scars.set(key, scar);
         }
         const before = previous.get(key);
-        if (before !== undefined && hit.severity > before + 1e-12) scar.until = time + 0.5;
-        current.set(key, hit.severity);
+        if (before !== undefined && hit.wear > before + 1e-12) scar.until = time + 0.5;
+        current.set(key, hit.wear);
         scar.outline.visible = !hit.destroyed;
         scar.outline.position.set(hit.point.x, hit.point.y, hit.point.z);
         scar.outline.scale.set(hit.size.x * 1.015, hit.size.y * 1.015, hit.size.z * 1.015);
-        scar.outline.material.opacity = Math.max(0.4, hit.severity);
+        scar.outline.material.opacity = Math.min(1, Math.max(0.4, hit.wear));
         scar.flash.position.copy(scar.outline.position);
         scar.flash.scale.setScalar(
           Math.max(10, Math.min(24, Math.max(hit.size.y, hit.size.z) * 2)),

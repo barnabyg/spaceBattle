@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createBattle, type Battle } from './battle';
 import { fromAxisAngle } from './quaternion';
 import { shipShape } from './shape';
+import { fullCondition } from './ship';
 import {
   armedTestDesign,
   duelSetup,
@@ -12,6 +13,7 @@ import {
   testDesign,
   testSetup,
   withForwardWeapon,
+  withSection,
 } from './testing';
 import { vec3 } from './vector';
 
@@ -24,6 +26,36 @@ const contactOf = (battle: Battle, viewer: string) => {
 };
 
 describe('ship appearance', () => {
+  it('continues observing new structural damage after armour is exhausted', () => {
+    const design = withSection(armedTestDesign(), 'forward', {
+      armour: { type: 'heavy', thickness: 0.01 },
+    });
+    const setup = duelSetup(armedTestDesign(), design, 1e6);
+    const condition = fullCondition(design);
+    const battle = createBattle({
+      ...setup,
+      sides: setup.sides.map((side) =>
+        side.id === 'red'
+          ? {
+              ...side,
+              condition: {
+                ...condition,
+                sections: { ...condition.sections, forward: { armour: 0, structure: 0.9 } },
+              },
+            }
+          : side,
+      ),
+    });
+    const before = battle
+      .observe('red')
+      .ownShip.appearance.damage?.find((d) => d.section === 'forward' && d.mount === null);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.advance(1);
+    const after = battle
+      .observe('red')
+      .ownShip.appearance.damage?.find((d) => d.section === 'forward' && d.mount === null);
+    expect(after?.wear).toBeGreaterThan(before?.wear ?? Infinity);
+  });
   it('observes persistent surface damage only after damage, without exposing unresolved parts', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), armedTestDesign(), 1e6));
     expect(battle.observe('red').ownShip.appearance.damage).toEqual([]);
@@ -33,7 +65,7 @@ describe('ship appearance', () => {
     expect(damage).toEqual(
       expect.arrayContaining([expect.objectContaining({ section: 'forward' })]),
     );
-    expect(damage?.some((d) => d.severity > 0)).toBe(true);
+    expect(damage?.some((d) => d.wear > 0)).toBe(true);
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
     battle.advance(1);
     expect(battle.observe('red').ownShip.appearance.damage).toEqual(damage);
