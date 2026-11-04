@@ -43,7 +43,7 @@ describe('lasers', () => {
     const fire = (range: number) => {
       const battle = createBattle(duelSetup(armedTestDesign(), armouredTarget(), range));
       fireAtRed(battle);
-      battle.advance(10);
+      battle.advance(10.5); // Let the complete fifth burst arrive at both ranges.
       const hit = own(battle, 'blue').weapons.lastHit;
       const armour = section(own(battle, 'red'), 'forward').armour;
       return { hit, worn: armour.thickness - armour.remaining };
@@ -58,7 +58,7 @@ describe('lasers', () => {
       const radius = (1.22 * TEST_LASER.wavelength * range) / TEST_LASER.aperture;
       expect(hit?.range).toBeCloseTo(range, -3);
       expect(hit?.spotRadius).toBeCloseTo(radius, 6);
-      expect(hit?.intensity).toBeCloseTo(TEST_LASER.beamPower / (Math.PI * radius ** 2), -2);
+      expect(hit?.intensity).toBeCloseTo((2 * TEST_LASER.beamPower) / (Math.PI * radius ** 2), -2);
     }
     expect((near.hit?.intensity ?? 0) / (far.hit?.intensity ?? 1)).toBeCloseTo(4, 6);
     // Damage per area follows: the nearer beam burns four times as deep in the same time.
@@ -71,8 +71,8 @@ describe('lasers', () => {
     fireAtRed(battle);
     let hit: BattleEvent | undefined;
     while (!hit) hit = hitsOn(battle.step(), 'red')[0];
-    expect(battle.time).toBeGreaterThanOrEqual(range / SPEED_OF_LIGHT);
-    expect(battle.time).toBeLessThan(range / SPEED_OF_LIGHT + 0.1 + 1e-9);
+    expect(battle.time).toBeGreaterThanOrEqual(1 + range / SPEED_OF_LIGHT);
+    expect(battle.time).toBeLessThan(1 + range / SPEED_OF_LIGHT + 0.1 + 1e-9);
   });
 
   it('holds fire beyond its effective range, or when ordered to', () => {
@@ -100,7 +100,7 @@ describe('lasers', () => {
       TEST_LASER.beamPower / TEST_LASER.efficiency,
       -3,
     );
-    expect(blue.weapons.lasers[0]?.beamPower).toBeCloseTo(TEST_LASER.beamPower, -3);
+    expect(blue.weapons.lasers[0]?.beamPower).toBeCloseTo(2 * TEST_LASER.beamPower, -3);
     expect(beamEmitted).toBeCloseTo(delivered.weapons * TEST_LASER.efficiency, -3);
     // What landed on red is at most what blue sent out.
     const red = own(battle, 'red');
@@ -117,8 +117,8 @@ describe('lasers', () => {
     }
     const blue = own(battle, 'blue');
     const beam = blue.weapons.lasers[0]?.beamPower ?? 0;
-    expect(beam).toBeLessThan(TEST_LASER.beamPower * 0.6);
-    expect(beam).toBeGreaterThan(TEST_LASER.beamPower * 0.3);
+    expect(beam).toBeLessThan(2 * TEST_LASER.beamPower * 0.6);
+    expect(beam).toBeGreaterThan(2 * TEST_LASER.beamPower * 0.3);
   });
 
   it('takes weapons orders while the battle is not advancing, but not at its own ship', () => {

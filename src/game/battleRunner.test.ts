@@ -130,7 +130,7 @@ describe('battle runner', () => {
     expect(events.map((e) => e.type)).toEqual(['hit']);
     expect(r.timeCompression).toBe(1);
     // The rest of the update's compressed time is not run.
-    expect(r.battle.time).toBeLessThan(1);
+    expect(r.battle.time).toBeLessThan(2); // One second charging, then light travel time.
   });
 
   it('drops to real time when a slug hits', () => {

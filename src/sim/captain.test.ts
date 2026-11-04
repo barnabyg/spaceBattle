@@ -155,8 +155,8 @@ describe('computer captain', () => {
     expect(red.power.priorities[0]).toBe('drive');
     expect(red.heat.radiatorsDeployed).toBe(false);
 
-    while (!red.weapons.lasers.some((laser) => laser.firing)) {
-      if (battle.time > 12 * HOUR) throw new Error('Red never fired');
+    while (red.energyLedger.beamEmitted === 0) {
+      if (battle.outcome || battle.time > 12 * HOUR) throw new Error('Red never fired');
       battle.advance(60);
       red = battle.observe('red').ownShip;
     }

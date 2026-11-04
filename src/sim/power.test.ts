@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
 import { createBattle, type Battle, type OwnShipObservation } from './battle';
-import { designComponent, type Design } from './design';
+import { designComponent, designComponentsOfType, type Design } from './design';
 import { OVERHEAT_TEMPERATURE, BASE_TEMPERATURE } from './heat';
 import type { PowerSystem } from './power';
 import {
@@ -12,7 +12,6 @@ import {
   testSetup,
   testSides,
   withComponent,
-  withSection,
 } from './testing';
 
 const MINUTE = 60;
@@ -45,6 +44,9 @@ const ledgerChecker = (battle: Battle, design: Design, side = 'blue') => {
     const { delivered, ...ledger } = now.energyLedger;
     const stored = [now.power.stored, -start.power.stored];
     const heat = [now.heat.heat, -start.heat.heat];
+    const laserStorage =
+      now.weapons.lasers.reduce((sum, laser) => sum + laser.storedEnergy, 0) -
+      start.weapons.lasers.reduce((sum, laser) => sum + laser.storedEnergy, 0);
     // Electrical energy: what the reactor made is now stored, was lost with damaged capacitors,
     // or was delivered to a system.
     expectBalanced(
@@ -71,6 +73,7 @@ const ledgerChecker = (battle: Battle, design: Design, side = 'blue') => {
         -ledger.driveExhaust,
         delivered.shields,
         delivered.weapons,
+        -laserStorage,
         -ledger.beamEmitted,
         -ledger.slugEnergy,
       ],
@@ -105,8 +108,20 @@ describe('power and heat', () => {
   });
 
   it('keeps the books while lasers fire and damaged capacitors lose their charge', () => {
-    // A laser at the back survives while the beams work through the nose to the capacitor.
-    const design = withSection(testDesign(), 'engine', { mounts: [TEST_LASER, TEST_SENSOR] });
+    // Put the charged capacitor directly behind the nose, with lasers safely at the back.
+    const base = testDesign();
+    const capacitors = designComponentsOfType(base, 'capacitor');
+    const design = {
+      ...base,
+      sections: base.sections.map((section) => ({
+        ...section,
+        components:
+          section.kind === 'forward'
+            ? capacitors
+            : section.components.filter((component) => component.type !== 'capacitor'),
+        mounts: section.kind === 'engine' ? [TEST_LASER, TEST_SENSOR] : section.mounts,
+      })),
+    };
     const battle = createBattle(duelSetup(design, design, 20_000e3));
     const checks = (['blue', 'red'] as const).map((side) => {
       battle.giveOrder(side, {
@@ -114,7 +129,6 @@ describe('power and heat', () => {
         target: side === 'blue' ? 'red' : 'blue',
         mode: 'fire-freely',
       });
-      battle.giveOrder(side, { type: 'burn', throttle: 1, duration: MINUTE });
       battle.giveOrder(side, { type: 'radiators', deployed: true });
       return ledgerChecker(battle, design, side);
     });

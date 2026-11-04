@@ -46,7 +46,7 @@ describe('ship appearance', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), testDesign(), 30_000 * KM));
     expect(contactOf(battle, 'blue').appearance.beamsLanding).toEqual([]);
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
-    battle.advance(5);
+    battle.advance(5.5); // Observe during a burst, after its light has reached red.
     const red = contactOf(battle, 'blue').appearance;
     // Red faces blue nose-on, so the beam lands on the middle of its nose, give or take blue's
     // tracking error of a few millimetres.

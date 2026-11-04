@@ -159,7 +159,8 @@ describe('the sound cues derive from battle events for the player ship only', ()
     expect(red.at(-1)?.beams).toBe(0);
     expect(hits(blue)).toEqual([]);
     expect(blue.every((f) => f.beamsLanding === 0)).toBe(true);
-    expect(hits(red).map((h) => h.kind)).toEqual(['beam']);
+    expect(hits(red).map((h) => h.kind)).toEqual(Array.from({ length: 5 }, () => 'beam'));
+    expect(blue.some((frame) => frame.beams === 0)).toBe(true);
     expect(red.at(-1)?.beamsLanding).toBeGreaterThan(0);
   });
 

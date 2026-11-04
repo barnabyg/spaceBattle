@@ -3,6 +3,7 @@ import { designComponent, designComponentsOfType, type Design } from './design';
 import { BASE_TEMPERATURE, radiatedPower, thermalProperties, workingRadiators } from './heat';
 import { NO_COOLANT_LOAD, shieldDemand } from './shields';
 import type { ShipState } from './ship';
+import { laserStoredEnergy, settleBeamWeapons } from './weapons';
 
 /**
  * What the captain ranks in a power order. 'capacitors' is the priority of charging them; it
@@ -57,8 +58,8 @@ export interface EnergyLedger {
   /** The part of the drive's energy carried off in its exhaust; the rest became heat. */
   readonly driveExhaust: number;
   /**
-   * The part of the weapons' energy that left the ship in beams, laser and particle; the rest
-   * became heat.
+   * Energy actually emitted in laser and particle beams. Subtract the change in laser local
+   * storage as well when balancing delivered weapons energy against waste heat.
    */
   readonly beamEmitted: number;
   /**
@@ -208,9 +209,10 @@ export const powerFlowOf = (
 /**
  * Settles the step's power and heat once the drive has fired: shares out power, moves energy in
  * and out of the capacitors, adds the waste heat and radiates heat away at the ship's
- * temperature, keeping the ledger. The weapons draw what they asked for this step, send the
- * fraction `ship.weapons.beamFraction` of it out in their beams and put the fraction
- * `ship.weapons.slugFraction` into slugs.
+ * temperature, keeping the ledger. Lasers store energy or discharge their local buffers,
+ * particle beams emit immediately, and
+ * the fraction `ship.weapons.slugFraction` goes into slugs. Only energy actually emitted is
+ * counted as beamEmitted; energy still in laser buffers has not become heat.
  */
 export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
   const drive = designComponent(ship.design, 'drive');
@@ -236,15 +238,19 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
   ship.storedEnergy = Math.min(plant.storageCapacity, unclamped);
   const lost = unclamped - ship.storedEnergy;
 
-  // A reactor of efficiency η gives off (1 − η)/η of its electrical output as heat. Beam weapons
-  // send their efficiency's share out in the beam and kinetic guns into the slug, and the rest is
-  // heat; shields turn all their power into heat, in their coils and pumps.
+  // A reactor of efficiency η gives off (1 − η)/η of its electrical output as heat. Lasers
+  // release their conversion losses on discharge. Storage lost with damaged laser buffers
+  // becomes heat. Shields turn all their power into heat, in their coils and pumps.
   const reactorHeat =
     (flow.reactorOutput * (1 - plant.reactorEfficiency)) / plant.reactorEfficiency;
   const driveHeat = driveShare.supplied * drive.wasteHeatFraction;
-  const beam = weapons.supplied * ship.weapons.beamFraction;
+  const previousLaserEnergy = laserStoredEnergy(ship);
+  settleBeamWeapons(ship, dt);
+  const laserStorage = (laserStoredEnergy(ship) - previousLaserEnergy) / dt;
+  const beam = ship.weapons.beamWeapons.reduce((sum, state) => sum + state.beamPower, 0);
   const slug = weapons.supplied * ship.weapons.slugFraction;
-  const generated = reactorHeat + driveHeat + shields.supplied + weapons.supplied - beam - slug;
+  const generated =
+    reactorHeat + driveHeat + shields.supplied + weapons.supplied - beam - slug - laserStorage;
   const { emittance } = workingRadiators(ship.design, ship.integrity, ship.radiatorsDeployed);
   // The coolant loop bypasses the radiators rather than chill the ship below its base temperature.
   const surplus = ship.heat - thermal.heatCapacity * BASE_TEMPERATURE;

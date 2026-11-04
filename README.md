@@ -49,6 +49,29 @@ safety limits.
 
 ## Playing
 
+With **Fire freely** and a target in range, lasers charge from allocated weapons power, then
+fire short bursts. At full supply they alternate one second charging and one second firing at
+twice their listed average beam power; charging continues during the burst. Individual weapon
+statuses show **Charging**, **Firing** and **Charge %**. Low power slows charging; heat and damage
+limit output. **Hold fire**, no target or leaving range interrupts emission and retains at most
+one local buffer of charge. Changing targets uses that same bounded charge. Particle beams
+remain continuous. See the [laser balance notes](docs/research/charged-lasers.md).
+
+To check the cycle manually, run the following from the repository root (the directory containing
+`package.json`) using PowerShell 7:
+
+```powershell
+npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev -- --port 5277 --strictPort }
+```
+
+Open [the game](http://localhost:5277) in Firefox. Start a free battle with Blue's Lance controlled
+by the player and Red's Bastion controlled by the computer. Target the enemy, select **Fire freely**
+and **Close**. Use time compression until the laser is in range, then choose **1×**. Watch charge
+rise and the one-second beam and firing sound alternate with charging. Select **Hold fire**:
+emission stops on the next simulation step and charge stays fixed. Select **Fire freely** again:
+charging resumes, followed by bounded bursts. The instrument view's impact glow follows arrival
+at the target, so it is delayed by light travel time. Pause to inspect either phase.
+
 On Windows, double-click `run.bat` in the repository root. It installs the dependencies on first run, then starts the game in Firefox; close its window to stop the game. From a terminal, `npm run dev` does the same once dependencies are installed.
 
 The game opens on the main menu. Choose **Free battle**, pick a **Scenario** for where the ships start (an opening pass, head-on, crossing or pursuit, each a few hundred thousand km apart in empty deep space), a hand-made design for Blue and Red and whether the player or the computer commands each side, and for a computer side its **Captain skill**, then **Start battle**. When the battle ends, the result screen leads back to setup with the same choices.

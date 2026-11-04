@@ -6,6 +6,11 @@ export type BeamWeaponDesign = LaserDesign | ParticleBeamDesign;
 
 /** m/s */
 export const SPEED_OF_LIGHT = 299_792_458;
+/** At rated input, a laser stores one second of electrical energy before a one-second burst. */
+export const LASER_CHARGE_TIME = 1;
+export const LASER_BURST_TIME = 1;
+/** Charging continues during discharge: twice rated output for half the cycle preserves average power. */
+export const LASER_BURST_POWER = 2;
 /**
  * Beam weapons hold fire beyond the range where their beam's intensity falls below this, W/m²:
  * about a thousand suns, which takes most of an hour to burn through a few centimetres of armour.
@@ -53,7 +58,7 @@ export const beamEfficiency = (weapon: BeamWeaponDesign): number =>
     ? weapon.efficiency * NEUTRAL_FRACTION
     : weapon.efficiency;
 
-/** Electrical power a beam weapon draws at full integrity while firing, W. */
+/** Rated electrical input at full integrity, W; lasers draw this while charging and bursting. */
 export const beamWeaponPower = (weapon: BeamWeaponDesign): number =>
   weapon.beamPower / beamEfficiency(weapon);
 
@@ -122,7 +127,7 @@ export const spotRadius = (weapon: BeamWeaponDesign, range: number): number => {
   }
 };
 
-/** The range out to which the beam weapon at full power keeps the useful intensity, m. */
+/** Effective range at rated power (a laser's sustained average), m; bursts do not extend it. */
 export const effectiveRange = (weapon: BeamWeaponDesign): number => {
   const radius = Math.sqrt(weapon.beamPower / (Math.PI * USEFUL_INTENSITY));
   const r0 = weapon.aperture / 2;

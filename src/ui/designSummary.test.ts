@@ -11,7 +11,7 @@ describe('design summary', () => {
     expect(lance.get('Hull size')).toBe('Frigate');
     expect(lance.get('Mass')).toMatch(/^[\d,.]+ t$/);
     expect(lance.get('Delta-v')).toMatch(/^[\d,.]+ km\/s$/);
-    expect(lance.get('Lasers')).toMatch(/^1 · 500 MW beam · reach [\d,]+ km$/);
+    expect(lance.get('Lasers')).toMatch(/^1 · 500 MW average · 2× burst · reach [\d,]+ km$/);
     expect(lance.get('Forward armour')).toBe('50 mm ablative');
   });
 

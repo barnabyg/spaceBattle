@@ -153,10 +153,10 @@ describe('coolant shields', () => {
     const { capacity } = TEST_COOLANT_SHIELD;
     // The whole beam lands on the nose; the coolant carries off its capacity of it.
     const hit = firstHit(shielded.hits);
-    expect(hit.power).toBeCloseTo(TEST_LASER.beamPower, -3);
+    expect(hit.power).toBeCloseTo(2 * TEST_LASER.beamPower, -3);
     expect(hit.absorbed).toBeCloseTo(capacity, -3);
     expect(hit.deflected).toBe(0);
-    const left = (TEST_LASER.beamPower - capacity) / TEST_LASER.beamPower;
+    const left = (2 * TEST_LASER.beamPower - capacity) / (2 * TEST_LASER.beamPower);
     expect(shielded.worn / bare.worn).toBeCloseTo(left, 3);
     expect(shielded.red.shields.coolantCapacity.forward).toBeCloseTo(capacity, -3);
     expect(shielded.red.heat.absorbed).toBeCloseTo(capacity, -3);
@@ -164,7 +164,7 @@ describe('coolant shields', () => {
     // The ship's heat rises by what the coolant carried in, and the books still balance.
     const ledger = shielded.red.energyLedger;
     expect(ledger.heatAbsorbed).toBeCloseTo(
-      capacity * (bare.red.energyLedger.hitEnergy / TEST_LASER.beamPower),
+      capacity * (bare.red.energyLedger.hitEnergy / (2 * TEST_LASER.beamPower)),
       -3,
     );
     expect(ledger.heatAbsorbed + ledger.hitEnergy).toBeCloseTo(bare.red.energyLedger.hitEnergy, -3);

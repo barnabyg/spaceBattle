@@ -4,6 +4,9 @@ import {
   beamKindOf,
   beamWeaponPower,
   effectiveRange,
+  LASER_CHARGE_TIME,
+  LASER_BURST_TIME,
+  LASER_BURST_POWER,
   SPEED_OF_LIGHT,
   type BeamWeaponDesign,
 } from './beams';
@@ -102,6 +105,10 @@ export const workingReach = (ship: ShipState): number => {
 
 /** One beam weapon's state: a laser's or a particle beam's. */
 export interface BeamWeaponState {
+  /** Electrical energy in this laser's local buffer, J; zero for particle beams. */
+  readonly charge: number;
+  /** Seconds left in a laser burst; zero while charging. */
+  readonly burstRemaining: number;
   /** Its place in the ship's component slots. */
   readonly slot: number;
   readonly weapon: BeamWeaponDesign;
@@ -185,8 +192,6 @@ export interface WeaponsState {
   readonly automaticDefence: boolean;
   /** Electrical power the weapons ask for this step, W. */
   readonly demand: number;
-  /** The fraction of the power the weapons draw that leaves in beams. */
-  readonly beamFraction: number;
   /**
    * The fraction of the power the weapons draw that kinetic guns and point defence put into their
    * slugs and rounds.
@@ -322,6 +327,8 @@ export const initialWeapons = (design: Design): WeaponsState => ({
             firing: false,
             demand: 0,
             beamPower: 0,
+            charge: 0,
+            burstRemaining: 0,
             firedAt: null,
             striking: null,
           },
@@ -346,7 +353,6 @@ export const initialWeapons = (design: Design): WeaponsState => ({
   salvo: null,
   automaticDefence: true,
   demand: 0,
-  beamFraction: 0,
   slugFraction: 0,
   lastHit: null,
 });
@@ -398,15 +404,23 @@ export const aimWeapons = (
   const { weapons } = ship;
   const limit = thermalLimit(ship.heat / thermalProperties(ship.design).heatCapacity);
   let demand = 0;
-  let beam = 0;
   let slug = 0;
   const beamWeapons = weapons.beamWeapons.map((state) => {
     const integrity = ship.integrity[state.slot] ?? 0;
     const firing =
       weaponFireBlocker(ship, state.slot, range, effectiveRange(state.weapon)) === null;
-    const wanted = firing ? beamWeaponPower(state.weapon) * integrity * limit : 0;
+    const input = beamWeaponPower(state.weapon);
+    const capacity = input * LASER_CHARGE_TIME * integrity;
+    const bursting = state.burstRemaining > 1e-9 || state.charge >= capacity * (1 - 1e-9);
+    const wanted = firing
+      ? Math.min(
+          input * integrity * limit,
+          state.weapon.type === 'laser' && !bursting
+            ? Math.max(0, capacity - state.charge) / TIME_STEP
+            : Infinity,
+        )
+      : 0;
     demand += wanted;
-    beam += wanted * beamEfficiency(state.weapon);
     return { ...state, firing, demand: wanted };
   });
   const loaded = slugsLeft(ship) > 0;
@@ -451,9 +465,72 @@ export const aimWeapons = (
     kineticGuns,
     pointDefence,
     demand,
-    beamFraction: demand > 0 ? beam / demand : 0,
     slugFraction: demand > 0 ? slug / demand : 0,
   };
+};
+
+/** Electrical energy held in the lasers' local buffers, separate from the ship's capacitors. */
+export const laserStoredEnergy = (ship: ShipState): number =>
+  ship.weapons.beamWeapons.reduce((sum, state) => sum + state.charge, 0);
+
+/** Charge shown to the captain; damage reduces the local buffer's capacity. */
+export const laserChargeFraction = (ship: ShipState, state: BeamWeaponState): number => {
+  const capacity =
+    beamWeaponPower(state.weapon) * LASER_CHARGE_TIME * (ship.integrity[state.slot] ?? 0);
+  return capacity > 0 ? Math.min(1, state.charge / capacity) : 0;
+};
+
+/**
+ * Settles beam output and local laser storage after power allocation, before heat accounting.
+ * A laser starts empty, charges at rated input, then emits at up to twice rated power for one
+ * second while still drawing rated input. With full supply it alternates one second charging
+ * and one second firing: the old average output, with at most two seconds' rated beam energy
+ * in a burst. Low supply extends charging and can shorten the useful part of a burst.
+ * Hold fire, loss of range or thermal cutoff interrupts the burst, retaining at most one
+ * buffer's energy. Damage reduces capacity; displaced energy becomes heat in settlePowerAndHeat.
+ */
+export const settleBeamWeapons = (ship: ShipState, dt: number): void => {
+  const share = weaponsShare(ship);
+  const limit = thermalLimit(ship.heat / thermalProperties(ship.design).heatCapacity);
+  const beamWeapons = ship.weapons.beamWeapons.map((state) => {
+    if (state.weapon.type !== 'laser') {
+      return {
+        ...state,
+        beamPower: state.firing ? state.demand * share * beamEfficiency(state.weapon) : 0,
+      };
+    }
+    const integrity = ship.integrity[state.slot] ?? 0;
+    const capacity = beamWeaponPower(state.weapon) * LASER_CHARGE_TIME * integrity;
+    const stored = Math.min(state.charge, capacity);
+    const active = state.firing && limit > 0 && integrity > 0;
+    const remaining = !active
+      ? 0
+      : state.burstRemaining > 1e-9
+        ? state.burstRemaining
+        : stored >= capacity * (1 - 1e-9)
+          ? LASER_BURST_TIME
+          : 0;
+    const available = stored + state.demand * share * dt;
+    const discharge =
+      remaining > 0
+        ? Math.min(
+            available / dt,
+            LASER_BURST_POWER *
+              beamWeaponPower(state.weapon) *
+              integrity *
+              limit *
+              Math.min(1, remaining / dt),
+          )
+        : 0;
+    return {
+      ...state,
+      charge: Math.min(capacity, Math.max(0, available - discharge * dt)),
+      burstRemaining: Math.max(0, remaining - dt),
+      beamPower: discharge * state.weapon.efficiency,
+      firing: discharge > 0,
+    };
+  });
+  ship.weapons = { ...ship.weapons, beamWeapons };
 };
 
 /** The share of what the weapons asked for that they were given this step. */
@@ -461,9 +538,8 @@ const weaponsShare = (ship: ShipState): number =>
   ship.weapons.demand > 0 ? ship.powerFlow.systems.weapons.supplied / ship.weapons.demand : 0;
 
 /**
- * Sends out this step's beams once power is settled: each firing beam weapon gets its share of
- * the power the weapons were given, and puts its efficiency's part of that into its beam (for a
- * neutral particle beam, only what survives the stripping). The beam reaches the target R/c
+ * Sends out this step's beams using the output settled with power and local laser storage.
+ * The beam reaches the target R/c
  * later; fire control leads the target by its known motion, aiming its line of fire through
  * `aim` in the target's body frame.
  */
@@ -474,10 +550,9 @@ export const emitBeams = (
   time: number,
 ): Beam[] => {
   const { weapons } = ship;
-  const share = weaponsShare(ship);
   const beams: Beam[] = [];
   const beamWeapons = weapons.beamWeapons.map((state, i) => {
-    const power = state.firing ? state.demand * share * beamEfficiency(state.weapon) : 0;
+    const power = state.beamPower;
     if (!(power > 0) || !target) return { ...state, beamPower: 0, firedAt: null };
     const dx = target.position.x - ship.position.x;
     const dy = target.position.y - ship.position.y;

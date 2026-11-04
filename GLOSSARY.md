@@ -140,7 +140,7 @@ _Avoid_: Blip, track, target
 Any component that damages or destroys an enemy ship or munition.
 
 **Laser**:
-A weapon firing light at light speed, powered by the ship; its beam spreads with distance, so it weakens with range.
+A weapon powered by the ship that fires short bursts of light after charging; its light travels at light speed and its beam spreads with distance, so it weakens with range.
 
 **Charged particle beam**:
 A weapon firing a beam of charged particles at near light speed; it does heavy damage but spreads quickly, so it is short-ranged, and magnetic shields can bend it away.
