@@ -2,7 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { createBattle, type Battle } from './battle';
 import { fromAxisAngle } from './quaternion';
 import { shipShape } from './shape';
-import { armedTestDesign, duelSetup, testDesign, testSetup } from './testing';
+import {
+  armedTestDesign,
+  duelSetup,
+  gunnedTestDesign,
+  launchingTestDesign,
+  TEST_CHARGED_BEAM,
+  TEST_NEUTRAL_BEAM,
+  testDesign,
+  testSetup,
+  withForwardWeapon,
+} from './testing';
 import { vec3 } from './vector';
 
 const KM = 1000;
@@ -14,6 +24,57 @@ const contactOf = (battle: Battle, viewer: string) => {
 };
 
 describe('ship appearance', () => {
+  it.each([
+    ['laser', armedTestDesign()],
+    ['charged-particle-beam', withForwardWeapon(TEST_CHARGED_BEAM)],
+    ['neutral-particle-beam', withForwardWeapon(TEST_NEUTRAL_BEAM)],
+  ] as const)(
+    'observes an actual %s discharge and hides unresolved enemy sources',
+    (kind, design) => {
+      const battle = createBattle(duelSetup(design, testDesign(), 1e6));
+      battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+      battle.step();
+      const own = battle.observe('blue').ownShip.appearance.firing;
+      expect(own).toEqual([expect.objectContaining({ section: 'forward', mount: 0, kind })]);
+      expect(contactOf(battle, 'red').appearance.firing).toEqual(own);
+      battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
+      battle.step();
+      expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+      const far = createBattle(duelSetup(design, testDesign(), 1e10));
+      far.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+      far.step();
+      expect(contactOf(far, 'red').appearance.firing).toEqual([]);
+    },
+  );
+
+  it('shows a launcher cue for an actual launch and clears it during reloading', () => {
+    const battle = createBattle(duelSetup(launchingTestDesign(2), testDesign(), 1e6));
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    battle.step();
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([
+      expect.objectContaining({ section: 'forward', mount: 0, kind: 'launcher' }),
+    ]);
+    battle.step();
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+  });
+  it('shows source cues only for actual discharges, at their firing mount', () => {
+    const battle = createBattle(duelSetup(gunnedTestDesign(10), testDesign(), 1e6));
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.step();
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+    let fired = false;
+    for (let i = 0; i < 30 && !fired; i++) {
+      battle.step();
+      fired = (battle.observe('blue').ownShip.appearance.firing?.length ?? 0) > 0;
+    }
+    expect(fired).toBe(true);
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([
+      expect.objectContaining({ section: 'forward', mount: 0, kind: 'kinetic-gun' }),
+    ]);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
+    battle.step();
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+  });
   it('shows each side how the other ship looks: radiators, temperature, thrust and shape', () => {
     // Close enough for blue's sensor to make out every part of red.
     const battle = createBattle({

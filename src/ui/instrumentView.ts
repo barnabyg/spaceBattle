@@ -14,6 +14,7 @@ import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vec
 import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
+import { createShipEffects } from './shipEffects';
 import {
   contactModelExtent,
   createContactModel,
@@ -135,6 +136,7 @@ const createSky = () => {
 
 /** One ship as the view draws it, alone on its own layer at the origin. */
 interface ShipView {
+  readonly effects: ReturnType<typeof createShipEffects>;
   readonly side: SideSetup;
   readonly colour: string;
   readonly layer: number;
@@ -166,6 +168,7 @@ const createShipView = (
 ): ShipView => {
   const anchor = new THREE.Group();
   const model = createShipModel(side.design, {}, colour);
+  const effects = createShipEffects();
   const spots = Array.from({ length: MAX_SPOTS }, () => {
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -180,7 +183,7 @@ const createShipView = (
   });
   // Always present, dark when nothing lands, so the number of lights (and shaders) never changes.
   const hitLight = new THREE.PointLight('#ffcf8a', 0, 0, 2);
-  anchor.add(model, ...spots, hitLight);
+  anchor.add(model, effects.element, ...spots, hitLight);
   setLayer(anchor, layer);
   // The burst is placed in world axes, so it sits outside the anchor, which turns with the ship.
   const burstLight = new THREE.DirectionalLight(BURST_COLOUR, 0);
@@ -207,6 +210,7 @@ const createShipView = (
   interceptGlow.layers.set(layer);
   scene.add(anchor, burstLight, burstGlow, interceptGlow);
   return {
+    effects,
     side,
     colour,
     layer,
@@ -257,6 +261,7 @@ const flashesOf = (look: Pick<ShipAppearance, 'impacts' | 'beamsLanding'>): Flas
 
 /** Brings a ship's model, orientation and hit spots up to date with what is observed. */
 const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance) => {
+  view.effects.update(look.firing);
   toQuaternion(orientation, view.anchor.quaternion);
   if (shipModelNeedsRebuild(view.model, look)) {
     view.anchor.remove(view.model);
@@ -553,6 +558,7 @@ export const createInstrumentView = (
           // Never frame an ordinary contact using its undisclosed design dimensions.
           contact.length = contactModelExtent(fogged) ?? 80;
           showFlashes(contact, seen.appearance);
+          contact.effects.update(seen.appearance.firing);
           contactCaption.textContent = `${contactSide.name} · ${seen.hullSize ?? 'unknown hull'} · ${CONTACT_DETAIL_TEXT[seen.detail]} · ${range}`;
           const descriptions = {
             position: 'Position tracked; shape and equipment unresolved.',
@@ -623,6 +629,8 @@ export const createInstrumentView = (
       resizeObserver.disconnect();
       contactPane.removeEventListener('wheel', onWheel);
       controls.dispose();
+      own.effects.dispose();
+      contact.effects.dispose();
       disposeShipModel(own.model);
       disposeShipModel(contact.model);
       disposeContactModel(fogged);

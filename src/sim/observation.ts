@@ -346,7 +346,22 @@ export interface ImpactLanding {
 }
 
 /** How a ship looks from outside: what an instrument view needs to draw it. */
+export interface WeaponFiring {
+  readonly section: SectionKind;
+  readonly mount: number;
+  readonly kind:
+    | 'laser'
+    | 'charged-particle-beam'
+    | 'neutral-particle-beam'
+    | 'kinetic-gun'
+    | 'point-defence'
+    | 'launcher';
+  /** Source in the current body frame, so cues rotate and move with the ship. */
+  readonly point: Vec3;
+}
+
 export interface ShipAppearance {
+  readonly firing?: readonly WeaponFiring[];
   /** kg; with the design it sets the centre of mass, the origin of the body frame. */
   readonly propellantMass: number;
   /** Ammunition gone from each section's magazines, kg; it too moves the centre of mass. */
@@ -412,6 +427,7 @@ export interface OwnShipObservation {
 
 /** How a contact looks from outside, as far as the side's sensors make it out. */
 export interface ContactAppearance {
+  readonly firing?: readonly WeaponFiring[];
   /** Drive thrust applied in the last step, N; its exhaust shows at any range. */
   readonly thrust: number;
   /** The temperature it glows at, K; its heat shows at any range. */
@@ -534,6 +550,7 @@ export interface SideObservation {
 
 /** A ship in the battle as observations see it: its state and what landed on it last step. */
 export interface ObservedShip {
+  readonly launches?: readonly { section: SectionKind; mount: number }[];
   readonly side: SideSetup;
   readonly ship: ShipState;
   /** Beams that landed on the ship in the last step. */
@@ -733,7 +750,16 @@ const observeMissile = (missile: Missile): MissileObservation => ({
   acceleration: missile.acceleration,
 });
 
-const observeAppearance = ({ ship, beamsLanding, impacts }: ObservedShip): ShipAppearance => ({
+const observeAppearance = (observed: ObservedShip): ShipAppearance => ({
+  firing: observeFiring(observed),
+  ...appearanceState(observed),
+});
+
+const appearanceState = ({
+  ship,
+  beamsLanding,
+  impacts,
+}: ObservedShip): Omit<ShipAppearance, 'firing'> => ({
   propellantMass: ship.propellantMass,
   ammunitionSpent: ship.ammunitionSpent,
   radiatorsDeployed: ship.radiatorsDeployed,
@@ -803,9 +829,47 @@ const firedFrom = (ship: ShipState, slot: number): boolean => {
   const { weapons } = ship;
   return (
     weapons.beamWeapons.some((w) => w.slot === slot && w.beamPower > 0) ||
-    weapons.kineticGuns.some((g) => g.slot === slot && g.firing) ||
-    weapons.pointDefence.some((g) => g.slot === slot && g.engaging !== null)
+    weapons.kineticGuns.some((g) => g.slot === slot && g.discharged) ||
+    weapons.pointDefence.some((g) => g.slot === slot && g.discharged)
   );
+};
+
+const observeFiring = (observed: ObservedShip): WeaponFiring[] => {
+  const { ship, launches = [] } = observed;
+  const slots = componentSlots(ship.design);
+  return intactShape(ship).flatMap((part) => {
+    if (part.mount === null) return [];
+    const slot = slots.findIndex(
+      (s) => s.mounted && s.section === part.section && s.index === part.mount,
+    );
+    const kind = slots[slot]?.component.type;
+    if (
+      kind !== 'laser' &&
+      kind !== 'charged-particle-beam' &&
+      kind !== 'neutral-particle-beam' &&
+      kind !== 'kinetic-gun' &&
+      kind !== 'point-defence' &&
+      kind !== 'launcher'
+    )
+      return [];
+    if (
+      !firedFrom(ship, slot) &&
+      !launches.some((l) => l.section === part.section && l.mount === part.mount)
+    )
+      return [];
+    return [
+      {
+        section: part.section,
+        mount: part.mount,
+        kind,
+        point: {
+          x: (part.min.x + part.max.x) / 2,
+          y: (part.min.y + part.max.y) / 2,
+          z: (part.min.z + part.max.z) / 2,
+        },
+      },
+    ];
+  });
 };
 
 /** An enemy ship as the side whose ship is `viewer` perceives it with its sensors. */
@@ -841,11 +905,18 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
           section: part.section,
           mount: part.mount,
           component: component as MountedComponentDesign,
-          firing: firedFrom(ship, slot),
+          firing:
+            firedFrom(ship, slot) ||
+            (contact.launches ?? []).some(
+              (l) => l.section === part.section && l.mount === part.mount,
+            ),
         },
       ];
     }),
     appearance: {
+      firing: observeFiring(contact).filter((f) =>
+        seen.parts.some((p) => p.section === f.section && p.mount === f.mount),
+      ),
       thrust: ship.thrust,
       temperature: temperatureOf(ship),
       radiatorsDeployed: ship.radiatorsDeployed,

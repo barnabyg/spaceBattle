@@ -120,6 +120,8 @@ export interface BeamWeaponState {
 
 /** One kinetic gun's state. */
 export interface KineticGunState {
+  /** Whether a slug actually left this gun in the last step. */
+  readonly discharged?: boolean;
   /** Its place in the ship's component slots. */
   readonly slot: number;
   readonly gun: KineticGunDesign;
@@ -133,6 +135,8 @@ export interface KineticGunState {
 
 /** One point defence gun's state. */
 export interface PointDefenceState {
+  /** Whether rounds actually left this gun in the last step. */
+  readonly discharged?: boolean;
   /** Its place in the ship's component slots. */
   readonly slot: number;
   readonly gun: PointDefenceDesign;
@@ -529,11 +533,11 @@ export const fireKineticGuns = (
     const charge = Math.min(needed, state.charge + state.demand * share * dt);
     // The allowance stops rounding error in the charge from holding a shot back a step.
     if (!state.firing || !target || charge < needed * (1 - 1e-9) || slugsLeft(ship) === 0) {
-      return { ...state, charge };
+      return { ...state, charge, discharged: false };
     }
     const { muzzleVelocity, slugMass } = state.gun;
     const solution = firingSolution(ship, target.motion, muzzleVelocity, dt);
-    if (!solution) return { ...state, charge };
+    if (!solution) return { ...state, charge, discharged: false };
     takeSlug(ship, slugMass);
     const launch = scale(solution.direction, muzzleVelocity);
     slugs.push({
@@ -545,7 +549,7 @@ export const fireKineticGuns = (
       velocity: add(ship.velocity, launch),
     });
     ship.velocity = sub(ship.velocity, scale(launch, slugMass / mass));
-    return { ...state, charge: Math.max(0, charge - needed) };
+    return { ...state, charge: Math.max(0, charge - needed), discharged: true };
   });
   ship.weapons = { ...ship.weapons, kineticGuns };
   return slugs;
@@ -601,6 +605,7 @@ export const firePointDefence = (
   const share = weaponsShare(ship);
   const bursts: PointDefenceBurst[] = [];
   const pointDefence = ship.weapons.pointDefence.map((state, gun) => {
+    let discharged = false;
     const needed = burstEnergy(state.gun);
     let charge = state.charge + state.demand * share * dt;
     let { lastChance } = state;
@@ -620,6 +625,7 @@ export const firePointDefence = (
       const { roundMass, muzzleVelocity, roundsPerBurst } = state.gun;
       const rounds = Math.min(roundsPerBurst, roundsLeft(ship));
       takeRounds(ship, rounds, roundMass);
+      discharged = true;
       const launch = scale(solution.direction, muzzleVelocity);
       const relative = sub(add(ship.velocity, launch), motion.velocity);
       const chance = threat ? missileHitChance(state.gun, rounds, ship, threat, solution) : 0;
@@ -640,7 +646,7 @@ export const firePointDefence = (
       ship.velocity = sub(ship.velocity, scale(launch, (rounds * roundMass) / mass));
       charge -= needed;
     }
-    return { ...state, charge: Math.min(charge, needed), lastChance };
+    return { ...state, charge: Math.min(charge, needed), lastChance, discharged };
   });
   ship.weapons = { ...ship.weapons, pointDefence };
   return bursts;
