@@ -3,6 +3,9 @@ import { workingTotal } from './components';
 import { designComponents, designComponentsOfType, type Design } from './design';
 import { HULLS } from './hull';
 
+/** Simulated seconds to deploy radiators; cooling and exposure stay folded until ready. */
+export const RADIATOR_DEPLOYMENT_TIME = 5;
+
 /** σ, W/(m²·K⁴). */
 export const STEFAN_BOLTZMANN = 5.670374419e-8;
 /** Heat each kilogram of the dry ship stores per kelvin, J/(kg·K); the ship holds heat as a whole. */

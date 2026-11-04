@@ -11,6 +11,7 @@ import {
 } from './design';
 import { pursuitRefused, WITHDRAWAL_TIME, withdrawingRefused, type Pursuer } from './engagement';
 import { involves, type BattleEvent, type HitEvent } from './events';
+import { RADIATOR_DEPLOYMENT_TIME } from './heat';
 import {
   manoeuvreCommand,
   manoeuvreThrottle,
@@ -300,8 +301,6 @@ const checkOrder = (order: Order): Order => {
 const WITHDRAWAL_ALIGNMENT = Math.cos((10 * Math.PI) / 180);
 /** How many recent events each side's observation keeps. */
 const EVENT_LOG_LENGTH = 20;
-/** Simulated seconds to deploy radiators; they remain folded until ready. */
-const RADIATOR_DEPLOYMENT_TIME = 5;
 /** Mixed into the battle's seed for the errors in fire control's tracks, kept apart from the rest. */
 const TRACKING_SEED = 0x9e3779b9;
 /** Mixed into the battle's seed for what signal interceptors learn before it, kept apart too. */
