@@ -40,6 +40,30 @@ const coreBounds = (object: THREE.Object3D): THREE.Box3 => {
 };
 
 describe('ship model', () => {
+  it('accents shared designs independently while preserving the hull and equipment', () => {
+    const design = handMadeDesign('lance');
+    const coloursOf = (model: THREE.Group) => {
+      const colours: string[] = [];
+      model.traverseVisible((object) => {
+        if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) {
+          colours.push(object.material.color.getHexString());
+        }
+      });
+      return colours;
+    };
+    const blue = createShipModel(design, {}, '#4fa3ff');
+    const red = createShipModel(design, {}, '#ff5a4f');
+    expect(coloursOf(blue)).toContain('4fa3ff');
+    expect(coloursOf(blue)).not.toContain('ff5a4f');
+    expect(coloursOf(red)).toContain('ff5a4f');
+    expect(coloursOf(red)).not.toContain('4fa3ff');
+    expect(coloursOf(red)).toContain('737d86');
+    expect(coloursOf(red)).toContain('3a4250');
+    disposeShipModel(red);
+    expect(coloursOf(blue)).toContain('4fa3ff');
+    disposeShipModel(blue);
+  });
+
   it('gives every stock design distinct proportions and derives player silhouettes from equipment', () => {
     const outline = (design: Design) => {
       const model = createShipModel(design);

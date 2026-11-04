@@ -126,8 +126,13 @@ const boxMesh = (part: ShapePart, material: THREE.Material, data: ShipModelPartD
  * along +x), with a core matching the simulation's section and mount envelopes. Exterior fittings
  * are purely decorative and belong to their section; they never change hits or mass properties.
  * Rebuild it when the radiators deploy or retract; `updateShipModel` handles everything else.
+ * Optional per-ship `accent` colours markings and trim; unassigned designs keep neutral paint.
  */
-export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): THREE.Group => {
+export const createShipModel = (
+  design: Design,
+  look: Partial<ShipLook> = {},
+  accent?: string,
+): THREE.Group => {
   const propellantMass = look.propellantMass ?? design.propellantMass;
   const ammunitionSpent = look.ammunitionSpent ?? NO_AMMUNITION_SPENT;
   const radiatorsDeployed = look.radiatorsDeployed ?? false;
@@ -166,8 +171,8 @@ export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): T
     emissive: '#000000',
   });
   const trim = new THREE.MeshStandardMaterial({
-    color: '#9aa5b2',
-    metalness: 0.75,
+    color: accent ?? '#9aa5b2',
+    metalness: accent ? 0.15 : 0.75,
     roughness: 0.3,
     side: THREE.DoubleSide,
   });
@@ -188,7 +193,7 @@ export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): T
     roughness: 0.85,
   });
   const marking = new THREE.MeshStandardMaterial({
-    color: '#c1b58a',
+    color: accent ?? '#c1b58a',
     metalness: 0.15,
     roughness: 0.7,
   });

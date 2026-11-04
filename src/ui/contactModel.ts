@@ -52,8 +52,9 @@ const models = new WeakMap<THREE.Group, ContactParts>();
  * out: a bright dot while only its position is known, then a dark silhouette, then its sections
  * in their armour and its mounts, any of them that fire glowing. Its exhaust shows whenever its
  * drive burns. `updateContactModel` brings it up to date with each observation.
+ * Optional `accent` matches its map icon without disclosing any extra detail.
  */
-export const createContactModel = (): THREE.Group => {
+export const createContactModel = (accent?: string): THREE.Group => {
   const model = new THREE.Group();
   model.name = 'Contact';
   const hull = new THREE.Group();
@@ -73,7 +74,7 @@ export const createContactModel = (): THREE.Group => {
     if (kind) sprite.userData = { kind } satisfies ContactModelPartData;
     return sprite;
   };
-  const dot = glow('#ffffff', 'dot');
+  const dot = glow(accent ?? '#ffffff', 'dot');
   dot.scale.setScalar(0.02);
   const exhaust = glow(EXHAUST_COLOUR);
   exhaust.scale.setScalar(0.03);
@@ -84,13 +85,13 @@ export const createContactModel = (): THREE.Group => {
     hull,
     box,
     edges: new THREE.EdgesGeometry(box),
-    edgeMaterial: new THREE.LineBasicMaterial({ color: '#bfcee0' }),
+    edgeMaterial: new THREE.LineBasicMaterial({ color: accent ?? '#bfcee0' }),
     meshes: new Map(),
     dot,
     exhaust,
     materials: {
       // Unlit and uniform: a readable outline without suggesting resolved surface features.
-      silhouette: new THREE.MeshBasicMaterial({ color: '#677587' }),
+      silhouette: new THREE.MeshBasicMaterial({ color: accent ?? '#677587' }),
       heavy: new THREE.MeshStandardMaterial({ color: '#8b929c', metalness: 0.6, roughness: 0.45 }),
       ablative: new THREE.MeshStandardMaterial({
         color: '#5d564e',
