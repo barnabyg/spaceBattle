@@ -31,6 +31,10 @@ full-suite load despite isolated runs taking about 20 s; 10 min is a provisional
 not an established expected duration. The short 1 s campaign probe only controls how often
 the test restores time compression after events; it is not the battle's deadline.
 
+The campaign win/reward test fixes the new campaign's random seed so it consistently fights
+the same opponent in the same scenario. It exercises real combat and payment; it does not
+assume that spending all missiles in any random battle guarantees a quick win.
+
 Vitest's default is 15 s. Longer headless simulation tests retain their existing explicit
 20–300 s limits, already several times their documented runtimes. The browser suite has a
 20 min hard limit, nested within the CI job's 30 min limit. CI still stops at the first failure;

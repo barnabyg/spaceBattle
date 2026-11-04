@@ -31,9 +31,19 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
   page,
 }) => {
   test.setTimeout(CAMPAIGN_TEST_TIMEOUT);
+  // Exercise the win/reward workflow with a reproducible new campaign. Random draws can
+  // spend every missile without a hit and turn this UI check into hours of simulated pursuit.
+  // Stub only the seed source; opponent selection, combat and payment still run normally.
   await page.goto('/');
   // Test mode for its faster time compression; the campaign plays the same.
   await page.getByRole('checkbox', { name: 'Test mode' }).check();
+  await page.evaluate(() => {
+    const random = Math.random;
+    Math.random = () => {
+      Math.random = random;
+      return 0;
+    };
+  });
   await page.getByRole('button', { name: 'Campaign', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Campaign' })).toBeVisible();
   await expect(page.getByLabel('Credits', { exact: true })).toHaveText('9,000,000 cr');
@@ -54,6 +64,7 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
   );
   await page.getByRole('button', { name: 'Fight', exact: true }).click();
   await expect(page.getByLabel('Own ship')).toContainText('Ship 1 · Quiver');
+  await expect(page.getByRole('region', { name: 'Enemy design' })).toContainText('Corsair class');
   const result = await fightToTheEnd(page);
   await expect(result.getByRole('heading')).toHaveText('Ship 1 wins');
 
