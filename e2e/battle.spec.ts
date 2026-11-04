@@ -15,7 +15,7 @@ test('the game loads a battle and the ships move when time runs', async ({ page 
   await expect(map.locator('[data-side="blue"]')).toBeVisible();
   await expect(map.locator('[data-side="red"]')).toBeVisible();
 
-  const separation = page.getByLabel('Separation');
+  const separation = page.getByLabel('Separation', { exact: true });
   await expect(separation).toContainText('km');
   const before = kmOf(await separation.textContent());
 

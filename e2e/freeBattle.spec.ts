@@ -30,7 +30,7 @@ test('a free battle goes from the main menu through setup and the battle to its 
   // The battle, seen from the player's side, fighting the chosen designs.
   const map = page.getByRole('region', { name: 'Tactical map' });
   await expect(map.locator('canvas')).toBeVisible();
-  await expect(page.getByLabel('Own ship')).toContainText('Blue · Bastion');
+  await expect(page.getByLabel('Own ship', { exact: true })).toContainText('Blue · Bastion');
   // The telescope names only what the sensors make out of the contact, not its design.
   await expect(page.getByLabel('Contact through telescope')).toContainText('Red · frigate');
 
@@ -65,7 +65,9 @@ test('the chosen scenario sets where the ships start and is kept for the next ba
   await page.getByRole('button', { name: 'Start battle' }).click();
 
   // The ships start 300 000 km apart and close at 2 km/s each.
-  await expect(page.getByLabel('Separation')).toHaveText(/^(300,000|299,\d{3}) km$/);
+  await expect(page.getByLabel('Separation', { exact: true })).toHaveText(
+    /^(300,000|299,\d{3}) km$/,
+  );
   await expect(page.getByLabel('Own speed')).toHaveText(/^2\.\d\d km\/s$/);
 
   await page.getByRole('button', { name: 'End battle' }).click();

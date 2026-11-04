@@ -41,7 +41,7 @@ test('a design made in the shipyard is saved and fights a free battle', async ({
     page.getByRole('region', { name: 'Blue side' }).getByLabel('Kinetic guns'),
   ).toContainText('600 slugs');
   await page.getByRole('button', { name: 'Start battle' }).click();
-  await expect(page.getByLabel('Own ship')).toContainText('Blue · Heron class');
+  await expect(page.getByLabel('Own ship', { exact: true })).toContainText('Blue · Heron class');
 });
 
 test('a design exported, deleted and imported again is the same design', async ({ page }) => {

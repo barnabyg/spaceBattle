@@ -63,7 +63,7 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
     'you go in blind',
   );
   await page.getByRole('button', { name: 'Fight', exact: true }).click();
-  await expect(page.getByLabel('Own ship')).toContainText('Ship 1 · Quiver');
+  await expect(page.getByLabel('Own ship', { exact: true })).toContainText('Ship 1 · Quiver');
   await expect(page.getByRole('region', { name: 'Enemy design' })).toContainText('Corsair class');
   const result = await fightToTheEnd(page);
   await expect(result.getByRole('heading')).toHaveText('Ship 1 wins');
@@ -130,7 +130,7 @@ test('a campaign saved to a file loads again after the page is reloaded, and car
   // And it carries on: the ship goes into its next battle.
   await page.getByRole('button', { name: 'Fight tier 1' }).click();
   await page.getByRole('button', { name: 'Fight', exact: true }).click();
-  await expect(page.getByLabel('Own ship')).toContainText('Ship 1 · Sling');
+  await expect(page.getByLabel('Own ship', { exact: true })).toContainText('Ship 1 · Sling');
 
   // A file that is not a campaign is refused on the main menu.
   await page.reload();
