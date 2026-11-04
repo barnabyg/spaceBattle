@@ -58,6 +58,13 @@ You know the enemy only as a contact: its position and motion always, the rest o
 
 The tactical map's **Legend** shows how each layer is drawn and what it means, such as velocity, relative velocity, heading, trails and planned burns, with a switch to hide or show each one; the choices are kept for the browser session.
 
+The map's **Separation** readout names the followed contact (the weapons target, or the first
+contact otherwise) and shows its full three-dimensional distance in km. It stays readable while
+zooming and rotating, holds steady while paused, and reads **No contact** if none is observed.
+To check it manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from
+`C:/docs/git/spaceBattle` in PowerShell 7, then start a free battle in Firefox. Watch separation
+change, pause with Space, and zoom and rotate the map; the paused value should stay fixed.
+
 Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** (click twice to confirm) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost.
 
 In battle, the captain of a player side hears only what reaches their own hull, since there is no sound in vacuum: the drive's rumble while it burns, the ship's own guns, beams and launches, hits on the hull, and alarms for damage, overheating, an incoming missile and delta-v near the reserve. Enemy fire that misses makes no sound, and a battle between computer sides is silent. **Mute** (or M) and the volume slider in the top bar keep their settings for the browser session.

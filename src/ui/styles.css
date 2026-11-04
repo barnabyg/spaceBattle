@@ -264,6 +264,20 @@ button {
   text-shadow: 0 0 4px #000;
 }
 
+.map-separation {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
 .range-label {
   color: #4d6488;
   font-size: 0.7rem;

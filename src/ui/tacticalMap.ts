@@ -108,6 +108,11 @@ export const createTacticalMap = (
   const scaleLabel = el('span', { className: 'scale-bar__label' });
   const scaleBar = el('div', { className: 'scale-bar' }, scaleLabel);
   element.append(scaleBar);
+  const separation = el('p', {
+    className: 'map-separation',
+    attrs: { 'aria-label': 'Contact separation' },
+  });
+  element.append(separation);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
   renderer.setPixelRatio(window.devicePixelRatio);
@@ -532,6 +537,18 @@ export const createTacticalMap = (
     element,
     update(observation: SideObservation) {
       const own = observation.ownShip;
+      const followed = followedContact(observation);
+      separation.textContent = followed
+        ? `${sideName(followed.sideId)} · Separation ${formatKm(relativeMotion(own, followed).separation)}`
+        : 'No contact';
+      // Never leave a contact's old position or label on the map after it disappears.
+      for (const [id, marker] of markers) {
+        const visible = id === own.sideId || observation.contacts.some((c) => c.sideId === id);
+        marker.symbol.visible = visible;
+        marker.velocity.visible = visible;
+        marker.dropLine.visible = visible;
+        marker.trail.visible = visible;
+      }
       const centre = toScene(own.position);
       // Keep the camera's offset from the own ship as the ship drifts.
       if (previousCentre) camera.position.add(centre.clone().sub(previousCentre));

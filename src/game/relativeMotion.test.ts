@@ -5,6 +5,15 @@ import { relativeMotion } from './relativeMotion';
 const KM = 1_000;
 
 describe('relative motion', () => {
+  it('reports full three-dimensional separation in metres', () => {
+    const motion = relativeMotion(
+      { position: vec3(1_000, 2_000, 3_000), velocity: vec3(0, 0, 0) },
+      { position: vec3(1_000, 3_002_000, 4_003_000), velocity: vec3(0, 0, 0) },
+    );
+    // A 3,000 km by 4,000 km right triangle, entirely outside the x axis.
+    expect(motion.separation).toBe(5_000_000);
+  });
+
   it('is still when both ships have the same velocity, however fast', () => {
     const motion = relativeMotion(
       { position: vec3(0, 0, 0), velocity: vec3(5_000, 1_000, 0) },

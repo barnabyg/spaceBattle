@@ -1,6 +1,73 @@
 import { expect, test } from '@playwright/test';
 import { chooseSide, startFreeBattle } from './freeBattle';
 
+test('map uses observed height for separation and clears a lost contact', async ({ page }) => {
+  await page.goto('/');
+  const readings = await page.evaluate(async () => {
+    const { createBattle } = await import('../src/sim/battle');
+    const { testSetup } = await import('../src/sim/testing');
+    const { createTacticalMap } = await import('../src/ui/tacticalMap');
+    const setup = testSetup();
+    const battle = createBattle({
+      ...setup,
+      scenario: {
+        name: 'Height difference',
+        starts: [
+          { position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 } },
+          { position: { x: 0, y: 3_000_000, z: 4_000_000 }, velocity: { x: 0, y: 0, z: 0 } },
+        ],
+      },
+    });
+    const map = createTacticalMap(setup.sides);
+    document.body.append(map.element);
+    const observation = battle.observe('blue');
+    map.update(observation);
+    map.render();
+    const readout = map.element.querySelector('[aria-label="Contact separation"]');
+    const present = readout?.textContent;
+    map.update({ ...observation, contacts: [] });
+    map.render();
+    const absent = readout?.textContent;
+    const contact = map.element.querySelector('.ship-symbol--contact');
+    const contactHidden = contact !== null && getComputedStyle(contact).display === 'none';
+    map.dispose();
+    map.element.remove();
+    return { present, absent, contactHidden };
+  });
+  expect(readings).toEqual({
+    present: 'Red · Separation 5,000 km',
+    absent: 'No contact',
+    contactHidden: true,
+  });
+});
+
+test('contact separation updates in km, freezes paused and survives map controls', async ({
+  page,
+}) => {
+  await startFreeBattle(page);
+  const map = page.getByRole('region', { name: 'Tactical map' });
+  const separation = map.getByLabel('Contact separation');
+  await expect(separation).toHaveText(/Red · Separation [\d,]+ km/);
+  await page.keyboard.press(' ');
+  const paused = await separation.textContent();
+  await page.getByRole('button', { name: '1000×', exact: true }).click();
+  // A paused runner keeps the same observation even when compression changes.
+  await expect(separation).toHaveText(paused ?? '');
+  const surface = map.locator('.tactical-map__labels');
+  await surface.hover();
+  await page.mouse.wheel(0, 300);
+  const box = await surface.boundingBox();
+  if (!box) throw new Error('Map surface missing');
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 100, box.y + box.height / 2 + 60, { steps: 10 });
+  await page.mouse.up();
+  await expect(separation).toBeVisible();
+  await expect(separation).toHaveText(paused ?? '');
+  await page.keyboard.press(' ');
+  await expect(separation).not.toHaveText(paused ?? '');
+});
+
 test('the map legend explains each layer and switches it off and on, kept for the session', async ({
   page,
 }) => {
