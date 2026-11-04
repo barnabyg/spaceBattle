@@ -13,11 +13,11 @@ export type TimeCompression = (typeof TEST_TIME_COMPRESSIONS)[number];
  * respond. A record, so a new kind of event cannot be added without deciding.
  */
 const SIGNIFICANT: Readonly<Record<BattleEvent['type'], boolean>> = {
-  hit: true,
-  impact: true,
-  launch: true,
-  intercept: true,
-  miss: true,
+  hit: false,
+  impact: false,
+  launch: false,
+  intercept: false,
+  miss: false,
   detonation: true,
   'magazine-explosion': true,
   'armour-breached': true,
@@ -62,6 +62,8 @@ export interface BattleRunner {
   readonly compressions: readonly TimeCompression[];
   /** Kept while paused, so the battle resumes at it. */
   readonly timeCompression: TimeCompression;
+  /** The event that last reduced compression from above 1×; cleared by choosing a speed. */
+  readonly slowdownEvent: BattleEvent | null;
   setPaused(paused: boolean): void;
   togglePause(): void;
   /** Sets a time compression directly; one this runner does not offer leaves it at 1×. */
@@ -72,7 +74,7 @@ export interface BattleRunner {
   slower(): void;
   /**
    * Runs the battle forward by `realSeconds` of real time, returning what happened. A
-   * significant event, such as a hit or a component lost, drops time compression to 1× and
+   * significant event, such as an armour breach or a component lost, drops time compression to 1× and
    * ends the update there. Once the battle has ended, updates do nothing.
    */
   update(realSeconds: number): readonly BattleEvent[];
@@ -89,6 +91,7 @@ export const createBattleRunner = (
   let paused = false;
   let compressionIndex = 0;
   let owed = 0;
+  let slowdownEvent: BattleEvent | null = null;
 
   const compression = (): TimeCompression => compressions[compressionIndex] ?? 1;
 
@@ -102,6 +105,9 @@ export const createBattleRunner = (
     get timeCompression() {
       return compression();
     },
+    get slowdownEvent() {
+      return slowdownEvent;
+    },
     setPaused(value) {
       paused = value;
     },
@@ -109,13 +115,16 @@ export const createBattleRunner = (
       paused = !paused;
     },
     setTimeCompression(value) {
+      slowdownEvent = null;
       // A compression this runner does not offer leaves it at real time.
       compressionIndex = Math.max(compressions.indexOf(value), 0);
     },
     faster() {
+      slowdownEvent = null;
       compressionIndex = Math.min(compressionIndex + 1, compressions.length - 1);
     },
     slower() {
+      slowdownEvent = null;
       compressionIndex = Math.max(compressionIndex - 1, 0);
     },
     update(realSeconds) {
@@ -129,7 +138,9 @@ export const createBattleRunner = (
       for (let i = 0; i < steps; i++) {
         const happened = battle.step();
         events.push(...happened);
-        if (happened.some((event) => SIGNIFICANT[event.type])) {
+        const significant = happened.find((event) => SIGNIFICANT[event.type]);
+        if (significant) {
+          if (compression() > 1) slowdownEvent = significant;
           compressionIndex = 0;
           owed = 0;
           break;
