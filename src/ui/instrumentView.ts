@@ -14,6 +14,7 @@ import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vec
 import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
+import { createShipEffects } from './shipEffects';
 import {
   contactModelExtent,
   createContactModel,
@@ -22,7 +23,15 @@ import {
 } from './contactModel';
 import { CONTACT_DETAIL_TEXT, formatKm } from './format';
 import { SIDE_COLOURS } from './mapStyle';
-import { createShipModel, disposeShipModel, softGlowTexture, updateShipModel } from './shipModel';
+import {
+  createShipModel,
+  createResolvedShipModel,
+  disposeShipModel,
+  shipModelNeedsRebuild,
+  softGlowTexture,
+  updateShipModel,
+  updateResolvedShipModel,
+} from './shipModel';
 
 /** The sun, far off in this direction (world frame, z up as on the tactical map). */
 const SUN_DIRECTION = new THREE.Vector3(0.55, -0.35, 0.75).normalize();
@@ -129,6 +138,8 @@ const createSky = () => {
 
 /** One ship as the view draws it, alone on its own layer at the origin. */
 interface ShipView {
+  readonly effects: ReturnType<typeof createShipEffects>;
+  modelSource: 'design' | 'contact' | 'empty';
   readonly side: SideSetup;
   readonly colour: string;
   readonly layer: number;
@@ -157,9 +168,11 @@ const createShipView = (
   side: SideSetup,
   layer: number,
   colour: string,
+  knownDesign = true,
 ): ShipView => {
   const anchor = new THREE.Group();
-  const model = createShipModel(side.design, {}, colour);
+  const model = knownDesign ? createShipModel(side.design, {}, colour) : new THREE.Group();
+  const effects = createShipEffects();
   const spots = Array.from({ length: MAX_SPOTS }, () => {
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -174,7 +187,7 @@ const createShipView = (
   });
   // Always present, dark when nothing lands, so the number of lights (and shaders) never changes.
   const hitLight = new THREE.PointLight('#ffcf8a', 0, 0, 2);
-  anchor.add(model, ...spots, hitLight);
+  anchor.add(model, effects.element, ...spots, hitLight);
   setLayer(anchor, layer);
   // The burst is placed in world axes, so it sits outside the anchor, which turns with the ship.
   const burstLight = new THREE.DirectionalLight(BURST_COLOUR, 0);
@@ -201,10 +214,12 @@ const createShipView = (
   interceptGlow.layers.set(layer);
   scene.add(anchor, burstLight, burstGlow, interceptGlow);
   return {
+    effects,
+    modelSource: knownDesign ? 'design' : 'empty',
     side,
     colour,
     layer,
-    length: hullLength(HULLS[side.design.hullSize]),
+    length: knownDesign ? hullLength(HULLS[side.design.hullSize]) : 80,
     anchor,
     model,
     spots,
@@ -250,9 +265,19 @@ const flashesOf = (look: Pick<ShipAppearance, 'impacts' | 'beamsLanding'>): Flas
 ];
 
 /** Brings a ship's model, orientation and hit spots up to date with what is observed. */
-const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance) => {
+const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance, time: number) => {
+  view.effects.update(look.firing, look.damage, time, look.parts);
   toQuaternion(orientation, view.anchor.quaternion);
-  updateShipModel(view.model, look);
+  if (view.modelSource !== 'design' || shipModelNeedsRebuild(view.model, look)) {
+    view.anchor.remove(view.model);
+    disposeShipModel(view.model);
+    view.model = createShipModel(view.side.design, look, view.colour);
+    view.modelSource = 'design';
+    setLayer(view.model, view.layer);
+    view.anchor.add(view.model);
+  } else {
+    updateShipModel(view.model, look);
+  }
   showFlashes(view, look);
 };
 
@@ -404,7 +429,7 @@ export const createInstrumentView = (
   scene.add(sunlight, ambient);
 
   const own = createShipView(scene, ownSide, 1, colours[0] ?? '#ffffff');
-  const contact = createShipView(scene, contactSide, 2, colours[1] ?? '#ffffff');
+  const contact = createShipView(scene, contactSide, 2, colours[1] ?? '#ffffff', false);
   const fogged = createContactModel(contact.colour);
   contact.anchor.add(fogged);
   setLayer(fogged, contact.layer);
@@ -513,26 +538,45 @@ export const createInstrumentView = (
      */
     update(observation: SideObservation, enemy?: OwnShipObservation) {
       const ship = observation.ownShip;
-      updateShipView(own, ship.orientation, ship.appearance);
+      updateShipView(own, ship.orientation, ship.appearance, observation.time);
       ownPosition = ship.position;
       const seen = observation.contacts.find((c) => c.sideId === contactSide.id);
       contact.anchor.visible = seen !== undefined;
       contactPosition = seen?.position ?? null;
       contactDetail.hidden = seen === undefined;
-      contactPane.dataset.detail = enemy && seen ? 'test-mode' : (seen?.detail ?? 'none');
+      contactPane.dataset.detail =
+        enemy && seen ? 'test-mode' : seen?.fullyResolved ? 'full' : (seen?.detail ?? 'none');
       if (!seen) contactCaption.textContent = `${contactSide.name} · no contact`;
       slugGlints.clear();
       missileGlints.clear();
       antiMissileGlints.clear();
       if (seen) {
         const range = formatKm(distance(seen.position, ship.position));
-        contact.model.visible = enemy !== undefined;
-        fogged.visible = enemy === undefined;
+        const detailed = seen.fullyResolved ? seen.detailedAppearance : null;
+        contact.model.visible = enemy !== undefined || detailed !== null;
+        fogged.visible = enemy === undefined && detailed === null;
         if (enemy) {
           contact.length = hullLength(HULLS[contactSide.design.hullSize]);
-          updateShipView(contact, enemy.orientation, enemy.appearance);
+          updateShipView(contact, enemy.orientation, enemy.appearance, observation.time);
           contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${range} · Test mode: full detail`;
           detailExplanation.textContent = 'Full design and state shown by Test mode.';
+        } else if (detailed) {
+          toQuaternion(seen.orientation ?? IDENTITY, contact.anchor.quaternion);
+          if (contact.modelSource !== 'contact' || shipModelNeedsRebuild(contact.model, detailed)) {
+            contact.anchor.remove(contact.model);
+            disposeShipModel(contact.model);
+            contact.model = createResolvedShipModel(detailed, contact.colour);
+            contact.modelSource = 'contact';
+            setLayer(contact.model, contact.layer);
+            contact.anchor.add(contact.model);
+          } else {
+            updateResolvedShipModel(contact.model, detailed);
+          }
+          contact.length = seen.hullSize ? hullLength(HULLS[seen.hullSize]) : 80;
+          showFlashes(contact, seen.appearance);
+          contactCaption.textContent = `${contactSide.name} · ${seen.hullSize ?? 'unknown hull'} · Full exterior detail · ${range}`;
+          detailExplanation.textContent =
+            'Every surviving section and mount is currently resolved. Full exterior detail; interior equipment and stores remain hidden.';
         } else {
           toQuaternion(seen.orientation ?? IDENTITY, contact.anchor.quaternion);
           updateContactModel(fogged, seen);
@@ -548,13 +592,20 @@ export const createInstrumentView = (
           };
           detailExplanation.textContent = descriptions[seen.detail];
         }
+        if (!enemy)
+          contact.effects.update(
+            seen.appearance.firing,
+            seen.appearance.damage,
+            observation.time,
+            seen.appearance.parts,
+          );
         for (const [index, label] of stageLabels.entries()) {
-          if (!enemy && detailStages[index] === seen.detail)
+          if (!enemy && !detailed && detailStages[index] === seen.detail)
             label.setAttribute('aria-current', 'step');
           else label.removeAttribute('aria-current');
         }
         const stages = contactDetail.querySelector('ol');
-        if (stages) stages.hidden = enemy !== undefined;
+        if (stages) stages.hidden = enemy !== undefined || detailed !== null;
         for (const munition of observation.munitions) {
           const at = telescopePosition(munition, ship.position, seen.position);
           if (!at) continue;
@@ -609,6 +660,8 @@ export const createInstrumentView = (
       resizeObserver.disconnect();
       contactPane.removeEventListener('wheel', onWheel);
       controls.dispose();
+      own.effects.dispose();
+      contact.effects.dispose();
       disposeShipModel(own.model);
       disposeShipModel(contact.model);
       disposeContactModel(fogged);

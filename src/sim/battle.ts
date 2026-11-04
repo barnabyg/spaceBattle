@@ -198,6 +198,7 @@ export interface Battle {
 }
 
 interface Combatant {
+  launches?: { section: SectionKind; mount: number }[];
   readonly side: SideSetup;
   readonly ship: ShipState;
   /** Beams that landed on the ship in the last step. */
@@ -679,10 +680,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
       nextMunitionId,
     );
     const launches: BattleEvent[] = [];
+    combatant.launches = [];
     for (const { missile, launcher } of launched) {
       missiles.push(missile);
       const slot = componentSlots(ship.design)[ship.weapons.launchers[launcher]?.slot ?? -1];
       const place = { section: slot?.section ?? 'forward', mount: slot?.index ?? 0 };
+      combatant.launches.push(place);
       launchedFrom.set(missile.id, place);
       launches.push({
         type: 'launch',

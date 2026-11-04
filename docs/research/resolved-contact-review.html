@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Resolved contact transition review</title>
+  <style>
+    body {
+      margin: 0;
+      background: #07101c;
+      color: white;
+    }
+    nav {
+      height: 60px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    #view {
+      width: 700px;
+      height: 900px;
+    }
+    .instrument-view {
+      height: 100%;
+    }
+  </style>
+  <nav>
+    <button id="advance">Advance 10 seconds</button>
+    <button id="reset">Reset approach</button>
+    <label><input id="test-mode" type="checkbox" />Test mode full detail</label>
+  </nav>
+  <div id="view"></div>
+  <script type="module">
+    import '/src/ui/styles.css';
+    import { createBattle } from '/src/sim/battle.ts';
+    import { armedTestDesign, duelSetup } from '/src/sim/testing.ts';
+    import { createInstrumentView } from '/src/ui/instrumentView.ts';
+
+    const setup = duelSetup(armedTestDesign(), armedTestDesign(), 3_000_000);
+    setup.scenario = {
+      ...setup.scenario,
+      starts: setup.scenario.starts.map((start, i) =>
+        i === 1 ? { ...start, velocity: { x: 100_000, y: 0, z: 0 } } : start,
+      ),
+    };
+    let battle = createBattle(setup);
+    const instrument = createInstrumentView(setup.sides);
+    document.querySelector('#view').append(instrument.element);
+    const testMode = document.querySelector('#test-mode');
+    const update = () =>
+      instrument.update(
+        battle.observe('blue'),
+        testMode.checked ? battle.observe('red').ownShip : undefined,
+      );
+    document.querySelector('#advance').onclick = () => {
+      battle.advance(10);
+      update();
+    };
+    document.querySelector('#reset').onclick = () => {
+      battle = createBattle(setup);
+      update();
+    };
+    testMode.onchange = update;
+    update();
+    const render = () => {
+      instrument.render();
+      requestAnimationFrame(render);
+    };
+    render();
+    document.body.dataset.ready = 'true';
+  </script>
+</html>

@@ -2,7 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { createBattle, type Battle } from './battle';
 import { fromAxisAngle } from './quaternion';
 import { shipShape } from './shape';
-import { armedTestDesign, duelSetup, testDesign, testSetup } from './testing';
+import { fullCondition } from './ship';
+import { componentSlots } from './components';
+import {
+  armedTestDesign,
+  duelSetup,
+  gunnedTestDesign,
+  launchingTestDesign,
+  TEST_CHARGED_BEAM,
+  TEST_NEUTRAL_BEAM,
+  testDesign,
+  testSetup,
+  withForwardWeapon,
+  withSection,
+} from './testing';
 import { vec3 } from './vector';
 
 const KM = 1000;
@@ -14,6 +27,140 @@ const contactOf = (battle: Battle, viewer: string) => {
 };
 
 describe('ship appearance', () => {
+  it('keeps damage outlines on radiator panels as they extend', () => {
+    const design = armedTestDesign();
+    const setup = duelSetup(design, design, 1e6);
+    const full = fullCondition(design);
+    const battle = createBattle({
+      ...setup,
+      sides: setup.sides.map((side) =>
+        side.id === 'red'
+          ? {
+              ...side,
+              condition: {
+                ...full,
+                integrity: full.integrity.map((value, index) =>
+                  componentSlots(design)[index]?.component.type === 'radiator' ? 0.5 : value,
+                ),
+              },
+            }
+          : side,
+      ),
+    });
+    const folded = battle
+      .observe('red')
+      .ownShip.appearance.damage?.find((d) => d.section === 'middle' && d.mount === 0);
+    battle.giveOrder('red', { type: 'radiators', deployed: true });
+    battle.advance(2.5);
+    const midway = contactOf(battle, 'blue').appearance.damage?.find(
+      (d) => d.section === 'middle' && d.mount === 0,
+    );
+    expect(midway?.size.y).toBeGreaterThan(folded?.size.y ?? Infinity);
+    expect(midway?.wear).toBe(folded?.wear);
+    battle.giveOrder('red', { type: 'radiators', deployed: false });
+    expect(battle.observe('red').ownShip.appearance.damage).toContainEqual(folded);
+  });
+  it('continues observing new structural damage after armour is exhausted', () => {
+    const design = withSection(armedTestDesign(), 'forward', {
+      armour: { type: 'heavy', thickness: 0.01 },
+    });
+    const setup = duelSetup(armedTestDesign(), design, 1e6);
+    const condition = fullCondition(design);
+    const battle = createBattle({
+      ...setup,
+      sides: setup.sides.map((side) =>
+        side.id === 'red'
+          ? {
+              ...side,
+              condition: {
+                ...condition,
+                sections: { ...condition.sections, forward: { armour: 0, structure: 0.9 } },
+              },
+            }
+          : side,
+      ),
+    });
+    const before = battle
+      .observe('red')
+      .ownShip.appearance.damage?.find((d) => d.section === 'forward' && d.mount === null);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.advance(15.2);
+    const after = battle
+      .observe('red')
+      .ownShip.appearance.damage?.find((d) => d.section === 'forward' && d.mount === null);
+    expect(after?.wear).toBeGreaterThan(before?.wear ?? Infinity);
+  });
+  it('observes persistent surface damage only after damage, without exposing unresolved parts', () => {
+    const battle = createBattle(duelSetup(armedTestDesign(), armedTestDesign(), 1e6));
+    expect(battle.observe('red').ownShip.appearance.damage).toEqual([]);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.advance(15.2);
+    const damage = battle.observe('red').ownShip.appearance.damage;
+    expect(damage).toEqual(
+      expect.arrayContaining([expect.objectContaining({ section: 'forward' })]),
+    );
+    expect(damage?.some((d) => d.wear > 0)).toBe(true);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
+    battle.advance(1);
+    expect(battle.observe('red').ownShip.appearance.damage).toEqual(damage);
+    const far = createBattle(duelSetup(armedTestDesign(), armedTestDesign(), 1e10));
+    expect(contactOf(far, 'blue').appearance.damage).toEqual([]);
+  });
+  it.each([
+    ['laser', armedTestDesign()],
+    ['charged-particle-beam', withForwardWeapon(TEST_CHARGED_BEAM)],
+    ['neutral-particle-beam', withForwardWeapon(TEST_NEUTRAL_BEAM)],
+  ] as const)(
+    'observes an actual %s discharge and hides unresolved enemy sources',
+    (kind, design) => {
+      const battle = createBattle(duelSetup(design, testDesign(), 1e6));
+      battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+      battle.step();
+      if (kind === 'laser') {
+        expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+        battle.advance(15);
+      }
+      const own = battle.observe('blue').ownShip.appearance.firing;
+      expect(own).toEqual([expect.objectContaining({ section: 'forward', mount: 0, kind })]);
+      expect(contactOf(battle, 'red').appearance.firing).toEqual(own);
+      battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
+      battle.step();
+      expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+      const far = createBattle(duelSetup(design, testDesign(), 1e10));
+      far.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+      far.step();
+      expect(contactOf(far, 'red').appearance.firing).toEqual([]);
+    },
+  );
+
+  it('shows a launcher cue for an actual launch and clears it during reloading', () => {
+    const battle = createBattle(duelSetup(launchingTestDesign(2), testDesign(), 1e6));
+    battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
+    battle.step();
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([
+      expect.objectContaining({ section: 'forward', mount: 0, kind: 'launcher' }),
+    ]);
+    battle.step();
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+  });
+  it('shows source cues only for actual discharges, at their firing mount', () => {
+    const battle = createBattle(duelSetup(gunnedTestDesign(10), testDesign(), 1e6));
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.step();
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+    let fired = false;
+    for (let i = 0; i < 30 && !fired; i++) {
+      battle.step();
+      fired = (battle.observe('blue').ownShip.appearance.firing?.length ?? 0) > 0;
+    }
+    expect(fired).toBe(true);
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([
+      expect.objectContaining({ section: 'forward', mount: 0, kind: 'kinetic-gun' }),
+    ]);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
+    battle.step();
+    expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+  });
   it('shows each side how the other ship looks: radiators, temperature, thrust and shape', () => {
     // Close enough for blue's sensor to make out every part of red.
     const battle = createBattle({

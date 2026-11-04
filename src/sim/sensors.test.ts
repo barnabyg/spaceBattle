@@ -9,6 +9,8 @@ import {
 import { createComputerCaptain } from './captain';
 import type { Design, SensorDesign } from './design';
 import type { Order } from './orders';
+import { componentSlots } from './components';
+import { fullCondition } from './ship';
 import {
   duelSetup,
   gunnedTestDesign,
@@ -52,6 +54,87 @@ const aimAt = (aim: { section: 'forward' | 'middle' | 'engine'; mount: number | 
 });
 
 describe('sensors and contacts', () => {
+  it('requires every surviving section and mount, including the smallest, for full resolution', () => {
+    const partial = seenAt(testDesign(), 5_000 * KM);
+    expect(partial.detail).toBe('mounts');
+    expect(partial.fullyResolved).toBe(false);
+    expect(partial.detailedAppearance).toBeNull();
+    // The smallest part is the 2.5 m sensor; two resolving elements must fit across it.
+    const boundary = 1.25 / ((1.22 * 500e-9) / 2);
+    expect(seenAt(testDesign(), boundary * (1 + 1e-8)).fullyResolved).toBe(false);
+    const full = seenAt(testDesign(), boundary * (1 - 1e-8));
+    expect(full.fullyResolved).toBe(true);
+    expect(full.detailedAppearance?.parts).toEqual(full.appearance.parts);
+    expect(full.detailedAppearance).not.toHaveProperty('propellantMass');
+    expect(full.detailedAppearance).not.toHaveProperty('ammunitionSpent');
+    expect(full.detailedAppearance).not.toHaveProperty('design');
+  });
+
+  it('re-evaluates full resolution as range changes and the observing sensors are degraded', () => {
+    const setup = duelSetup(testDesign(), ARMED_RED, 4_000 * KM);
+    const condition = fullCondition(testDesign());
+    const degraded = createBattle({
+      ...setup,
+      sides: setup.sides.map((side) =>
+        side.id === 'blue'
+          ? {
+              ...side,
+              condition: {
+                ...condition,
+                integrity: condition.integrity.map((value, i) =>
+                  componentSlots(side.design)[i]?.component.type === 'sensor' ? 0.5 : value,
+                ),
+              },
+            }
+          : side,
+      ),
+    });
+    expect(contactOf(degraded).fullyResolved).toBe(false);
+    const moving = createBattle({
+      ...setup,
+      scenario: {
+        ...setup.scenario,
+        starts: setup.scenario.starts.map((start, i) =>
+          i === 1 ? { ...start, velocity: { x: 100_000, y: 0, z: 0 } } : start,
+        ),
+      },
+    });
+    expect(contactOf(moving).fullyResolved).toBe(true);
+    moving.advance(10);
+    expect(contactOf(moving).fullyResolved).toBe(false);
+  });
+
+  it('does not require destroyed parts or disclose them in the detailed exterior', () => {
+    const setup = duelSetup(testDesign(), ARMED_RED, 5_000 * KM);
+    const condition = fullCondition(ARMED_RED);
+    const battle = createBattle({
+      ...setup,
+      sides: setup.sides.map((side) =>
+        side.id === 'red'
+          ? {
+              ...side,
+              condition: {
+                ...condition,
+                integrity: condition.integrity.map((value, i) =>
+                  componentSlots(side.design)[i]?.component.type === 'sensor' ? 0 : value,
+                ),
+                sections: {
+                  ...condition.sections,
+                  forward: { ...condition.sections.forward, structure: 0 },
+                },
+              },
+            }
+          : side,
+      ),
+    });
+    const seen = contactOf(battle);
+    expect(seen.fullyResolved).toBe(true);
+    expect(seen.detailedAppearance?.parts.some((p) => p.section === 'forward')).toBe(false);
+    expect(
+      seen.detailedAppearance?.sections.flatMap((s) => s.mounts).some((m) => m.type === 'sensor'),
+    ).toBe(false);
+  });
+
   it("always know a contact's position and motion, and make out more of it as range closes", () => {
     const far = seenAt(testDesign(), 10_000_000 * KM);
     expect(far.detail).toBe('position');

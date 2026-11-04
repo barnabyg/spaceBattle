@@ -289,26 +289,45 @@ export const createTacticalMap = (
   });
   const ownDrive = sides[0] ? designComponent(sides[0].design, 'drive') : undefined;
 
-  // The own ship's beams, one line for each kind while any of that kind is firing.
-  const beamLines = (Object.keys(BEAM_STYLES) as BeamKind[]).map((kind) => {
-    const { colour, dashed } = BEAM_STYLES[kind];
-    const material = dashed
-      ? new THREE.LineDashedMaterial({
-          color: colour,
-          transparent: true,
-          opacity: BEAM_OPACITY,
-          dashSize: 1_000,
-          gapSize: 600,
-        })
-      : new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: BEAM_OPACITY });
-    const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-      material,
-    );
-    line.visible = false;
-    scene.add(onLayer(line, 'beams'));
-    return { kind, line };
-  });
+  // Each observed firing side has its own cue, so simultaneous opposing beams stay distinct.
+  const beamLines = sides.flatMap((side) =>
+    (Object.keys(BEAM_STYLES) as BeamKind[]).map((kind) => {
+      const { colour, dashed } = BEAM_STYLES[kind];
+      const material = dashed
+        ? new THREE.LineDashedMaterial({
+            color: colour,
+            transparent: true,
+            opacity: BEAM_OPACITY,
+            dashSize: 1_000,
+            gapSize: 600,
+          })
+        : new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: BEAM_OPACITY });
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+        material,
+      );
+      line.visible = false;
+      const chevrons = el('span', {
+        className: 'beam-direction__chevrons',
+        attrs: { 'aria-hidden': 'true' },
+      });
+      const text = el('span', { className: 'beam-direction__text' });
+      const label = new CSS2DObject(
+        el(
+          'span',
+          {
+            className: 'beam-direction',
+            attrs: { role: 'img', style: `--beam-colour: ${colour}` },
+          },
+          chevrons,
+          text,
+        ),
+      );
+      label.visible = false;
+      scene.add(onLayer(line, 'beams'), onLayer(label, 'beams'));
+      return { source: side.id, kind, line, label, chevrons, text, direction: new THREE.Vector3() };
+    }),
+  );
 
   // Munitions in flight: a dot each, in the colour of the side that fired it; missiles larger,
   // anti-missile missiles paler.
@@ -516,6 +535,9 @@ export const createTacticalMap = (
     for (const marker of plannedBurnMarkers) {
       if (marker.label.visible) pointOnScreen(marker.chevrons, marker.at, marker.direction);
     }
+    for (const beam of beamLines) {
+      if (beam.label.visible) pointOnScreen(beam.chevrons, beam.label.position, beam.direction);
+    }
   };
 
   const sideName = (id: SideId) => sides.find((s) => s.id === id)?.name ?? id;
@@ -572,11 +594,35 @@ export const createTacticalMap = (
         ...(own.weapons.lasers.some((l) => l.firing) ? (['laser'] as const) : []),
         ...own.weapons.particleBeams.filter((b) => b.firing).map((b) => b.kind),
       ]);
-      for (const { kind, line } of beamLines) {
-        line.visible = target !== undefined && firing.has(kind);
-        if (!target || !line.visible) continue;
-        line.geometry.setFromPoints([centre, toScene(target.position)]);
+      for (const beam of beamLines) {
+        const { kind, line, label, source } = beam;
+        const contact = observation.contacts.find((c) => c.sideId === source);
+        // In this two-side battle an observed enemy beam fires towards the own ship. No
+        // hidden enemy weapons or orders are consulted: only resolved mounts actually firing.
+        const incoming =
+          contact?.mounts.some(
+            (mount) =>
+              mount.firing &&
+              ((kind === 'laser' && mount.component.type === 'laser') ||
+                (kind === 'charged-particle' && mount.component.type === 'charged-particle-beam') ||
+                (kind === 'neutral-particle' && mount.component.type === 'neutral-particle-beam')),
+          ) ?? false;
+        const destination = source === own.sideId ? target : incoming ? own : undefined;
+        line.visible =
+          destination !== undefined && (source === own.sideId ? firing.has(kind) : incoming);
+        label.visible = line.visible;
+        if (!destination || !line.visible) continue;
+        const from = contact ? toScene(contact.position) : centre;
+        const to = toScene(destination.position);
+        line.geometry.setFromPoints([from, to]);
         line.computeLineDistances();
+        beam.direction.copy(to).sub(from).normalize();
+        label.position.copy(from).lerp(to, 0.65);
+        label.element.setAttribute(
+          'aria-label',
+          `${sideName(source)} ${kind} fire toward ${sideName(destination.sideId)}`,
+        );
+        beam.text.textContent = `${sideName(source)} → ${sideName(destination.sideId)}`;
       }
       showMunitions(observation);
       showBurst(observation);

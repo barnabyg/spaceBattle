@@ -6,9 +6,12 @@ import { catalogueComponent } from '../data/components';
 import { buildDesign, specificationOf } from '../shipyard/shipyard';
 import { shipShape } from '../sim/shape';
 import { createBattle } from '../sim/battle';
-import { duelSetup, testDesign } from '../sim/testing';
+import { armedTestDesign, duelSetup, testDesign } from '../sim/testing';
 import {
   createShipModel,
+  createResolvedShipModel,
+  updateResolvedShipModel,
+  shipModelNeedsRebuild,
   disposeShipModel,
   heatGlow,
   updateShipModel,
@@ -42,6 +45,55 @@ const coreBounds = (object: THREE.Object3D): THREE.Box3 => {
 };
 
 describe('ship model', () => {
+  it('draws a resolved contact with the same appearance without its private design or stores', () => {
+    const design = armedTestDesign();
+    const battle = createBattle(duelSetup(design, design, 1_000_000));
+    const seen = battle.observe('blue').contacts[0]?.detailedAppearance;
+    if (!seen) throw new Error('Expected fully resolved exterior');
+    const own = createShipModel(design);
+    const contact = createResolvedShipModel(seen);
+    expect(new THREE.Box3().setFromObject(contact)).toEqual(new THREE.Box3().setFromObject(own));
+    const remaining = {
+      ...seen,
+      parts: seen.parts.filter((p) => p.section !== 'forward'),
+      throttle: 0.5,
+    };
+    updateResolvedShipModel(contact, remaining);
+    expect(
+      meshesOf(contact, 'section').find((part) => part.userData.section === 'forward')?.visible,
+    ).toBe(false);
+    expect(meshesOf(contact, 'exhaust')[0]?.visible).toBe(true);
+    const rebuilt = createResolvedShipModel(remaining);
+    expect(meshesOf(rebuilt, 'section').some((part) => part.userData.section === 'forward')).toBe(
+      false,
+    );
+    battle.giveOrder('red', { type: 'radiators', deployed: true });
+    battle.advance(2.5);
+    const midway = battle.observe('blue').contacts[0]?.detailedAppearance;
+    if (!midway) throw new Error('Expected resolved deploying exterior');
+    const midwayContact = createResolvedShipModel(midway);
+    const midwayOwn = createShipModel(design, battle.observe('red').ownShip.appearance);
+    expect(new THREE.Box3().setFromObject(midwayContact)).toEqual(
+      new THREE.Box3().setFromObject(midwayOwn),
+    );
+    disposeShipModel(midwayContact);
+    disposeShipModel(midwayOwn);
+    battle.advance(2.5);
+    const deployed = battle.observe('blue').contacts[0]?.detailedAppearance;
+    if (!deployed) throw new Error('Expected resolved deployed exterior');
+    expect(shipModelNeedsRebuild(contact, deployed)).toBe(true);
+    const deployedContact = createResolvedShipModel(deployed);
+    const deployedOwn = createShipModel(design, { radiatorsDeployed: true });
+    expect(new THREE.Box3().setFromObject(deployedContact)).toEqual(
+      new THREE.Box3().setFromObject(deployedOwn),
+    );
+    disposeShipModel(rebuilt);
+    disposeShipModel(deployedContact);
+    disposeShipModel(deployedOwn);
+    disposeShipModel(own);
+    disposeShipModel(contact);
+  });
+
   it('accents shared designs independently while preserving the hull and equipment', () => {
     const design = handMadeDesign('lance');
     const coloursOf = (model: THREE.Group) => {

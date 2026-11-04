@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import type { ShipAppearance } from '../sim/battle';
 import { designComponent, type Design, type SectionKind } from '../sim/design';
+import { resolvedShipAppearance, type ResolvedShipAppearance } from '../sim/exterior';
 import { shipShape, type ShapePart } from '../sim/shape';
-import { massProperties, NO_AMMUNITION_SPENT } from '../sim/ship';
+import { NO_AMMUNITION_SPENT } from '../sim/ship';
 import { mountDetail, sectionGeometry, shipSurface } from './shipDetail';
 import { hullFittings } from './shipFittings';
-import { hullIdentity } from './shipIdentity';
 
 /** What a mesh of a ship model stands for. */
 export type ShipModelPartKind = 'section' | 'mount' | 'nozzle' | 'exhaust';
@@ -27,8 +27,6 @@ export type ShipLook = Pick<
     readonly parts?: readonly ShapePart[];
   };
 
-/** Nozzle exit radius per √N of drive thrust: a 2 MN drive gets a 3 m nozzle, m/√N. */
-const NOZZLE_RADIUS_PER_ROOT_NEWTON = 3 / Math.sqrt(2e6);
 /** A nozzle is this many times longer than its exit radius. */
 const NOZZLE_LENGTH = 1.6;
 /** The exhaust plume at full thrust is this many nozzle radii long. */
@@ -87,15 +85,16 @@ export const softGlowTexture = (): THREE.DataTexture => {
 
 /** The meshes and materials a model updates as the ship changes, kept per model. */
 interface ModelParts {
-  readonly design: Design;
-  /** The body-frame shift the model was built at: the centre of mass behind the nose, m. */
-  readonly builtCentreOfMass: number;
+  design?: Design;
+  fullThrust?: number;
+  /** Reference geometry for tracking body-frame shifts without knowing a contact's stores. */
+  readonly builtParts: readonly ShapePart[];
   readonly radiators: readonly THREE.Mesh[];
+  readonly radiatorsDeployed: boolean;
   readonly hull: THREE.Group;
   readonly radiator: THREE.MeshStandardMaterial;
   readonly plume: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>;
   readonly glow: THREE.Sprite;
-  readonly fullThrust: number;
   readonly nozzleRadius: number;
   readonly materials: readonly THREE.Material[];
 }
@@ -137,6 +136,40 @@ export const createShipModel = (
   const ammunitionSpent = look.ammunitionSpent ?? NO_AMMUNITION_SPENT;
   const radiatorsDeployed = look.radiatorsDeployed ?? false;
   const shape = shipShape(design, propellantMass, radiatorsDeployed, ammunitionSpent);
+  const exterior = resolvedShipAppearance(
+    design,
+    shape,
+    propellantMass,
+    radiatorsDeployed,
+    look.temperature ?? 300,
+    look.thrust ?? 0,
+    ammunitionSpent,
+  );
+  const model = createResolvedShipModel(exterior, accent);
+  const state = models.get(model);
+  if (state) {
+    state.design = design;
+    state.fullThrust = designComponent(design, 'drive').thrust;
+  }
+  model.name = design.name;
+  updateShipModel(model, {
+    propellantMass,
+    ammunitionSpent,
+    radiatorsDeployed,
+    temperature: look.temperature ?? 300,
+    thrust: look.thrust ?? 0,
+    parts: look.parts,
+  });
+  return model;
+};
+
+/** The same detailed renderer, supplied exclusively with permitted observed exterior data. */
+export const createResolvedShipModel = (
+  exterior: ResolvedShipAppearance,
+  accent?: string,
+): THREE.Group => {
+  const shape = exterior.parts;
+  const radiatorsDeployed = exterior.radiatorsDeployed;
 
   const armourMaterial = {
     heavy: new THREE.MeshStandardMaterial({
@@ -199,13 +232,12 @@ export const createShipModel = (
   });
 
   const model = new THREE.Group();
-  model.name = design.name;
   const hull = new THREE.Group();
   const radiators: THREE.Mesh[] = [];
   model.add(hull);
 
   for (const part of shape) {
-    const section = design.sections.find((s) => s.kind === part.section);
+    const section = exterior.sections.find((s) => s.kind === part.section);
     if (part.mount === null) {
       const armour = section?.armour;
       const material = armour && armour.thickness > 0 ? armourMaterial[armour.type] : bare;
@@ -218,20 +250,14 @@ export const createShipModel = (
           part.max.z - part.min.z,
         ),
       );
-      const mountClearance = [false, true].flatMap((deployed) =>
-        shipShape(design, propellantMass, deployed, ammunitionSpent)
-          .filter((candidate) => candidate.section === part.section && candidate.mount !== null)
-          .map((candidate) =>
-            new THREE.Box3(
-              new THREE.Vector3(candidate.min.x, candidate.min.y, candidate.min.z).sub(
-                mesh.position,
-              ),
-              new THREE.Vector3(candidate.max.x, candidate.max.y, candidate.max.z).sub(
-                mesh.position,
-              ),
-            ).expandByScalar(0.15),
-          ),
-      );
+      const mountClearance = exterior.clearance
+        .filter((candidate) => candidate.section === part.section && candidate.mount !== null)
+        .map((candidate) =>
+          new THREE.Box3(
+            new THREE.Vector3(candidate.min.x, candidate.min.y, candidate.min.z).sub(mesh.position),
+            new THREE.Vector3(candidate.max.x, candidate.max.y, candidate.max.z).sub(mesh.position),
+          ).expandByScalar(0.15),
+        );
       mesh.add(
         hullFittings(
           new THREE.Vector3(
@@ -242,12 +268,12 @@ export const createShipModel = (
           part.section,
           mountClearance,
           [material, structure, recess, marking],
-          hullIdentity(design, part.section),
+          section?.style ?? { length: 1, height: 1, width: 1, taper: 0.5 },
         ),
       );
       hull.add(mesh);
     } else {
-      const component = section?.mounts[part.mount];
+      const component = section?.mounts.find((mount) => mount.index === part.mount);
       const data: ShipModelPartData = { kind: 'mount', section: part.section, mount: part.mount };
       if (!component || component.type === 'radiator') {
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), radiator);
@@ -282,14 +308,9 @@ export const createShipModel = (
 
   // The drive nozzle: a bell opening aft from the engine section's tail, its exit area in
   // proportion to thrust.
-  const drive = designComponent(design, 'drive');
   const engine = shape.find((p) => p.section === 'engine' && p.mount === null);
   const tail = engine?.min.x ?? 0;
-  const across = engine ? Math.min(engine.max.y - engine.min.y, engine.max.z - engine.min.z) : 10;
-  const nozzleRadius = Math.min(
-    0.45 * across,
-    NOZZLE_RADIUS_PER_ROOT_NEWTON * Math.sqrt(drive.thrust),
-  );
+  const nozzleRadius = exterior.nozzleRadius;
   const nozzleLength = NOZZLE_LENGTH * nozzleRadius;
   const nozzle = new THREE.Mesh(
     new THREE.CylinderGeometry(nozzleRadius, nozzleRadius * 0.35, nozzleLength, 32, 1, true),
@@ -347,14 +368,13 @@ export const createShipModel = (
   hull.add(plume, glow);
 
   models.set(model, {
-    design,
-    builtCentreOfMass: massProperties(design, propellantMass, ammunitionSpent).centreOfMass,
+    builtParts: shape,
     radiators,
+    radiatorsDeployed,
     hull,
     radiator,
     plume,
     glow,
-    fullThrust: drive.thrust,
     nozzleRadius,
     materials: [
       armourMaterial.heavy,
@@ -369,16 +389,15 @@ export const createShipModel = (
       marking,
     ],
   });
-  updateShipModel(model, {
-    propellantMass,
-    ammunitionSpent,
-    radiatorsDeployed,
-    temperature: look.temperature ?? 300,
-    thrust: look.thrust ?? 0,
-    parts: look.parts,
-  });
+  updateResolvedShipModel(model, exterior);
   return model;
 };
+
+/** Whether a model needs rebuilding to show this look: the radiators moved. */
+export const shipModelNeedsRebuild = (
+  model: THREE.Group,
+  look: Pick<ShipLook, 'radiatorsDeployed'>,
+): boolean => models.get(model)?.radiatorsDeployed !== look.radiatorsDeployed;
 
 const scratch = new THREE.Color();
 
@@ -390,37 +409,18 @@ const scratch = new THREE.Color();
 export const updateShipModel = (model: THREE.Group, look: ShipLook): void => {
   const parts = models.get(model);
   if (!parts) return;
-  const centreOfMass = massProperties(
+  if (!parts.design) return;
+  const shape = shipShape(
     parts.design,
     look.propellantMass,
+    look.radiatorsDeployed,
     look.ammunitionSpent ?? NO_AMMUNITION_SPENT,
-  ).centreOfMass;
-  parts.hull.position.x = centreOfMass - parts.builtCentreOfMass;
-
-  const shape =
-    look.parts ??
-    shipShape(parts.design, look.propellantMass, look.radiatorsDeployed, look.ammunitionSpent);
-  for (const mesh of parts.radiators) {
-    const data = mesh.userData as ShipModelPartData;
-    const part = shape.find((p) => p.section === data.section && p.mount === data.mount);
-    if (!part) continue;
-    mesh.scale.set(part.max.x - part.min.x, part.max.y - part.min.y, part.max.z - part.min.z);
-    mesh.position.set(
-      (part.min.x + part.max.x) / 2 - parts.hull.position.x,
-      (part.min.y + part.max.y) / 2,
-      (part.min.z + part.max.z) / 2,
-    );
-  }
-
-  parts.radiator.emissive.copy(heatGlow(look.temperature, scratch));
-
-  const throttle = Math.min(1, Math.max(0, look.thrust / parts.fullThrust));
-  parts.plume.visible = throttle > 0;
-  parts.glow.visible = throttle > 0;
-  parts.plume.scale.x = Math.max(1e-3, throttle * PLUME_LENGTH * parts.nozzleRadius);
-  parts.plume.material.opacity = 0.25 + 0.45 * throttle;
-  parts.glow.material.opacity = 0.5 + 0.5 * throttle;
-
+  );
+  updateResolvedShipModel(model, {
+    parts: look.parts ?? shape,
+    temperature: look.temperature,
+    throttle: Math.min(1, Math.max(0, look.thrust / (parts.fullThrust ?? 1))),
+  });
   const intact = look.parts;
   for (const child of parts.hull.children) {
     const data = child.userData as Partial<ShipModelPartData>;
@@ -429,6 +429,49 @@ export const updateShipModel = (model: THREE.Group, look: ShipLook): void => {
     if (!section) continue;
     child.visible =
       !intact || intact.some((p) => p.section === section && p.mount === (data.mount ?? null));
+  }
+};
+
+/** Updates a detailed contact from the current, restricted exterior observation. */
+export const updateResolvedShipModel = (
+  model: THREE.Group,
+  look: Pick<ResolvedShipAppearance, 'parts' | 'temperature' | 'throttle'>,
+): void => {
+  const parts = models.get(model);
+  if (!parts) return;
+  const reference = parts.builtParts.find(
+    (p) =>
+      p.mount === null &&
+      look.parts.some((current) => current.section === p.section && current.mount === null),
+  );
+  const current = look.parts.find((p) => p.section === reference?.section && p.mount === null);
+  parts.hull.position.x = reference && current ? current.max.x - reference.max.x : 0;
+  for (const mesh of parts.radiators) {
+    const data = mesh.userData as ShipModelPartData;
+    const part = look.parts.find((p) => p.section === data.section && p.mount === data.mount);
+    if (!part) continue;
+    mesh.scale.set(part.max.x - part.min.x, part.max.y - part.min.y, part.max.z - part.min.z);
+    mesh.position.set(
+      (part.min.x + part.max.x) / 2 - parts.hull.position.x,
+      (part.min.y + part.max.y) / 2,
+      (part.min.z + part.max.z) / 2,
+    );
+  }
+  parts.radiator.emissive.copy(heatGlow(look.temperature, scratch));
+  const throttle = look.throttle;
+  const engine = look.parts.some((p) => p.section === 'engine' && p.mount === null);
+  parts.plume.visible = throttle > 0 && engine;
+  parts.glow.visible = throttle > 0 && engine;
+  parts.plume.scale.x = Math.max(1e-3, throttle * PLUME_LENGTH * parts.nozzleRadius);
+  parts.plume.material.opacity = 0.25 + 0.45 * throttle;
+  parts.glow.material.opacity = 0.5 + 0.5 * throttle;
+  for (const child of parts.hull.children) {
+    const data = child.userData as Partial<ShipModelPartData>;
+    const section = data.kind === 'nozzle' ? 'engine' : data.section;
+    if (section)
+      child.visible = look.parts.some(
+        (p) => p.section === section && p.mount === (data.mount ?? null),
+      );
   }
 };
 

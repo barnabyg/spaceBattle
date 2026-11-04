@@ -583,6 +583,51 @@ h3 {
   text-shadow: 0 0 4px #000;
 }
 
+/* Fixed-size double chevrons show attack direction; each firing side gets its own label. */
+.beam-direction {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  color: var(--beam-colour);
+  pointer-events: none;
+}
+
+.beam-direction__chevrons {
+  position: absolute;
+  inset: 0;
+  transform: rotate(var(--angle, 0rad));
+}
+
+.beam-direction__chevrons::before,
+.beam-direction__chevrons::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  width: 8px;
+  height: 8px;
+  border-top: 3px solid currentColor;
+  border-right: 3px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.beam-direction__chevrons::before {
+  left: 1px;
+}
+
+.beam-direction__chevrons::after {
+  left: 8px;
+}
+
+.beam-direction__text {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  white-space: nowrap;
+  text-shadow: 0 0 4px #000;
+}
+
 .priority-list {
   margin: 0 0 0.6rem;
   padding: 0;
@@ -806,6 +851,11 @@ h3 {
 .setup-side__name {
   margin: 0;
   color: var(--side-colour);
+}
+
+.setup-side .design-preview {
+  height: 12rem;
+  flex-shrink: 0;
 }
 
 .design-summary {
