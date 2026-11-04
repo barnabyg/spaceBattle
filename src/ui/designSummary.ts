@@ -10,7 +10,7 @@ import { deltaVWith, massProperties } from '../sim/ship';
 import { kineticGunRange } from '../sim/kinetic';
 import { missileDeltaV, missileReach } from '../sim/missile';
 import { pointDefenceRange } from '../sim/pointDefence';
-import { effectiveRange, type BeamWeaponDesign } from '../sim/beams';
+import { effectiveRange, LASER_BURST_POWER, type BeamWeaponDesign } from '../sim/beams';
 import { designFullDeflection } from '../sim/shields';
 import { designMissiles } from '../sim/weapons';
 import {
@@ -80,7 +80,7 @@ const describeAntiMissiles = (design: Design): string => {
 const describeBeams = (weapons: readonly BeamWeaponDesign[]): string =>
   weapons.length === 0
     ? 'None'
-    : `${weapons.length} · ${formatMW(weapons.reduce((total, w) => total + w.beamPower, 0))} ${weapons[0]?.type === 'laser' ? 'average · 2× burst' : 'beam'} · reach ${formatKm(Math.max(...weapons.map(effectiveRange)))}`;
+    : `${weapons.length} · ${formatMW(weapons.reduce((total, w) => total + w.beamPower, 0))} ${weapons[0]?.type === 'laser' ? `average · ${LASER_BURST_POWER}× burst` : 'beam'} · reach ${formatKm(Math.max(...weapons.map(effectiveRange)))}`;
 
 /**
  * A design's shields: the hardest protons its magnetic shields turn away entirely, the laser power

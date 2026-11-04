@@ -6,11 +6,11 @@ export type BeamWeaponDesign = LaserDesign | ParticleBeamDesign;
 
 /** m/s */
 export const SPEED_OF_LIGHT = 299_792_458;
-/** At rated input, a laser stores one second of electrical energy before a one-second burst. */
-export const LASER_CHARGE_TIME = 1;
+/** At rated input, a laser stores fifteen seconds of electrical energy before a one-second shot. */
+export const LASER_CHARGE_TIME = 15;
 export const LASER_BURST_TIME = 1;
-/** Charging continues during discharge: twice rated output for half the cycle preserves average power. */
-export const LASER_BURST_POWER = 2;
+/** Charging continues during discharge; the peak preserves rated average output over a full cycle. */
+export const LASER_BURST_POWER = (LASER_CHARGE_TIME + LASER_BURST_TIME) / LASER_BURST_TIME;
 /**
  * Beam weapons hold fire beyond the range where their beam's intensity falls below this, W/m²:
  * about a thousand suns, which takes most of an hour to burn through a few centimetres of armour.

@@ -154,12 +154,12 @@ describe('the sound cues derive from battle events for the player ship only', ()
   it('hear the own beams fire, and enemy beams only as they land on the own hull', () => {
     const battle = duel(armedTestDesign(), testDesign(), 50_000 * KM);
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
-    const { blue, red } = framesUntil(battle, 10);
+    const { blue, red } = framesUntil(battle, 16);
     expect(blue.at(-1)?.beams).toBeCloseTo(1);
     expect(red.at(-1)?.beams).toBe(0);
     expect(hits(blue)).toEqual([]);
     expect(blue.every((f) => f.beamsLanding === 0)).toBe(true);
-    expect(hits(red).map((h) => h.kind)).toEqual(Array.from({ length: 5 }, () => 'beam'));
+    expect(hits(red).map((h) => h.kind)).toEqual(['beam']);
     expect(blue.some((frame) => frame.beams === 0)).toBe(true);
     expect(red.at(-1)?.beamsLanding).toBeGreaterThan(0);
   });

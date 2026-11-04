@@ -50,8 +50,8 @@ safety limits.
 ## Playing
 
 With **Fire freely** and a target in range, lasers charge from allocated weapons power, then
-fire short bursts. At full supply they alternate one second charging and one second firing at
-twice their listed average beam power; charging continues during the burst. Individual weapon
+fire short shots. At full supply they charge for 15 seconds and fire for one second at
+16 times their listed average beam power; charging continues during the shot. Individual weapon
 statuses show **Charging**, **Firing** and **Charge %**. Low power slows charging; heat and damage
 limit output. **Hold fire**, no target or leaving range interrupts emission and retains at most
 one local buffer of charge. Changing targets uses that same bounded charge. Particle beams
@@ -67,7 +67,8 @@ npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev -- --port 5277 --strictPo
 Open [the game](http://localhost:5277) in Firefox. Start a free battle with Blue's Lance controlled
 by the player and Red's Bastion controlled by the computer. Target the enemy, select **Fire freely**
 and **Close**. Use time compression until the laser is in range, then choose **1×**. Watch charge
-rise and the one-second beam and firing sound alternate with charging. Select **Hold fire**:
+rise over 15 simulated seconds, followed by a one-second beam and firing sound. The next shot
+requires another 15 seconds of charging. Select **Hold fire**:
 emission stops on the next simulation step and charge stays fixed. Select **Fire freely** again:
 charging resumes, followed by bounded bursts. The instrument view's impact glow follows arrival
 at the target, so it is delayed by light travel time. Pause to inspect either phase.

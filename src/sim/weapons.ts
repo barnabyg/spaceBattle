@@ -482,10 +482,10 @@ export const laserChargeFraction = (ship: ShipState, state: BeamWeaponState): nu
 
 /**
  * Settles beam output and local laser storage after power allocation, before heat accounting.
- * A laser starts empty, charges at rated input, then emits at up to twice rated power for one
- * second while still drawing rated input. With full supply it alternates one second charging
- * and one second firing: the old average output, with at most two seconds' rated beam energy
- * in a burst. Low supply extends charging and can shorten the useful part of a burst.
+ * A laser starts empty, charges for fifteen seconds at rated input, then emits a one-second
+ * shot while still drawing rated input. Peak output is sixteen times rated average power;
+ * the buffer and ongoing input bound a shot to sixteen seconds of rated beam energy.
+ * This preserves the old average output over complete cycles. Low supply extends charging and can shorten the useful part of a burst.
  * Hold fire, loss of range or thermal cutoff interrupts the burst, retaining at most one
  * buffer's energy. Damage reduces capacity; displaced energy becomes heat in settlePowerAndHeat.
  */

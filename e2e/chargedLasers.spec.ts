@@ -5,6 +5,7 @@ import { startFreeBattle } from './freeBattle';
 test('lasers show charging progress, bursts and hold fire through the battle controls', async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   // Long reach lets the player test firing immediately in the ordinary opening scenario.
   const design = withSection(testDesign({ id: 'burst-review', name: 'Burst review' }), 'forward', {
     mounts: [{ ...TEST_LASER, wavelength: 25e-9 }],
@@ -20,7 +21,8 @@ test('lasers show charging progress, bursts and hold fire through the battle con
   await expect(laser).toContainText('Charge 0%');
   await page.getByRole('button', { name: 'Fire freely', exact: true }).click();
   await expect(laser).toContainText(/Charging · Charge [1-9]\d?%/);
-  await expect(laser).toContainText('Firing in last step');
+  // Real-time charge is 15 s; leave 3× headroom for software-rendered CI contention.
+  await expect(laser).toContainText('Firing in last step', { timeout: 45_000 });
   await expect(laser).toContainText(/Charging · Charge [1-9]\d?%/);
   await page.getByRole('button', { name: 'Hold fire', exact: true }).click();
   await expect(laser).toContainText('Holding fire');

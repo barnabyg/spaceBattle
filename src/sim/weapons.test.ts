@@ -14,7 +14,7 @@ import {
   withSection,
 } from './testing';
 import { vec3 } from './vector';
-import { SPEED_OF_LIGHT } from './beams';
+import { SPEED_OF_LIGHT, LASER_CHARGE_TIME, LASER_BURST_POWER } from './beams';
 
 const KM = 1000;
 const DEGREE = Math.PI / 180;
@@ -43,7 +43,7 @@ describe('lasers', () => {
     const fire = (range: number) => {
       const battle = createBattle(duelSetup(armedTestDesign(), armouredTarget(), range));
       fireAtRed(battle);
-      battle.advance(10.5); // Let the complete fifth burst arrive at both ranges.
+      battle.advance(16.5); // Let the complete first shot arrive at both ranges.
       const hit = own(battle, 'blue').weapons.lastHit;
       const armour = section(own(battle, 'red'), 'forward').armour;
       return { hit, worn: armour.thickness - armour.remaining };
@@ -58,7 +58,10 @@ describe('lasers', () => {
       const radius = (1.22 * TEST_LASER.wavelength * range) / TEST_LASER.aperture;
       expect(hit?.range).toBeCloseTo(range, -3);
       expect(hit?.spotRadius).toBeCloseTo(radius, 6);
-      expect(hit?.intensity).toBeCloseTo((2 * TEST_LASER.beamPower) / (Math.PI * radius ** 2), -2);
+      expect(hit?.intensity).toBeCloseTo(
+        (LASER_BURST_POWER * TEST_LASER.beamPower) / (Math.PI * radius ** 2),
+        -2,
+      );
     }
     expect((near.hit?.intensity ?? 0) / (far.hit?.intensity ?? 1)).toBeCloseTo(4, 6);
     // Damage per area follows: the nearer beam burns four times as deep in the same time.
@@ -71,8 +74,8 @@ describe('lasers', () => {
     fireAtRed(battle);
     let hit: BattleEvent | undefined;
     while (!hit) hit = hitsOn(battle.step(), 'red')[0];
-    expect(battle.time).toBeGreaterThanOrEqual(1 + range / SPEED_OF_LIGHT);
-    expect(battle.time).toBeLessThan(1 + range / SPEED_OF_LIGHT + 0.1 + 1e-9);
+    expect(battle.time).toBeGreaterThanOrEqual(LASER_CHARGE_TIME + range / SPEED_OF_LIGHT);
+    expect(battle.time).toBeLessThan(LASER_CHARGE_TIME + range / SPEED_OF_LIGHT + 0.1 + 1e-9);
   });
 
   it('holds fire beyond its effective range, or when ordered to', () => {
@@ -93,14 +96,17 @@ describe('lasers', () => {
   it('draws power and turns what does not leave in the beam into heat', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), testDesign(), 30_000 * KM));
     fireAtRed(battle);
-    battle.advance(10);
+    battle.advance(16);
     const blue = own(battle, 'blue');
     const { delivered, beamEmitted } = blue.energyLedger;
     expect(blue.power.systems.weapons.supplied).toBeCloseTo(
       TEST_LASER.beamPower / TEST_LASER.efficiency,
       -3,
     );
-    expect(blue.weapons.lasers[0]?.beamPower).toBeCloseTo(2 * TEST_LASER.beamPower, -3);
+    expect(blue.weapons.lasers[0]?.beamPower).toBeCloseTo(
+      LASER_BURST_POWER * TEST_LASER.beamPower,
+      -3,
+    );
     expect(beamEmitted).toBeCloseTo(delivered.weapons * TEST_LASER.efficiency, -3);
     // What landed on red is at most what blue sent out.
     const red = own(battle, 'red');
@@ -115,10 +121,19 @@ describe('lasers', () => {
     while (own(battle, 'blue').heat.temperature < (OVERHEAT_TEMPERATURE + CUTOFF_TEMPERATURE) / 2) {
       battle.advance(1);
     }
+    // Inspect an emitted slice: a long recharge can leave the laser idle at the heat threshold.
+    let limitBefore = 1;
+    for (let step = 0; step < 1000; step++) {
+      limitBefore = own(battle, 'blue').heat.thermalLimit;
+      battle.step();
+      if (own(battle, 'blue').weapons.lasers[0]?.firing) break;
+    }
     const blue = own(battle, 'blue');
     const beam = blue.weapons.lasers[0]?.beamPower ?? 0;
-    expect(beam).toBeLessThan(2 * TEST_LASER.beamPower * 0.6);
-    expect(beam).toBeGreaterThan(2 * TEST_LASER.beamPower * 0.3);
+    expect(beam).toBeGreaterThan(0);
+    expect(beam).toBeCloseTo(LASER_BURST_POWER * TEST_LASER.beamPower * limitBefore, -3);
+    expect(beam).toBeLessThan(LASER_BURST_POWER * TEST_LASER.beamPower);
+    expect(blue.heat.thermalLimit).toBeLessThan(1);
   });
 
   it('takes weapons orders while the battle is not advancing, but not at its own ship', () => {
@@ -159,7 +174,7 @@ describe('hits', () => {
         battle.giveOrder('red', { type: 'radiators', deployed });
         battle.advance(5);
         fireAtRed(battle);
-        const hits = hitsOn(battle.advance(2), 'red');
+        const hits = hitsOn(battle.advance(16), 'red');
         expect(hits.length).toBeGreaterThan(0);
         for (const hit of hits) expect(hit.section).toBe('forward');
       }
@@ -172,7 +187,7 @@ describe('hits', () => {
       duelSetup(armedTestDesign(), handMadeDesign('bastion'), 30_000 * KM, broadside),
     );
     fireAtRed(battle);
-    const hits = hitsOn(battle.advance(2), 'red');
+    const hits = hitsOn(battle.advance(16), 'red');
     expect(hits.map((h) => h.section)).toEqual(['middle']);
   });
 
@@ -219,7 +234,7 @@ describe('hits', () => {
     expect(forward.structure).toBe(0);
     expect(forward.components[0]?.integrity).toBe(0);
     // With the forward section gone, the line of fire reaches the middle section.
-    const next = hitsOn(battle.advance(2), 'red');
+    const next = hitsOn(battle.advance(16), 'red');
     expect(next.map((h) => h.section)).toEqual(['middle']);
   });
 });
@@ -235,7 +250,7 @@ describe('integrity', () => {
     fireAtRed(battle);
     const seen: number[] = [];
     for (let i = 0; i < 100; i++) {
-      battle.advance(10);
+      battle.advance(16);
       const red = own(battle, 'red');
       const drive = section(red, 'engine').components[0];
       expect(drive?.type).toBe('drive');
@@ -266,8 +281,8 @@ describe('integrity', () => {
     const retractedArea = designComponentsOfType(testDesign(), 'radiator')[0]?.retractedArea ?? 0;
     fireAtRed(battle);
     const seen: number[] = [];
-    for (let i = 0; i < 100; i++) {
-      battle.advance(1);
+    for (let i = 0; i < 1000; i++) {
+      battle.step(); // Resolve partial damage during a strong one-second shot.
       const red = own(battle, 'red');
       const radiator = section(red, 'middle').mounts[0];
       const integrity = radiator?.integrity ?? 0;

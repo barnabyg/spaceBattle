@@ -26,24 +26,32 @@ describe('charged lasers', () => {
   it('charges from empty, fires a bounded burst, then recharges with the old sustained energy budget', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), target(), 30_000e3));
     fire(battle);
-    battle.advance(0.5);
+    battle.advance(7.5);
     expect(weapons(battle).lasers[0]).toMatchObject({ charge: 0.5, firing: false, beamPower: 0 });
     expect(weapons(battle).readiness[0]?.status).toBe('charging');
     expect(battle.observe('blue').ownShip.energyLedger.beamEmitted).toBe(0);
-    battle.advance(0.5);
+    battle.advance(7.5);
     expect(weapons(battle).lasers[0]?.charge).toBeCloseTo(1);
     battle.step();
-    expect(weapons(battle).lasers[0]?.beamPower).toBeCloseTo(2 * TEST_LASER.beamPower);
+    expect(weapons(battle).lasers[0]?.beamPower).toBeCloseTo(16 * TEST_LASER.beamPower);
     expect(weapons(battle).readiness[0]?.status).toBe('firing');
     battle.advance(0.9);
     expect(weapons(battle).lasers[0]?.charge).toBeCloseTo(0);
     battle.step();
     expect(weapons(battle).lasers[0]?.firing).toBe(false);
-    battle.advance(17.9);
+    battle.advance(14.9);
+    expect(weapons(battle).lasers[0]?.charge).toBeCloseTo(1);
+    expect(battle.observe('blue').ownShip.energyLedger.beamEmitted).toBeCloseTo(
+      16 * TEST_LASER.beamPower,
+      -2,
+    );
+    battle.step();
+    expect(weapons(battle).lasers[0]?.beamPower).toBeCloseTo(16 * TEST_LASER.beamPower);
+    battle.advance(16.9);
     const ship = battle.observe('blue').ownShip;
-    expect(ship.energyLedger.beamEmitted).toBeCloseTo(20 * TEST_LASER.beamPower, -2);
+    expect(ship.energyLedger.beamEmitted).toBeCloseTo(48 * TEST_LASER.beamPower, -2);
     expect(ship.energyLedger.delivered.weapons).toBeCloseTo(
-      (20 * TEST_LASER.beamPower) / TEST_LASER.efficiency,
+      (48 * TEST_LASER.beamPower) / TEST_LASER.efficiency,
       -2,
     );
     expect(ship.weapons.lasers[0]?.storedEnergy).toBeCloseTo(0, -2);
@@ -54,7 +62,7 @@ describe('charged lasers', () => {
       .ownShip.sections.find((section) => section.kind === 'forward');
     const intensity = TEST_LASER.beamPower / (Math.PI * spotRadius(TEST_LASER, 30_000e3) ** 2);
     expect(1 - (nose?.armour.remaining ?? 1)).toBeCloseTo(
-      (20 * intensity) / beamResistance('ablative', 'laser'),
+      (48 * intensity) / beamResistance('ablative', 'laser'),
       9,
     );
   });
@@ -67,7 +75,7 @@ describe('charged lasers', () => {
     );
     const battle = createBattle(duelSetup(design, target(), 30_000e3));
     fire(battle);
-    battle.advance(1);
+    battle.advance(15);
     battle.giveOrder('blue', {
       type: 'power',
       priorities: ['drive', 'capacitors', 'weapons', 'shields'],
@@ -81,7 +89,7 @@ describe('charged lasers', () => {
     expect(weapons(battle).lasers[0]?.storedEnergy).toBeCloseTo(0, 4);
     expect(weapons(battle).lasers[0]?.firing).toBe(false);
     expect(battle.observe('blue').ownShip.energyLedger.beamEmitted).toBeCloseTo(
-      TEST_LASER.beamPower,
+      15 * TEST_LASER.beamPower,
       -2,
     );
   });
@@ -89,7 +97,7 @@ describe('charged lasers', () => {
   it('accounts for local storage and conversion heat on every step of a cycle', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), target(), 30_000e3));
     fire(battle);
-    for (let step = 0; step < 40; step++) {
+    for (let step = 0; step < 320; step++) {
       battle.step();
       const ship = battle.observe('blue').ownShip;
       const ledger = ship.energyLedger;
@@ -126,14 +134,14 @@ describe('charged lasers', () => {
         ),
       });
       fire(battle);
-      battle.advance(1);
+      battle.advance(15);
       expect(weapons(battle).lasers[0]?.storedEnergy).toBeCloseTo(
-        (integrity * TEST_LASER.beamPower) / TEST_LASER.efficiency,
+        (15 * integrity * TEST_LASER.beamPower) / TEST_LASER.efficiency,
         -2,
       );
       battle.step();
       expect(weapons(battle).lasers[0]?.beamPower).toBeCloseTo(
-        2 * integrity * TEST_LASER.beamPower,
+        16 * integrity * TEST_LASER.beamPower,
         -2,
       );
     },
@@ -147,10 +155,10 @@ describe('charged lasers', () => {
     );
     const battle = createBattle(duelSetup(design, target(), 30_000e3));
     fire(battle);
-    battle.advance(1);
+    battle.advance(15);
     expect(weapons(battle).lasers[0]?.charge).toBeCloseTo(0.25);
     expect(weapons(battle).lasers[0]?.firing).toBe(false);
-    battle.advance(3);
+    battle.advance(45);
     expect(weapons(battle).lasers[0]?.charge).toBeCloseTo(1);
     battle.step();
     expect(weapons(battle).lasers[0]?.firing).toBe(true);
@@ -166,18 +174,18 @@ describe('charged lasers', () => {
   it('interrupts a burst on hold fire, retains only bounded charge and resumes without an oversized shot', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), target(), 30_000e3));
     fire(battle);
-    battle.advance(1.5);
+    battle.advance(15.5);
     const charge = weapons(battle).lasers[0]?.storedEnergy;
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
     battle.advance(60);
     expect(weapons(battle).lasers[0]).toMatchObject({ storedEnergy: charge, firing: false });
     const before = battle.observe('blue').ownShip.energyLedger.beamEmitted;
     fire(battle);
-    battle.advance(0.5);
+    battle.advance(7.5);
     expect(weapons(battle).lasers[0]?.firing).toBe(false);
     battle.advance(1);
     expect(battle.observe('blue').ownShip.energyLedger.beamEmitted - before).toBeCloseTo(
-      2 * TEST_LASER.beamPower,
+      16 * TEST_LASER.beamPower,
       -2,
     );
   });
@@ -208,7 +216,7 @@ describe('charged lasers', () => {
     '%s cannot destroy an intact stock armoured ship with its first burst',
     (attacker) => {
       for (const defender of ['lance', 'bastion', 'bulwark']) {
-        for (const range of [10_000e3, 50_000e3, 100_000e3]) {
+        for (const range of [1_000e3, 10_000e3, 50_000e3, 100_000e3]) {
           for (const seed of [1, 7, 42]) {
             const design = handMadeDesign(attacker);
             const battle = createBattle({
@@ -216,7 +224,7 @@ describe('charged lasers', () => {
               seed,
             });
             fire(battle);
-            battle.advance(3); // Includes the last burst slice arriving, even at 100,000 km.
+            battle.advance(17); // Includes the whole first shot arriving, even at 100,000 km.
             expect(
               battle.outcome,
               `${attacker} vs ${defender}, ${range} m, seed ${seed}`,
@@ -227,7 +235,7 @@ describe('charged lasers', () => {
             );
             const emitted = battle.observe('blue').ownShip.energyLedger.beamEmitted;
             expect(emitted).toBeGreaterThan(0);
-            expect(emitted).toBeLessThanOrEqual(2 * rated + 1);
+            expect(emitted).toBeLessThanOrEqual(16 * rated + 1);
             expect(
               battle.observe('red').ownShip.sections.every((section) => section.structure > 0),
             ).toBe(true);
