@@ -21,13 +21,7 @@ import {
   updateContactModel,
 } from './contactModel';
 import { CONTACT_DETAIL_TEXT, formatKm } from './format';
-import {
-  createShipModel,
-  disposeShipModel,
-  shipModelNeedsRebuild,
-  softGlowTexture,
-  updateShipModel,
-} from './shipModel';
+import { createShipModel, disposeShipModel, softGlowTexture, updateShipModel } from './shipModel';
 
 /** The sun, far off in this direction (world frame, z up as on the tactical map). */
 const SUN_DIRECTION = new THREE.Vector3(0.55, -0.35, 0.75).normalize();
@@ -250,15 +244,7 @@ const flashesOf = (look: Pick<ShipAppearance, 'impacts' | 'beamsLanding'>): Flas
 /** Brings a ship's model, orientation and hit spots up to date with what is observed. */
 const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance) => {
   toQuaternion(orientation, view.anchor.quaternion);
-  if (shipModelNeedsRebuild(view.model, look)) {
-    view.anchor.remove(view.model);
-    disposeShipModel(view.model);
-    view.model = createShipModel(view.side.design, look);
-    setLayer(view.model, view.layer);
-    view.anchor.add(view.model);
-  } else {
-    updateShipModel(view.model, look);
-  }
+  updateShipModel(view.model, look);
   showFlashes(view, look);
 };
 

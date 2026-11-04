@@ -70,6 +70,8 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
   await expect(radiators).toContainText('Retracted');
   await page.getByRole('button', { name: 'Deploy radiators' }).click();
   await page.clock.runFor(1_000);
+  await expect(radiators).toContainText('Deploying');
+  await page.clock.runFor(5_000);
   await expect(radiators).toContainText('Deployed');
 
   await fastest(page);

@@ -49,7 +49,8 @@ export interface PowerOrder {
 
 /**
  * Deploy the radiators to shed more heat, at the cost of exposing them, or retract them. The
- * autopilot never moves them itself.
+ * deployment takes five simulated seconds, with folded cooling and exposure until complete.
+ * Retraction is immediate and cancels deployment. Repeating deploy does not restart it.
  */
 export interface RadiatorsOrder {
   readonly type: 'radiators';

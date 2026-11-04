@@ -307,7 +307,10 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
     case 'weapons':
       return ship.weapons.target === order.target && ship.weapons.mode === order.mode;
     case 'radiators':
-      return ship.heat.radiatorsDeployed === order.deployed;
+      return (
+        (ship.heat.radiatorsDeployed || ship.heat.radiatorDeploymentRemaining > 0) ===
+        order.deployed
+      );
     case 'shields':
       return ship.shields.raised === order.raised;
     case 'launch': {

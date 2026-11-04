@@ -17,7 +17,12 @@ import {
   type WarheadType,
 } from './design';
 import type { BattleEvent, BeamKind, HitEvent, MunitionKind, ParticleBeamKind } from './events';
-import { thermalLimit, thermalProperties, workingRadiators } from './heat';
+import {
+  RADIATOR_DEPLOYMENT_TIME,
+  thermalLimit,
+  thermalProperties,
+  workingRadiators,
+} from './heat';
 import { kineticGunRange, shotEnergy, type Motion, type Slug } from './kinetic';
 import { observeWeaponReadiness, type WeaponReadiness } from './weaponReadiness';
 import { observeManoeuvre, type ContactMotion, type ManoeuvreObservation } from './manoeuvre';
@@ -34,7 +39,7 @@ import type { BattleOutcome } from './outcome';
 import { burstEnergy, pointDefenceRange, type PointDefenceEngagement } from './pointDefence';
 import { powerPlantOf, type EnergyLedger, type PowerShare, type PowerSystem } from './power';
 import { rotate, type Quat } from './quaternion';
-import type { ShapePart } from './shape';
+import { shipShape, type ShapePart } from './shape';
 import type { IntelligenceReport } from './intelligence';
 import { perceive, sensorPower, type ContactDetail } from './sensors';
 import { coolantCapacity, fullDeflection, shieldsPowered } from './shields';
@@ -51,7 +56,7 @@ import {
   type ShipCondition,
   type ShipState,
 } from './ship';
-import { distance, type Vec3 } from './vector';
+import { add, distance, scale, sub, type Vec3 } from './vector';
 import {
   designMissiles,
   missilesLeft,
@@ -96,6 +101,8 @@ export interface HeatObservation {
   /** Laser heat the coolant shields carried into the ship in the last step, W. */
   readonly absorbed: number;
   readonly radiatorsDeployed: boolean;
+  /** Simulated seconds left to deploy; zero when idle. */
+  readonly radiatorDeploymentRemaining: number;
   /** Radiating area now exposed, m². */
   readonly radiatorArea: number;
   /** The fraction of their full power systems may use at this temperature. */
@@ -362,7 +369,10 @@ export interface ShipAppearance {
   readonly temperature: number;
   /** Drive thrust applied in the last step, N. */
   readonly thrust: number;
-  /** The parts still there, in the body frame: sections not failed, mounts not wrecked. */
+  /**
+   * Visible parts in the body frame, with radiators extending during deployment.
+   * These visual bounds do not change the simulation's hit envelopes or cooling.
+   */
   readonly parts: readonly ShapePart[];
   /** Where beams landed on the ship in the last step. */
   readonly beamsLanding: readonly BeamLanding[];
@@ -574,6 +584,7 @@ const observeHeat = (ship: ShipState): HeatObservation => {
     radiated: ship.heatFlow.radiated,
     absorbed: ship.heatFlow.absorbed,
     radiatorsDeployed: ship.radiatorsDeployed,
+    radiatorDeploymentRemaining: ship.radiatorDeploymentRemaining,
     radiatorArea: radiators.area,
     thermalLimit: thermalLimit(temperature),
   };
@@ -745,13 +756,31 @@ const observeMissile = (missile: Missile): MissileObservation => ({
   acceleration: missile.acceleration,
 });
 
+/** Animate only parts already observed; sensor resolution and hit envelopes stay physical. */
+const appearanceParts = (ship: ShipState, parts: readonly ShapePart[]): readonly ShapePart[] => {
+  if (ship.radiatorDeploymentRemaining === 0 || parts.length === 0) return parts;
+  const progress = 1 - ship.radiatorDeploymentRemaining / RADIATOR_DEPLOYMENT_TIME;
+  // Ease the extension into and out of motion, driven entirely by simulated time.
+  const fraction = progress * progress * (3 - 2 * progress);
+  const deployed = shipShape(ship.design, ship.propellantMass, true, ship.ammunitionSpent);
+  const mix = (a: Vec3, b: Vec3) => add(a, scale(sub(b, a), fraction));
+  return parts.map((part) => {
+    const component = ship.design.sections.find((s) => s.kind === part.section)?.mounts[
+      part.mount ?? -1
+    ];
+    if (component?.type !== 'radiator') return part;
+    const end = deployed.find((p) => p.section === part.section && p.mount === part.mount);
+    return end ? { ...part, min: mix(part.min, end.min), max: mix(part.max, end.max) } : part;
+  });
+};
+
 const observeAppearance = ({ ship, beamsLanding, impacts }: ObservedShip): ShipAppearance => ({
   propellantMass: ship.propellantMass,
   ammunitionSpent: ship.ammunitionSpent,
   radiatorsDeployed: ship.radiatorsDeployed,
   temperature: temperatureOf(ship),
   thrust: ship.thrust,
-  parts: intactShape(ship),
+  parts: appearanceParts(ship, intactShape(ship)),
   beamsLanding,
   impacts,
 });
@@ -861,8 +890,8 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
       thrust: ship.thrust,
       temperature: temperatureOf(ship),
       radiatorsDeployed: ship.radiatorsDeployed,
-      outline: seen.outline,
-      parts: seen.parts,
+      outline: appearanceParts(ship, seen.outline),
+      parts: appearanceParts(ship, seen.parts),
       beamsLanding: contact.beamsLanding,
       impacts: contact.impacts,
     },
