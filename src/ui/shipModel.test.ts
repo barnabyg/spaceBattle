@@ -5,6 +5,8 @@ import type { Design } from '../sim/design';
 import { catalogueComponent } from '../data/components';
 import { buildDesign, specificationOf } from '../shipyard/shipyard';
 import { shipShape } from '../sim/shape';
+import { createBattle } from '../sim/battle';
+import { duelSetup, testDesign } from '../sim/testing';
 import {
   createShipModel,
   disposeShipModel,
@@ -59,9 +61,76 @@ describe('ship model', () => {
     expect(coloursOf(red)).not.toContain('4fa3ff');
     expect(coloursOf(red)).toContain('737d86');
     expect(coloursOf(red)).toContain('3a4250');
+    updateShipModel(red, {
+      propellantMass: design.propellantMass,
+      radiatorsDeployed: true,
+      temperature: 300,
+      thrust: 0,
+    });
+    expect(coloursOf(red)).toContain('ff5a4f');
+    expect(coloursOf(red)).not.toContain('4fa3ff');
     disposeShipModel(red);
     expect(coloursOf(blue)).toContain('4fa3ff');
     disposeShipModel(blue);
+  });
+
+  it('extends observed radiators in place through deployment and cancellation without rebuilding', () => {
+    const design = handMadeDesign('rime');
+    const battle = createBattle(duelSetup(design, testDesign(), 1_000_000));
+    const model = createShipModel(design);
+    const meshes = meshesOf(model, 'mount').filter((mesh) => {
+      const data = mesh.userData as ShipModelPartData;
+      return (
+        design.sections.find((s) => s.kind === data.section)?.mounts[data.mount ?? -1]?.type ===
+        'radiator'
+      );
+    });
+    expect(meshes).toHaveLength(3);
+    const geometries = meshes.map((mesh) => (mesh as THREE.Mesh).geometry);
+    const check = () => {
+      const look = battle.observe('blue').ownShip.appearance;
+      updateShipModel(model, look);
+      model.updateMatrixWorld(true);
+      meshes.forEach((mesh, i) => {
+        const data = mesh.userData as ShipModelPartData;
+        const part = look.parts.find((p) => p.section === data.section && p.mount === data.mount);
+        if (!part) throw new Error('Missing radiator');
+        const bounds = coreBounds(mesh);
+        expect(
+          bounds.min.distanceTo(new THREE.Vector3(part.min.x, part.min.y, part.min.z)),
+        ).toBeLessThan(1e-5);
+        expect(
+          bounds.max.distanceTo(new THREE.Vector3(part.max.x, part.max.y, part.max.z)),
+        ).toBeLessThan(1e-5);
+        expect((mesh as THREE.Mesh).geometry).toBe(geometries[i]);
+      });
+    };
+    check();
+    battle.giveOrder('blue', { type: 'radiators', deployed: true });
+    battle.giveOrder('blue', { type: 'burn', throttle: 1, duration: 20 });
+    for (let second = 0; second < 5; second++) {
+      battle.advance(1);
+      check();
+    }
+    battle.giveOrder('blue', { type: 'radiators', deployed: false });
+    check();
+    battle.giveOrder('blue', { type: 'radiators', deployed: true });
+    battle.advance(2.5);
+    check();
+    battle.giveOrder('blue', { type: 'radiators', deployed: false });
+    check();
+    const look = battle.observe('blue').ownShip.appearance;
+    updateShipModel(model, {
+      ...look,
+      parts: look.parts.filter(
+        (p) =>
+          !meshes.some(
+            (mesh) => mesh.userData.section === p.section && mesh.userData.mount === p.mount,
+          ),
+      ),
+    });
+    expect(meshes.every((mesh) => !mesh.visible)).toBe(true);
+    disposeShipModel(model);
   });
 
   it('gives every stock design distinct proportions and derives player silhouettes from equipment', () => {

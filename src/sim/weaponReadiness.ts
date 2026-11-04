@@ -6,7 +6,13 @@ import { TIME_STEP } from './time';
 import { temperatureOf, type ShipState } from './ship';
 import { thermalLimit } from './heat';
 import { distance } from './vector';
-import { designMissiles, missilesLeft, slugsLeft, weaponFireBlocker } from './weapons';
+import {
+  designMissiles,
+  laserChargeFraction,
+  missilesLeft,
+  slugsLeft,
+  weaponFireBlocker,
+} from './weapons';
 import { missileReach } from './missile';
 import { pointDefenceRange } from './pointDefence';
 
@@ -26,6 +32,8 @@ export interface WeaponReadiness {
   readonly rangeKind: 'effective' | 'estimate' | 'defensive';
   readonly missile?: string;
   readonly inRange: boolean | null;
+  /** Fraction of one local buffer charged, for lasers only (0–1). */
+  readonly charge?: number;
   /** Power/firing describe the last step; awaiting-step makes no readiness guarantee. */
   readonly status:
     | 'lost'
@@ -70,14 +78,17 @@ export const observeWeaponReadiness = (
         rangeKind: 'effective',
         range: reach,
         inRange: range === null ? null : range <= reach,
+        ...(state.weapon.type === 'laser' ? { charge: laserChargeFraction(ship, state) } : {}),
         status:
           available !== 'awaiting-step'
             ? available
-            : !powered(state.demand)
-              ? 'no-power'
-              : state.beamPower > 0
-                ? 'firing'
-                : 'awaiting-step',
+            : state.beamPower > 0
+              ? 'firing'
+              : !powered(state.demand)
+                ? 'no-power'
+                : state.weapon.type === 'laser' && state.demand > 0
+                  ? 'charging'
+                  : 'awaiting-step',
       };
     }),
     ...ship.weapons.kineticGuns.map((state): WeaponReadiness => {

@@ -155,8 +155,8 @@ describe('computer captain', () => {
     expect(red.power.priorities[0]).toBe('drive');
     expect(red.heat.radiatorsDeployed).toBe(false);
 
-    while (!red.weapons.lasers.some((laser) => laser.firing)) {
-      if (battle.time > 12 * HOUR) throw new Error('Red never fired');
+    while (red.energyLedger.beamEmitted === 0) {
+      if (battle.outcome || battle.time > 12 * HOUR) throw new Error('Red never fired');
       battle.advance(60);
       red = battle.observe('red').ownShip;
     }
@@ -468,11 +468,20 @@ describe('computer captain', () => {
   it('deploys its radiators when it runs hot, and retracts them once cool', () => {
     const setup = duelSetup(handMadeDesign('lance'), handMadeDesign('bastion'), 300_000 * KM);
     const observation = createBattle(setup).observe('red');
-    const withHeat = (temperature: number, radiatorsDeployed: boolean): SideObservation => ({
+    const withHeat = (
+      temperature: number,
+      radiatorsDeployed: boolean,
+      radiatorDeploymentRemaining = 0,
+    ): SideObservation => ({
       ...observation,
       ownShip: {
         ...observation.ownShip,
-        heat: { ...observation.ownShip.heat, temperature, radiatorsDeployed },
+        heat: {
+          ...observation.ownShip.heat,
+          temperature,
+          radiatorsDeployed,
+          radiatorDeploymentRemaining,
+        },
       },
     });
     const radiators = (temperature: number, deployed: boolean) =>
@@ -485,6 +494,12 @@ describe('computer captain', () => {
     // Out of reach, the radiators stay out until the ship has cooled well down.
     expect(radiators(600, true)).toBeUndefined();
     expect(radiators(350, true)).toEqual({ type: 'radiators', deployed: false });
+    const pendingOrder = (temperature: number) =>
+      createComputerCaptain(redOf(setup))
+        .decide(withHeat(temperature, false, 3))
+        .find((order) => order.type === 'radiators');
+    expect(pendingOrder(800)).toBeUndefined();
+    expect(pendingOrder(350)).toEqual({ type: 'radiators', deployed: false });
   });
 
   it('raises its shields in a fight only against weapons they counter, and lowers them after', () => {

@@ -141,6 +141,11 @@ const describeWeapons = (weapons: WeaponsObservation): string => {
   if (ranged.length > 0 && ranged.every((weapon) => weapon.inRange === false)) {
     return `Out of range · reach ${formatKm(Math.max(...ranged.map((weapon) => weapon.range ?? 0)))}`;
   }
+  const charging = ranged.filter(
+    (weapon) => weapon.kind === 'laser' && weapon.status === 'charging',
+  );
+  if (charging.length > 0)
+    return `Charging ${charging.length} laser${charging.length === 1 ? '' : 's'}`;
   return 'No weapons firing · see individual statuses';
 };
 
@@ -172,7 +177,12 @@ const describeWeaponRange = (weapon: WeaponReadiness): string => {
         : weapon.rangeKind === 'estimate'
           ? `${weapon.inRange === null ? 'No target' : weapon.inRange ? 'Within estimated reach' : 'Beyond estimated reach'} · estimate ${formatKm(weapon.range)}`
           : `${weapon.inRange === null ? 'No target' : weapon.inRange ? 'In range' : 'Out of range'} · effective ${formatKm(weapon.range)}`;
-  return `${name} · ${range} · ${WEAPON_STATUS_TEXT[weapon.status]}`;
+  const status =
+    weapon.kind === 'laser' && weapon.status === 'charging'
+      ? 'Charging'
+      : WEAPON_STATUS_TEXT[weapon.status];
+  const charge = weapon.charge === undefined ? '' : ` · Charge ${Math.floor(weapon.charge * 100)}%`;
+  return `${name} · ${range} · ${status}${charge}`;
 };
 
 /** The missile designs the ship carries in a role, and how many of them are left. */
@@ -669,8 +679,9 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
         const row = priorityRows[rank];
         if (row) row.share.textContent = `${formatMW(supplied)} of ${formatMW(demand)}`;
       });
-      setPressed(deployRadiators, ship.heat.radiatorsDeployed);
-      setPressed(retractRadiators, !ship.heat.radiatorsDeployed);
+      const deploying = ship.heat.radiatorDeploymentRemaining > 0;
+      setPressed(deployRadiators, ship.heat.radiatorsDeployed || deploying);
+      setPressed(retractRadiators, !ship.heat.radiatorsDeployed && !deploying);
       const shielded = ship.shields.shields.length > 0;
       const workingShields = ship.shields.shields.some((shield) => shield.integrity > 0);
       const shieldReason = workingShields

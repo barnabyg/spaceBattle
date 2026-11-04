@@ -49,7 +49,8 @@ export interface PowerOrder {
 
 /**
  * Deploy the radiators to shed more heat, at the cost of exposing them, or retract them. The
- * autopilot never moves them itself.
+ * deployment takes five simulated seconds, with folded cooling and exposure until complete.
+ * Retraction is immediate and cancels deployment. Repeating deploy does not restart it.
  */
 export interface RadiatorsOrder {
   readonly type: 'radiators';
@@ -77,8 +78,10 @@ export interface AimPoint {
 
 /**
  * Choose the contact the weapons aim at (a side, or null for none) and whether they fire at it.
- * Firing freely, each laser fires while the target is within its effective range, drawing power
- * under the 'weapons' priority. Every ship starts with no target, holding fire.
+ * Firing freely, each laser charges and fires finite bursts while the target is within its
+ * effective range, drawing power under the 'weapons' priority. Holding fire interrupts a burst
+ * and retains the bounded charge. Every ship starts with no target, holding fire and empty
+ * laser buffers. Particle beams fire continuously.
  *
  * The weapons aim at the whole ship, its centre of mass, unless `aim` names a part of it: a
  * section once the sensors make it out, then a mount (see `ContactObservation`). Aiming at a part

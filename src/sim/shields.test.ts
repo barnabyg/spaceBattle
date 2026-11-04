@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createBattle, type BattleEvent, type OwnShipObservation } from './battle';
-import { PROTON_REST_ENERGY } from './beams';
+import { PROTON_REST_ENERGY, LASER_CHARGE_TIME, LASER_BURST_POWER } from './beams';
 import type { Design, MountedComponentDesign, ShieldDesign } from './design';
 import type { Order } from './orders';
 import type { PowerSystem } from './power';
@@ -58,7 +58,7 @@ interface Attack {
 /** Gives red its orders before blue opens fire. */
 type Prepare = (give: (order: Order) => void) => void;
 
-/** Blue fires `weapon` at red, in `design`, for `seconds`, once `prepare` has given red orders. */
+/** Blue attacks for `seconds` (one complete charged shot for lasers), after red's orders. */
 const attack = (
   weapon: MountedComponentDesign,
   design: Design,
@@ -71,7 +71,7 @@ const attack = (
   });
   battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
   const hits = battle
-    .advance(seconds)
+    .advance(weapon.type === 'laser' ? LASER_CHARGE_TIME + 1 : seconds)
     .filter((e) => (e.type === 'hit' || e.type === 'impact') && e.target === 'red');
   const red = battle.observe('red').ownShip;
   const nose = red.sections.find((s) => s.kind === 'forward')?.armour;
@@ -153,10 +153,12 @@ describe('coolant shields', () => {
     const { capacity } = TEST_COOLANT_SHIELD;
     // The whole beam lands on the nose; the coolant carries off its capacity of it.
     const hit = firstHit(shielded.hits);
-    expect(hit.power).toBeCloseTo(TEST_LASER.beamPower, -3);
+    expect(hit.power).toBeCloseTo(LASER_BURST_POWER * TEST_LASER.beamPower, -3);
     expect(hit.absorbed).toBeCloseTo(capacity, -3);
     expect(hit.deflected).toBe(0);
-    const left = (TEST_LASER.beamPower - capacity) / TEST_LASER.beamPower;
+    const left =
+      (LASER_BURST_POWER * TEST_LASER.beamPower - capacity) /
+      (LASER_BURST_POWER * TEST_LASER.beamPower);
     expect(shielded.worn / bare.worn).toBeCloseTo(left, 3);
     expect(shielded.red.shields.coolantCapacity.forward).toBeCloseTo(capacity, -3);
     expect(shielded.red.heat.absorbed).toBeCloseTo(capacity, -3);
@@ -164,7 +166,7 @@ describe('coolant shields', () => {
     // The ship's heat rises by what the coolant carried in, and the books still balance.
     const ledger = shielded.red.energyLedger;
     expect(ledger.heatAbsorbed).toBeCloseTo(
-      capacity * (bare.red.energyLedger.hitEnergy / TEST_LASER.beamPower),
+      capacity * (bare.red.energyLedger.hitEnergy / (LASER_BURST_POWER * TEST_LASER.beamPower)),
       -3,
     );
     expect(ledger.heatAbsorbed + ledger.hitEnergy).toBeCloseTo(bare.red.energyLedger.hitEnergy, -3);
@@ -229,7 +231,7 @@ describe('unpowered shields', () => {
       const priorities: PowerSystem[] = ['drive', 'capacitors', 'shields', 'weapons'];
       const prepare: Prepare = (give) => {
         give({ type: 'power', priorities });
-        give({ type: 'burn', throttle: 1, duration: SECONDS });
+        give({ type: 'burn', throttle: 1, duration: SECONDS + LASER_CHARGE_TIME });
       };
       const design = weak(target(BOTH));
       // The same ship with its shields lowered, so that it burns away from the beam just the same.
@@ -257,7 +259,7 @@ describe('unpowered shields', () => {
     const design = withComponent(target(BOTH), 'reactor', { output: 1.5e9 + shieldPower / 4 });
     const prepare: Prepare = (give) => {
       give({ type: 'power', priorities: ['drive', 'capacitors', 'shields', 'weapons'] });
-      give({ type: 'burn', throttle: 1, duration: SECONDS });
+      give({ type: 'burn', throttle: 1, duration: SECONDS + LASER_CHARGE_TIME });
     };
     const charged = attack(TEST_CHARGED_BEAM, design, { prepare });
     expect(charged.red.shields.powered).toBeCloseTo(0.25, 6);
