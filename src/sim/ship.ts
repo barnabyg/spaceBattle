@@ -88,6 +88,8 @@ export interface ShipState {
   /** Heat held in the ship, J: its heat capacity times its temperature. */
   heat: number;
   radiatorsDeployed: boolean;
+  /** Simulated seconds left to deploy; zero when idle. Retraction cancels deployment. */
+  radiatorDeploymentRemaining: number;
   /** Whether the captain has the shields raised, so they draw power and work. */
   shieldsRaised: boolean;
   /** Laser power each section's coolant shields are carrying in this step, W. */
@@ -395,6 +397,7 @@ const createFreshShip = (
   storedEnergy: powerPlant(design).storageCapacity,
   heat: thermalProperties(design).heatCapacity * BASE_TEMPERATURE,
   radiatorsDeployed: false,
+  radiatorDeploymentRemaining: 0,
   shieldsRaised: true,
   coolantLoad: NO_COOLANT_LOAD,
   powerFlow: IDLE_FLOW,

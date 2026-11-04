@@ -49,6 +49,17 @@ safety limits.
 
 ## Playing
 
+Radiators take five simulated seconds to deploy (five seconds at 1×). Their status shows the
+remaining time; cooling and exposure stay at the folded level until deployment finishes.
+Pausing freezes deployment and time compression speeds it up. **Retract radiators** acts
+immediately and cancels a deployment in progress.
+
+To check manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from
+`C:/docs/git/spaceBattle` in PowerShell 7. Start a free battle, pause, and select **Deploy
+radiators**: the status should stay at **Deploying · 5.0 s**. Resume at 1× and watch the
+countdown finish after five seconds. Retract, deploy again at 10×, and expect completion in
+about half a second. Pause and start another deployment, then retract to cancel it.
+
 On Windows, double-click `run.bat` in the repository root. It installs the dependencies on first run, then starts the game in Firefox; close its window to stop the game. From a terminal, `npm run dev` does the same once dependencies are installed.
 
 The game opens on the main menu. Choose **Free battle**, pick a **Scenario** for where the ships start (an opening pass, head-on, crossing or pursuit, each a few hundred thousand km apart in empty deep space), a hand-made design for Blue and Red and whether the player or the computer commands each side, and for a computer side its **Captain skill**, then **Start battle**. When the battle ends, the result screen leads back to setup with the same choices.
