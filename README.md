@@ -55,7 +55,7 @@ The game opens on the main menu. Choose **Free battle**, pick a **Scenario** for
 
 A low-skill computer captain reconsiders its plan only every 20 seconds, does not dodge, leaves power and heat alone and always closes in; a medium one manages power and heat and keeps out of reach of an enemy it outranges; a high one also turns its best armour to the enemy and withdraws with some reserve to spare. Every computer captain knows the enemy only through its sensors, and withdraws once it has nothing left to fight with or reaches its reserve.
 
-In battle, the time controls in the top bar pause the battle (or Space) and set its time compression with one button per speed, 1×, 10×, 100×, 500× and 1000× (or keys 1–5, and + / − to step between them); the chosen speed stays selected while paused. A significant event, such as a hit or a launch, drops time compression back to 1×.
+In battle, the time controls in the top bar pause the battle (or Space) and set its time compression with one button per speed, 1×, 10×, 100×, 500× and 1000× (or keys 1–5, and + / − to step between them); the chosen speed stays selected while paused. Routine hits, impacts, launches, interceptions and misses preserve the selected speed. Nuclear detonations, magazine explosions, armour breaches, component loss, structural failure, withdrawal and battle end drop time compression back to 1×. The time controls show the cause of an automatic slowdown until you choose a speed again.
 
 You know the enemy only as a contact: its position and motion always, the rest only as far as your sensors make it out at the range. The tactical map labels the contact with what is made out (position only, silhouette, sections, mounts), and **Aim at** in the weapons orders offers each section and mount once it is made out; until then the weapons aim at the whole ship.
 
@@ -100,3 +100,9 @@ Ship models in the shipyard and instrument view share a faceted prow, armour hou
 - `src/data/` — hand-made designs (JSON data files), scenarios, the shipyard's component catalogue, the campaign's opponents and the balance numbers (prices, tiers).
 - `src/ui/` — the browser UI: menus in HTML/CSS, views in Three.js. It reads simulation state and gives orders; it never changes state directly.
 - `e2e/` — Playwright tests in Firefox.
+
+To check time compression manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }`
+from `C:/docs/git/spaceBattle` in PowerShell 7. Start a free battle, select Fire freely and a higher
+time multiplier. Routine fire should preserve it. A major damage event should select 1× and show
+“Slowed to 1×” with the affected ship and cause. Damage hidden from your sensors shows the
+generic cause “Combat damage”. Choosing a speed should clear that message.

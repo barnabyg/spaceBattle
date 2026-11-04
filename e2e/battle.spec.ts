@@ -211,7 +211,7 @@ test('ships with particle beams show their beams, the charged one short-ranged',
   expect(kmOf((await weapons.textContent())?.split('reach')[1] ?? null)).toBeLessThan(50_000);
 });
 
-test('a ship with launchers launches missiles by order, dropping to real time', async ({
+test('a ship with launchers launches missiles by order, preserving time compression', async ({
   page,
 }) => {
   await startFreeBattle(page, { blue: { design: 'Quiver' } });
@@ -229,12 +229,12 @@ test('a ship with launchers launches missiles by order, dropping to real time', 
   await page.getByLabel('Missiles', { exact: true }).fill('2');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await expect(launch).toHaveText('Launching · 2 to go · 12 missiles left');
-  await timeCompressionButton(page, '1000×').click();
+  await timeCompressionButton(page, '10×').click();
   await page.getByRole('button', { name: 'Resume' }).click();
   await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
     '2 ours · 0 incoming',
   );
-  await expect(selectedTimeCompression(page)).toHaveText('1×');
+  await expect(selectedTimeCompression(page)).toHaveText('10×');
   await expect(page.getByLabel('Ammunition')).toHaveText('10 of 12 missiles');
   await expect(page.getByRole('list', { name: 'Battle log' })).toContainText('Missile launched');
 });

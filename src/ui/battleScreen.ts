@@ -58,7 +58,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   // The viewer's side comes first so it gets the own-ship colour.
   const ordered = [viewer, ...battle.sides.filter((s) => s !== viewer)];
 
-  const timeControls = createTimeControls(runner);
+  const timeControls = createTimeControls(runner, viewer.id);
   // Each side keeps its own colour, whichever side the viewer is.
   const colours = ordered.map(
     (s) => SIDE_COLOURS[battle.sides.indexOf(s) % SIDE_COLOURS.length] ?? '#ffffff',

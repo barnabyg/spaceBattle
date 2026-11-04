@@ -121,6 +121,17 @@ button {
   font-size: 0.8rem;
 }
 
+.time-messages {
+  display: flex;
+  flex-direction: column;
+  max-width: 32rem;
+}
+
+.time-slowdown {
+  color: #ffb347;
+  font-size: 0.8rem;
+}
+
 .tactical-map {
   grid-area: map;
   position: relative;
