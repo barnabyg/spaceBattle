@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { timeCompressionButtons } from './freeBattle';
-import { CAMPAIGN_BATTLE_TIMEOUT, CAMPAIGN_TEST_TIMEOUT } from './timeouts';
+import { CAMPAIGN_BATTLE_TIMEOUT, CAMPAIGN_TEST_TIMEOUT, UI_EXPECT_TIMEOUT } from './timeouts';
 
 /** The credits the hub shows, as a number. */
 const credits = async (page: Page): Promise<number> =>
@@ -19,7 +19,15 @@ const fightToTheEnd = async (page: Page) => {
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   const result = page.getByRole('dialog', { name: 'Battle result' });
   await expect(async () => {
-    if (!(await result.isVisible())) await timeCompressionButtons(page).last().click();
+    if (!(await result.isVisible())) {
+      try {
+        await timeCompressionButtons(page).last().click({ timeout: UI_EXPECT_TIMEOUT });
+      } catch (error) {
+        // The result may open after the visibility check and block this click behind its modal.
+        // Only accept that completed battle; other click failures still fail the probe.
+        if (!(await result.isVisible())) throw error;
+      }
+    }
     // A short probe lets us restore time compression promptly after hits and launches.
     // The enclosing retry has the generous battle-completion deadline.
     await expect(result).toBeVisible({ timeout: 1_000 });

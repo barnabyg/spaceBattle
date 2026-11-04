@@ -34,6 +34,9 @@ the test restores time compression after events; it is not the battle's deadline
 The campaign win/reward test fixes the new campaign's random seed so it consistently fights
 the same opponent in the same scenario. It exercises real combat and payment; it does not
 assume that spending all missiles in any random battle guarantees a quick win.
+Restoring time compression uses the ordinary UI assertion limit for the click. If the result
+dialog opens between the visibility check and that click, the test accepts the completed
+battle rather than waiting behind its modal until the whole test expires.
 
 Vitest's default is 15 s. Longer headless simulation tests retain their existing explicit
 20–300 s limits, already several times their documented runtimes. The browser suite has a
