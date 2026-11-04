@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { HAND_MADE_DESIGNS, handMadeDesign } from '../data/designs';
 import type { Design } from '../sim/design';
+import { catalogueComponent } from '../data/components';
+import { buildDesign, specificationOf } from '../shipyard/shipyard';
 import { shipShape } from '../sim/shape';
 import {
   createShipModel,
@@ -38,6 +40,50 @@ const coreBounds = (object: THREE.Object3D): THREE.Box3 => {
 };
 
 describe('ship model', () => {
+  it('gives every stock design distinct proportions and derives player silhouettes from equipment', () => {
+    const outline = (design: Design) => {
+      const model = createShipModel(design);
+      const sizes = meshesOf(model, 'section').map((section) =>
+        new THREE.Box3()
+          .setFromObject(section)
+          .getSize(new THREE.Vector3())
+          .toArray()
+          .map((value) => value.toFixed(2)),
+      );
+      disposeShipModel(model);
+      return JSON.stringify(sizes);
+    };
+    expect(new Set(HAND_MADE_DESIGNS.map(outline)).size).toBe(HAND_MADE_DESIGNS.length);
+    const base = specificationOf(handMadeDesign('lance'));
+    const laser = buildDesign({ ...base, name: 'Player laser' }).design;
+    const gun = buildDesign({
+      ...base,
+      name: 'Player gun',
+      components: base.components
+        .map((entry) =>
+          entry.component.type === 'laser'
+            ? { component: catalogueComponent('kinetic-gun') }
+            : entry,
+        )
+        .concat({ component: catalogueComponent('magazine-slugs') }),
+    }).design;
+    expect(outline(gun)).not.toBe(outline(laser));
+    expect(outline({ ...laser, id: 'renamed', name: 'Renamed' })).toBe(outline(laser));
+  });
+
+  it('gives equipment families different primary silhouettes on the same hull', () => {
+    const silhouette = (id: string, section: string) => {
+      const model = createShipModel(handMadeDesign(id));
+      const part = meshesOf(model, 'section').find((mesh) => mesh.userData.section === section);
+      const size = new THREE.Box3().setFromObject(part ?? model).getSize(new THREE.Vector3());
+      disposeShipModel(model);
+      return size;
+    };
+    expect(silhouette('needle', 'forward').x).toBeGreaterThan(silhouette('lance', 'forward').x);
+    expect(silhouette('sling', 'forward').z).toBeGreaterThan(silhouette('lance', 'forward').z);
+    expect(silhouette('torch', 'engine').y).toBeGreaterThan(silhouette('lance', 'engine').y);
+  });
+
   it.each(['lance', 'bastion'])('gives one mesh per section and per mount for %s', (id) => {
     const design = handMadeDesign(id);
     const model = createShipModel(design);

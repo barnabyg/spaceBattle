@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { SIMULATION_EXPECT_TIMEOUT, SIMULATION_TEST_TIMEOUT } from './timeouts';
 import {
   chooseSide,
   selectedTimeCompression,
@@ -49,6 +50,7 @@ test('no test mode feature is reachable with test mode off', async ({ page }) =>
 test('test mode adds a time limit, the full enemy design, a test log, faster time compression and replay', async ({
   page,
 }) => {
+  test.setTimeout(SIMULATION_TEST_TIMEOUT);
   // The page's clock is ours to stop and run, so the battle cannot end before it is checked.
   await page.clock.install();
   await setUpInTestMode(page);
@@ -87,7 +89,9 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
   await page.clock.runFor(1_000);
   await page.clock.resume();
   const result = page.getByRole('dialog', { name: 'Battle result' });
-  await expect(result.getByRole('heading')).toHaveText('No result', { timeout: 30_000 });
+  await expect(result.getByRole('heading')).toHaveText('No result', {
+    timeout: SIMULATION_EXPECT_TIMEOUT,
+  });
   await expect(result).toContainText('T+00:30:00');
   await expect(page.getByRole('region', { name: 'Test log' })).toContainText(
     'T+00:30:00 Battle over: No result',
@@ -111,6 +115,7 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
 });
 
 test('a nuclear warhead going off near the enemy strips the mounts facing it', async ({ page }) => {
+  test.setTimeout(SIMULATION_TEST_TIMEOUT);
   await setUpInTestMode(page);
   await page.getByLabel('Seed').fill('1');
   await chooseSide(page, 'Blue', { design: 'Pyre' });
@@ -131,7 +136,7 @@ test('a nuclear warhead going off near the enemy strips the mounts facing it', a
   // Lance's radiators in against the hull as the missile closed, and they come through.
   const testLog = page.getByRole('region', { name: 'Test log' });
   await expect(testLog).toContainText(/Blue missile \d+ detonated 10 kt 1\.00 km from Red/, {
-    timeout: 30_000,
+    timeout: SIMULATION_EXPECT_TIMEOUT,
   });
   await expect(testLog).toContainText('Red laser lost (middle mount');
   await expect(testLog).not.toContainText('Red radiator lost');
@@ -145,6 +150,7 @@ test('a nuclear warhead going off near the enemy strips the mounts facing it', a
 });
 
 test('anti-missile missiles intercept a salvo', async ({ page }) => {
+  test.setTimeout(SIMULATION_TEST_TIMEOUT);
   await setUpInTestMode(page);
   await page.getByLabel('Seed').fill('1');
   await chooseSide(page, 'Blue', { design: 'Quiver' });
@@ -167,13 +173,14 @@ test('anti-missile missiles intercept a salvo', async ({ page }) => {
   );
   await fastest(page);
   await expect(testLog).toContainText(/Red anti-missile missile \d+ (shot down|missed) Blue/, {
-    timeout: 30_000,
+    timeout: SIMULATION_EXPECT_TIMEOUT,
   });
   const battleLog = page.getByRole('list', { name: 'Battle log' });
   await expect(battleLog).toContainText(/Our missile shot down by anti-missile missile|missed/);
 });
 
 test('a batch run reports an outcome for every battle and sums them up', async ({ page }) => {
+  test.setTimeout(SIMULATION_TEST_TIMEOUT);
   await setUpInTestMode(page);
   await page.getByLabel('Seed').fill('7');
   await page.getByLabel('Time limit h').fill('0.25');
@@ -183,7 +190,7 @@ test('a batch run reports an outcome for every battle and sums them up', async (
   await expect(page.getByRole('heading', { name: 'Batch run' })).toBeVisible();
   await expect(page.getByText('from batch seed 7')).toBeVisible();
   await expect(page.getByLabel('Batch progress')).toContainText('3 of 3 battles', {
-    timeout: 30_000,
+    timeout: SIMULATION_EXPECT_TIMEOUT,
   });
   const summary = page.getByRole('region', { name: 'Batch summary' });
   // A quarter of an hour is too short for the ships to close from the opening pass.

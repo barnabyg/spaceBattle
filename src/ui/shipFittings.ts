@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { SectionKind } from '../sim/design';
 import { sectionGeometry } from './shipDetail';
+import type { HullIdentity } from './shipIdentity';
 
 /** Four octagonal stations form a substantial armour shell with tapered ends and flat facets. */
 const armourShell = (size: THREE.Vector3, front: number, aft: number): THREE.BufferGeometry => {
@@ -57,6 +58,7 @@ export const hullFittings = (
   section: SectionKind,
   mounts: readonly THREE.Box3[],
   materials: readonly THREE.Material[],
+  identity: HullIdentity,
 ): THREE.Group => {
   const group = new THREE.Group();
   group.name = 'Decorative hull fittings';
@@ -78,6 +80,21 @@ export const hullFittings = (
         new THREE.Vector3(1, 1, 1),
       ),
     );
+    // Stretch exterior forms around embedded roots, keeping their attachment to the core.
+    // Do this before clearance testing, so changed silhouettes cannot cover installed mounts.
+    const vertices = geometry.getAttribute('position');
+    const stretch = (value: number, root: number, factor: number) =>
+      Math.sign(value) *
+      (Math.min(Math.abs(value), root) + Math.max(0, Math.abs(value) - root) * factor);
+    for (let i = 0; i < vertices.count; i++) {
+      vertices.setXYZ(
+        i,
+        stretch(vertices.getX(i), length * 0.25, identity.length),
+        stretch(vertices.getY(i), height * 0.35, identity.height),
+        stretch(vertices.getZ(i), width * 0.35, identity.width),
+      );
+    }
+    geometry.computeVertexNormals();
     geometry.computeBoundingBox();
     // Leave installed weapons, sensors and both radiator positions unobstructed.
     if (mounts.some((mount) => geometry.boundingBox?.intersectsBox(mount))) {
@@ -187,7 +204,7 @@ export const hullFittings = (
           0,
           [length * 1.04, height * 0.74, width * 0.6],
           [length * 0.05, -height * 0.03, sz * width * 0.68],
-          0.18,
+          identity.taper,
           0.85,
         );
         block(

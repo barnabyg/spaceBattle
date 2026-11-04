@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { startFreeBattle } from './freeBattle';
+import { SIMULATION_EXPECT_TIMEOUT, SIMULATION_TEST_TIMEOUT } from './timeouts';
 
 test('setup offers a captain skill only for a computer side', async ({ page }) => {
   await page.goto('/');
@@ -14,6 +15,7 @@ test('setup offers a captain skill only for a computer side', async ({ page }) =
 });
 
 test('the player withdraws and sees the result', async ({ page }) => {
+  test.setTimeout(SIMULATION_TEST_TIMEOUT);
   await startFreeBattle(page);
   // The contact shows only what Blue's sensor makes out of it.
   await expect(page.getByRole('region', { name: 'Tactical map' })).toContainText(/Red · .* · /);
@@ -26,7 +28,7 @@ test('the player withdraws and sees the result', async ({ page }) => {
   await confirm.click();
   // Out of reach of the Bastion's weapons at the start, Blue is gone at once.
   const result = page.getByRole('dialog', { name: 'Battle result' });
-  await expect(result).toBeVisible({ timeout: 30_000 });
+  await expect(result).toBeVisible({ timeout: SIMULATION_EXPECT_TIMEOUT });
   await expect(result.getByRole('heading')).toHaveText('Red wins');
   await expect(result).toContainText('Blue withdrew');
 });

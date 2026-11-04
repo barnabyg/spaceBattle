@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { timeCompressionButtons } from './freeBattle';
+import { CAMPAIGN_BATTLE_TIMEOUT, CAMPAIGN_TEST_TIMEOUT } from './timeouts';
 
 /** The credits the hub shows, as a number. */
 const credits = async (page: Page): Promise<number> =>
@@ -19,18 +20,30 @@ const fightToTheEnd = async (page: Page) => {
   const result = page.getByRole('dialog', { name: 'Battle result' });
   await expect(async () => {
     if (!(await result.isVisible())) await timeCompressionButtons(page).last().click();
+    // A short probe lets us restore time compression promptly after hits and launches.
+    // The enclosing retry has the generous battle-completion deadline.
     await expect(result).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 150_000 });
+  }).toPass({ timeout: CAMPAIGN_BATTLE_TIMEOUT });
   return result;
 };
 
 test('a new campaign builds its first ship, fights tier 1 and is paid for the win', async ({
   page,
 }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(CAMPAIGN_TEST_TIMEOUT);
+  // Exercise the win/reward workflow with a reproducible new campaign. Random draws can
+  // spend every missile without a hit and turn this UI check into hours of simulated pursuit.
+  // Stub only the seed source; opponent selection, combat and payment still run normally.
   await page.goto('/');
   // Test mode for its faster time compression; the campaign plays the same.
   await page.getByRole('checkbox', { name: 'Test mode' }).check();
+  await page.evaluate(() => {
+    const random = Math.random;
+    Math.random = () => {
+      Math.random = random;
+      return 0;
+    };
+  });
   await page.getByRole('button', { name: 'Campaign', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Campaign' })).toBeVisible();
   await expect(page.getByLabel('Credits', { exact: true })).toHaveText('9,000,000 cr');
@@ -51,6 +64,7 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
   );
   await page.getByRole('button', { name: 'Fight', exact: true }).click();
   await expect(page.getByLabel('Own ship')).toContainText('Ship 1 · Quiver');
+  await expect(page.getByRole('region', { name: 'Enemy design' })).toContainText('Corsair class');
   const result = await fightToTheEnd(page);
   await expect(result.getByRole('heading')).toHaveText('Ship 1 wins');
 

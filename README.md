@@ -16,6 +16,34 @@ Run from the repository root after `npm ci` (and `npx playwright install firefox
 | `npm run e2e`       | End-to-end tests in Firefox (Playwright).                                              |
 | `npm run typecheck` | Type checks the app, and the headless core without DOM types.                          |
 
+## Test timeouts
+
+Timeouts detect hangs; they are not runtime targets or performance assertions. Leave at least
+three times the representative runtime under normal full-suite load, with additional margin
+for random scenarios, software rendering and slower CI hosts. Assertions finish as soon as
+their condition holds; a larger limit adds no delay to a passing test. If a timeout fires,
+inspect progress and timings before changing it again.
+
+Playwright's limits live in `e2e/timeouts.ts`: ordinary UI tests get 60 s and assertions 15 s;
+simulation waits get 60 s inside 120 s tests. The campaign battle gets 10 min inside a 12 min
+test, including setup and post-battle checks. Its previous 150 s limit was exceeded under
+full-suite load despite isolated runs taking about 20 s; 10 min is a provisional safety margin,
+not an established expected duration. The short 1 s campaign probe only controls how often
+the test restores time compression after events; it is not the battle's deadline.
+
+The campaign win/reward test fixes the new campaign's random seed so it consistently fights
+the same opponent in the same scenario. It exercises real combat and payment; it does not
+assume that spending all missiles in any random battle guarantees a quick win.
+
+Vitest's default is 15 s. Longer headless simulation tests retain their existing explicit
+20–300 s limits, already several times their documented runtimes. The browser suite has a
+20 min hard limit, nested within the CI job's 30 min limit. CI still stops at the first failure;
+local runs report all failures, with no automatic retries.
+
+These are test-runner changes; manual game verification does not apply. From the repository
+root, run `npm.cmd run verify` to exercise every gate and confirm tests finish within their
+safety limits.
+
 ## Playing
 
 On Windows, double-click `run.bat` in the repository root. It installs the dependencies on first run, then starts the game in Firefox; close its window to stop the game. From a terminal, `npm run dev` does the same once dependencies are installed.
@@ -42,7 +70,7 @@ In battle, the captain of a player side hears only what reaches their own hull, 
 
 Before each campaign battle an intelligence report shows what the ship's **intelligence components** learned about the enemy: a **long-range scanner** shows its whole design, and a **signal interceptor** cracks a random selection of facts about it (hull size, drive thrust, reactor, delta-v, each section's armour, weapons, missiles and shields), as many as its quality allows (3 of 10 for the basic one, 7 for the advanced). Without either the ship goes in blind. The computer's side gathers intelligence by the same rules. Both are in the shipyard's catalogue; a damaged one works less well, and a wrecked one not at all.
 
-Ship models in the shipyard and instrument view have a faceted prow, broad forward and aft armour housings, and a quieter central hull with an exposed structural spine. Conduits, vents, aerials and manoeuvring nozzles sit around the larger structures. These exterior fittings are decorative: they add no armour, mass or components, and disappear with their section. Installed weapons, sensors and radiators remain visible and operate as before. The [visual reference notes](docs/research/ship-visual-references.md) explain the design inspiration.
+Ship models in the shipyard and instrument view share a faceted prow, armour housings and an exposed structural spine, with distinct proportions derived from their equipment: kinetic ships have broad blunt shoulders, neutral particle beam ships long forward spars, and shielded ships prominent central housings. Player designs follow the same approach as stock designs. Conduits, vents, aerials and manoeuvring nozzles sit around the larger structures. These exterior fittings add no armour, mass or components, and disappear with their section. Installed weapons, sensors and radiators remain visible and operate as before. The [visual reference notes](docs/research/ship-visual-references.md) explain the inspiration; the [design identity review](docs/research/ship-identities.md) records each stock design's direction and comparison screenshots for human review.
 
 ## Layout
 
