@@ -14,7 +14,12 @@ import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vec
 import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
-import { createContactModel, disposeContactModel, updateContactModel } from './contactModel';
+import {
+  contactModelExtent,
+  createContactModel,
+  disposeContactModel,
+  updateContactModel,
+} from './contactModel';
 import { CONTACT_DETAIL_TEXT, formatKm } from './format';
 import {
   createShipModel,
@@ -131,7 +136,7 @@ const createSky = () => {
 interface ShipView {
   readonly side: SideSetup;
   readonly layer: number;
-  readonly length: number;
+  length: number;
   /** Turned to the ship's orientation; holds its model and hit spots. */
   readonly anchor: THREE.Group;
   model: THREE.Group;
@@ -348,6 +353,17 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
   const caption = (text: string) => el('span', { className: 'instrument-view__caption', text });
   const ownCaption = caption(`${ownSide.name} · ${ownSide.design.name}`);
   const contactCaption = caption(contactSide.name);
+  const detailStages = ['position', 'silhouette', 'sections', 'mounts'] as const;
+  const stageLabels = detailStages.map((detail) =>
+    el('li', { text: CONTACT_DETAIL_TEXT[detail], attrs: { 'data-detail': detail } }),
+  );
+  const detailExplanation = el('span', { className: 'contact-detail__explanation' });
+  const contactDetail = el(
+    'div',
+    { className: 'contact-detail', attrs: { 'aria-label': 'Resolved contact detail' } },
+    el('ol', { className: 'contact-detail__stages' }, ...stageLabels),
+    detailExplanation,
+  );
   const ownPane = el(
     'div',
     {
@@ -363,7 +379,7 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       className: 'instrument-view__pane instrument-view__pane--contact',
       attrs: { 'aria-label': 'Contact through telescope' },
     },
-    contactCaption,
+    el('div', {}, contactCaption, contactDetail),
     el('span', { className: 'instrument-view__hint', text: 'Telescope · wheel to zoom' }),
   );
   const element = el(
@@ -505,6 +521,9 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
       const seen = observation.contacts.find((c) => c.sideId === contactSide.id);
       contact.anchor.visible = seen !== undefined;
       contactPosition = seen?.position ?? null;
+      contactDetail.hidden = seen === undefined;
+      contactPane.dataset.detail = enemy && seen ? 'test-mode' : (seen?.detail ?? 'none');
+      if (!seen) contactCaption.textContent = `${contactSide.name} · no contact`;
       slugGlints.clear();
       missileGlints.clear();
       antiMissileGlints.clear();
@@ -513,14 +532,32 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
         contact.model.visible = enemy !== undefined;
         fogged.visible = enemy === undefined;
         if (enemy) {
+          contact.length = hullLength(HULLS[contactSide.design.hullSize]);
           updateShipView(contact, enemy.orientation, enemy.appearance);
-          contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${range}`;
+          contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${range} · Test mode: full detail`;
+          detailExplanation.textContent = 'Full design and state shown by Test mode.';
         } else {
           toQuaternion(seen.orientation ?? IDENTITY, contact.anchor.quaternion);
           updateContactModel(fogged, seen);
+          // Never frame an ordinary contact using its undisclosed design dimensions.
+          contact.length = contactModelExtent(fogged) ?? 80;
           showFlashes(contact, seen.appearance);
           contactCaption.textContent = `${contactSide.name} · ${seen.hullSize ?? 'unknown hull'} · ${CONTACT_DETAIL_TEXT[seen.detail]} · ${range}`;
+          const descriptions = {
+            position: 'Position tracked; shape and equipment unresolved.',
+            silhouette: 'Overall shape resolved; sections and equipment unresolved.',
+            sections: `Sections resolved and aimable: ${seen.sections.length}. Unresolved features stay plain.`,
+            mounts: `Resolved and aimable — sections: ${seen.sections.length}; mounts: ${seen.mounts.length}. Other equipment remains hidden.`,
+          };
+          detailExplanation.textContent = descriptions[seen.detail];
         }
+        for (const [index, label] of stageLabels.entries()) {
+          if (!enemy && detailStages[index] === seen.detail)
+            label.setAttribute('aria-current', 'step');
+          else label.removeAttribute('aria-current');
+        }
+        const stages = contactDetail.querySelector('ol');
+        if (stages) stages.hidden = enemy !== undefined;
         for (const munition of observation.munitions) {
           const at = telescopePosition(munition, ship.position, seen.position);
           if (!at) continue;

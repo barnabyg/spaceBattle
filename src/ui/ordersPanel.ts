@@ -3,17 +3,25 @@ import type {
   MissileDesignObservation,
   MissileObservation,
   SideObservation,
+  WeaponReadiness,
   WeaponsObservation,
 } from '../sim/battle';
 import type { MissileRole } from '../sim/design';
 import type { ManoeuvreObservation } from '../sim/manoeuvre';
-import { targetsMissile } from '../sim/missile';
+import { MISSILE_REACH_TIME, targetsMissile } from '../sim/missile';
 import type { AimPoint, FireMode, ManoeuvreGoal, Order, PointDefencePriority } from '../sim/orders';
 import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/power';
 import { distance, length, vec3 } from '../sim/vector';
 import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
-import { formatDuration, formatKm, formatKmPerS, formatMetresPerS, formatMW } from './format';
+import {
+  formatDuration,
+  formatKm,
+  formatKmPerS,
+  formatMetresPerS,
+  formatMW,
+  formatPercent,
+} from './format';
 
 const DEGREES = Math.PI / 180;
 
@@ -32,6 +40,18 @@ const button = (text: string) =>
 const setPressed = (orderButton: HTMLButtonElement, pressed: boolean) => {
   orderButton.classList.toggle('active', pressed);
   orderButton.setAttribute('aria-pressed', String(pressed));
+};
+
+/** Explain unavailable equipment beside the controls, on hover and to assistive tech. */
+const setAvailability = (orderButton: HTMLButtonElement, reason: string | null) => {
+  orderButton.disabled = reason !== null;
+  if (reason === null) {
+    orderButton.removeAttribute('title');
+    orderButton.removeAttribute('aria-description');
+  } else {
+    orderButton.title = reason;
+    orderButton.setAttribute('aria-description', reason);
+  }
 };
 
 /** An aim point as the value of an option: "whole", "middle" or "forward/0". */
@@ -115,8 +135,44 @@ const describeWeapons = (weapons: WeaponsObservation): string => {
     }
     return parts.join(' · ');
   }
-  const reach = Math.max(...working.map((w) => w.effectiveRange));
-  return `Out of range · reach ${formatKm(reach)}`;
+  const ranged = weapons.readiness.filter(
+    (weapon) => weapon.rangeKind === 'effective' && weapon.status !== 'lost',
+  );
+  if (ranged.length > 0 && ranged.every((weapon) => weapon.inRange === false)) {
+    return `Out of range · reach ${formatKm(Math.max(...ranged.map((weapon) => weapon.range ?? 0)))}`;
+  }
+  return 'No weapons firing · see individual statuses';
+};
+
+const WEAPON_STATUS_TEXT: Readonly<Record<WeaponReadiness['status'], string>> = {
+  lost: 'Lost',
+  'no-target': 'No target selected',
+  'hold-fire': 'Holding fire',
+  'no-ammunition': 'No ammunition in working magazines',
+  'no-power': 'No power in last step',
+  'no-solution': 'No interception solution',
+  'heat-limited': 'Heat limits firing',
+  'waiting-range': 'Waiting for range',
+  firing: 'Firing in last step',
+  charging: 'Charging / firing in last step',
+  'awaiting-step': 'Awaiting simulation step',
+  'by-order': 'Launch by order',
+  reloading: 'Reloading',
+  defensive: 'Defensive weapon',
+};
+
+/** The simulation supplies reach and eligibility; this only formats what the captain knows. */
+const describeWeaponRange = (weapon: WeaponReadiness): string => {
+  const name = `${COMPONENT_TEXT[weapon.kind]} · ${SECTION_TEXT[weapon.section]} mount ${weapon.mount + 1}${weapon.missile ? ` · ${weapon.missile}` : ''}`;
+  const range =
+    weapon.range === null
+      ? 'No missile reach available'
+      : weapon.rangeKind === 'defensive'
+        ? `Defensive · interception reach ${formatKm(weapon.range)}`
+        : weapon.rangeKind === 'estimate'
+          ? `${weapon.inRange === null ? 'No target' : weapon.inRange ? 'Within estimated reach' : 'Beyond estimated reach'} · estimate ${formatKm(weapon.range)}`
+          : `${weapon.inRange === null ? 'No target' : weapon.inRange ? 'In range' : 'Out of range'} · effective ${formatKm(weapon.range)}`;
+  return `${name} · ${range} · ${WEAPON_STATUS_TEXT[weapon.status]}`;
 };
 
 /** The missile designs the ship carries in a role, and how many of them are left. */
@@ -347,6 +403,14 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     className: 'order-state',
     attrs: { 'aria-label': 'Shields state' },
   });
+  const shieldsProtection = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Shield protection' },
+  });
+  const shieldsTiming = el('p', {
+    className: 'order-state',
+    text: 'Orders apply while paused; protection updates when the battle advances.',
+  });
 
   const targetEnemy = button('Target enemy');
   const noTarget = button('No target');
@@ -356,6 +420,12 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     className: 'order-state',
     attrs: { 'aria-label': 'Weapons state' },
   });
+  const targetSeparation = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Weapon target separation' },
+  });
+  const weaponRanges = el('div', { attrs: { role: 'list', 'aria-label': 'Weapon ranges' } });
+  let rangeLines = '';
   const aimSelect = el('select', { attrs: { 'aria-label': 'Aim at' } });
   const aimField = el('label', { className: 'field' }, el('span', { text: 'Aim at' }), aimSelect);
   /** The parts on offer to aim at, by option value, as last shown. */
@@ -517,7 +587,15 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     el('h3', { text: 'Shields' }),
     el('div', { className: 'order-row' }, raiseShields, lowerShields),
     shieldsState,
+    shieldsProtection,
+    shieldsTiming,
     el('h3', { text: 'Weapons' }),
+    targetSeparation,
+    weaponRanges,
+    el('p', {
+      className: 'order-state',
+      text: `Effective range is fire control's cutoff, not a hit or damage guarantee. Missile reach estimates ${formatDuration(MISSILE_REACH_TIME)} at boost speed; target motion and manoeuvres matter, and launches beyond it are allowed. Firing and power describe the last simulation step.`,
+    }),
     el('div', { className: 'order-row' }, targetEnemy, noTarget),
     el('div', { className: 'order-row' }, fireFreely, holdFire),
     el('div', { className: 'order-row' }, aimField),
@@ -594,16 +672,29 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       setPressed(deployRadiators, ship.heat.radiatorsDeployed);
       setPressed(retractRadiators, !ship.heat.radiatorsDeployed);
       const shielded = ship.shields.shields.length > 0;
-      raiseShields.disabled = !shielded;
-      lowerShields.disabled = !shielded;
-      shieldsState.hidden = !shielded;
-      shieldsState.textContent = shielded
+      const workingShields = ship.shields.shields.some((shield) => shield.integrity > 0);
+      const shieldReason = workingShields
+        ? null
+        : shielded
+          ? 'All shields lost'
+          : 'No shields installed';
+      setAvailability(raiseShields, shieldReason);
+      setAvailability(lowerShields, shieldReason);
+      shieldsState.textContent = workingShields
         ? ship.shields.raised
           ? 'Shields raised'
           : 'Shields lowered'
-        : '';
-      setPressed(raiseShields, shielded && ship.shields.raised);
-      setPressed(lowerShields, shielded && !ship.shields.raised);
+        : shielded
+          ? 'Shields unavailable · all lost'
+          : 'Shields unavailable · none installed';
+      setPressed(raiseShields, workingShields && ship.shields.raised);
+      setPressed(lowerShields, workingShields && !ship.shields.raised);
+      shieldsProtection.hidden = !workingShields;
+      shieldsTiming.hidden = !workingShields;
+      const damagedShields = ship.shields.shields.some((shield) => shield.integrity < 1);
+      shieldsProtection.textContent = ship.shields.raised
+        ? `Protection last step: ${formatPercent(ship.shields.powered)} power${damagedShields ? ' · damaged shields' : ''}`
+        : 'No protection while lowered';
 
       weapons = { target: ship.weapons.target, mode: ship.weapons.mode, aim: ship.weapons.aim };
       enemy = observation.contacts[0]?.sideId ?? null;
@@ -626,6 +717,24 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       setPressed(fireFreely, weapons.mode === 'fire-freely');
       setPressed(holdFire, weapons.mode === 'hold-fire');
       weaponsState.textContent = describeWeapons(ship.weapons);
+      targetSeparation.textContent =
+        ship.weapons.targetRange === null
+          ? 'No target selected'
+          : `Separation to ${ship.weapons.target}: ${formatKm(ship.weapons.targetRange)}`;
+      const lines = ship.weapons.readiness.map(describeWeaponRange);
+      const nextLines = lines.join('\n');
+      if (nextLines !== rangeLines) {
+        rangeLines = nextLines;
+        weaponRanges.replaceChildren(
+          ...lines.map((text) =>
+            el('p', {
+              className: 'order-state',
+              text,
+              attrs: { role: 'listitem' },
+            }),
+          ),
+        );
+      }
       const canLaunch = ship.weapons.launchers.some((l) => l.integrity > 0);
       const { salvo } = ship.weapons;
       launch.disabled = !canLaunch || missilesIn(ship.weapons, 'anti-ship').left === 0;
@@ -634,24 +743,46 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       launch.classList.toggle('active', salvo !== null && !targetsMissile(salvo.target));
       launchState.textContent = describeLaunch(ship.weapons);
       const antiMissiles = missilesIn(ship.weapons, 'anti-missile');
-      const defending = antiMissiles.designs.length > 0;
-      automaticDefence.disabled = !defending;
-      byOrderOnly.disabled = !defending;
+      const missileDefenceReason =
+        antiMissiles.designs.length === 0
+          ? 'No anti-missile missiles installed'
+          : ship.weapons.launchers.length === 0
+            ? 'No launchers installed'
+            : !canLaunch
+              ? 'All launchers lost'
+              : null;
+      const defending = missileDefenceReason === null;
+      setAvailability(automaticDefence, missileDefenceReason);
+      setAvailability(byOrderOnly, missileDefenceReason);
       setPressed(automaticDefence, defending && ship.weapons.antiMissile.automatic);
       setPressed(byOrderOnly, defending && !ship.weapons.antiMissile.automatic);
       nearest = nearestIncoming(observation)?.id ?? null;
-      launchAtNearest.disabled = !canLaunch || antiMissiles.left === 0 || nearest === null;
+      setAvailability(
+        launchAtNearest,
+        missileDefenceReason ??
+          (antiMissiles.left === 0
+            ? 'No anti-missile missiles remaining'
+            : nearest === null
+              ? 'No unengaged incoming missile'
+              : null),
+      );
       launchAtNearest.classList.toggle(
         'active',
         salvo !== null && typeof salvo.target !== 'string',
       );
-      antiMissileState.textContent = describeAntiMissile(ship.weapons);
-      const defended = ship.weapons.pointDefence.length > 0;
+      antiMissileState.textContent = missileDefenceReason ?? describeAntiMissile(ship.weapons);
+      const pointDefenceReason =
+        ship.weapons.pointDefence.length === 0
+          ? 'No point defence installed'
+          : ship.weapons.pointDefence.some((gun) => gun.integrity > 0)
+            ? null
+            : 'All point defence lost';
+      const defended = pointDefenceReason === null;
       for (const [priority, priorityButton] of Object.entries(pointDefenceButtons)) {
-        priorityButton.disabled = !defended;
+        setAvailability(priorityButton, pointDefenceReason);
         setPressed(priorityButton, defended && ship.weapons.pointDefencePriority === priority);
       }
-      pointDefenceState.textContent = describePointDefence(ship.weapons);
+      pointDefenceState.textContent = pointDefenceReason ?? describePointDefence(ship.weapons);
     },
   };
 };

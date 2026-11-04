@@ -15,7 +15,7 @@ test('the game loads a battle and the ships move when time runs', async ({ page 
   await expect(map.locator('[data-side="blue"]')).toBeVisible();
   await expect(map.locator('[data-side="red"]')).toBeVisible();
 
-  const separation = page.getByLabel('Separation');
+  const separation = page.getByLabel('Separation', { exact: true });
   await expect(separation).toContainText('km');
   const before = kmOf(await separation.textContent());
 
@@ -356,9 +356,7 @@ test('toggle orders show which is selected, to sight and to assistive tech', asy
   await expect(atEnemy).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('a ship without shields takes no shield orders and shows no shields state', async ({
-  page,
-}) => {
+test('a ship without shields disables shield orders and explains why', async ({ page }) => {
   await startFreeBattle(page);
   await page.keyboard.press(' ');
   for (const name of ['Shields up', 'Shields down']) {
@@ -366,5 +364,5 @@ test('a ship without shields takes no shield orders and shows no shields state',
     await expect(button).toBeDisabled();
     await expect(button).toHaveAttribute('aria-pressed', 'false');
   }
-  await expect(page.getByLabel('Shields state')).toBeHidden();
+  await expect(page.getByLabel('Shields state')).toHaveText('Shields unavailable · none installed');
 });

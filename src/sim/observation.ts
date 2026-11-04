@@ -17,7 +17,8 @@ import {
 } from './design';
 import type { BattleEvent, BeamKind, HitEvent, MunitionKind, ParticleBeamKind } from './events';
 import { thermalLimit, thermalProperties, workingRadiators } from './heat';
-import { kineticGunRange, shotEnergy, type Slug } from './kinetic';
+import { kineticGunRange, shotEnergy, type Motion, type Slug } from './kinetic';
+import { observeWeaponReadiness, type WeaponReadiness } from './weaponReadiness';
 import { observeManoeuvre, type ContactMotion, type ManoeuvreObservation } from './manoeuvre';
 import {
   missileDeltaV,
@@ -300,6 +301,9 @@ export interface AntiMissileObservation {
  * each weapon, the latest beam hit scored and the missiles shot down.
  */
 export interface WeaponsObservation {
+  /** Separation to the selected weapons target in metres, or null without one. */
+  readonly targetRange: number | null;
+  readonly readiness: readonly WeaponReadiness[];
   readonly target: SideId | null;
   readonly mode: FireMode;
   /** The part of the target the weapons are ordered to aim at; null for the whole ship. */
@@ -616,6 +620,7 @@ const observeSections = (ship: ShipState): SectionObservation[] => {
 const observeWeapons = (
   ship: ShipState,
   engagements: readonly AntiMissileEngagement[],
+  target: Motion | null,
 ): WeaponsObservation => {
   const slots = componentSlots(ship.design);
   const { weapons } = ship;
@@ -629,6 +634,8 @@ const observeWeapons = (
     effectiveRange: effectiveRange(state.weapon),
   });
   return {
+    targetRange: target ? distance(ship.position, target.position) : null,
+    readiness: observeWeaponReadiness(ship, target),
     target: weapons.target,
     mode: weapons.mode,
     aim: weapons.aim,
@@ -750,12 +757,14 @@ export const antiMissileEngagements = (
 
 /**
  * A side's own ship in full. `contact` is what its autopilot knows of the enemy, and
- * `engagements` its anti-missile missiles in flight (see `antiMissileEngagements`).
+ * `engagements` its anti-missile missiles in flight (see `antiMissileEngagements`). `target` is
+ * the observed motion of its selected weapons target; range information reveals no enemy design.
  */
 export const observeOwnShip = (
   own: ObservedShip,
   contact: ContactMotion | null,
   engagements: readonly AntiMissileEngagement[],
+  target: Motion | null,
 ): OwnShipObservation => {
   const { ship } = own;
   return {
@@ -783,7 +792,7 @@ export const observeOwnShip = (
     shields: observeShields(ship),
     energyLedger: ship.ledger,
     sections: observeSections(ship),
-    weapons: observeWeapons(ship, engagements),
+    weapons: observeWeapons(ship, engagements, target),
     appearance: observeAppearance(own),
     condition: conditionOf(ship),
   };

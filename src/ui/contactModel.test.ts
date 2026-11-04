@@ -4,6 +4,7 @@ import { createBattle, type ContactObservation } from '../sim/battle';
 import { duelSetup, TEST_LASER, testDesign, withSection } from '../sim/testing';
 import {
   contactModelDetail,
+  contactModelExtent,
   createContactModel,
   updateContactModel,
   type ContactModelPartData,
@@ -37,6 +38,25 @@ const contactAt = (range: number, fire = false): ContactObservation => {
 };
 
 describe('contact model', () => {
+  it('frames only observed geometry and forgets detail as range opens', () => {
+    const model = createContactModel();
+    updateContactModel(model, contactAt(1_000 * KM));
+    expect(visible(model, 'mount')).not.toHaveLength(0);
+    expect(contactModelExtent(model)).toBe(80);
+
+    updateContactModel(model, contactAt(100_000 * KM));
+    expect(visible(model, 'section')).toHaveLength(0);
+    expect(visible(model, 'mount')).toHaveLength(0);
+    expect(visible(model, 'silhouette')).not.toHaveLength(0);
+
+    updateContactModel(model, contactAt(10_000_000 * KM));
+    expect(visible(model, 'silhouette')).toHaveLength(0);
+    expect(visible(model, 'section')).toHaveLength(0);
+    expect(visible(model, 'mount')).toHaveLength(0);
+    expect(visible(model, 'dot')).toHaveLength(1);
+    // A position-only contact has no disclosed hull dimensions.
+    expect(contactModelExtent(model)).toBeNull();
+  });
   it.each([
     [10_000_000 * KM, 'position'],
     [100_000 * KM, 'silhouette'],

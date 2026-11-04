@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { timeCompressionButtons } from './freeBattle';
-import { CAMPAIGN_BATTLE_TIMEOUT, CAMPAIGN_TEST_TIMEOUT } from './timeouts';
+import { CAMPAIGN_BATTLE_TIMEOUT, CAMPAIGN_TEST_TIMEOUT, UI_EXPECT_TIMEOUT } from './timeouts';
 
 /** The credits the hub shows, as a number. */
 const credits = async (page: Page): Promise<number> =>
@@ -19,7 +19,15 @@ const fightToTheEnd = async (page: Page) => {
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   const result = page.getByRole('dialog', { name: 'Battle result' });
   await expect(async () => {
-    if (!(await result.isVisible())) await timeCompressionButtons(page).last().click();
+    if (!(await result.isVisible())) {
+      try {
+        await timeCompressionButtons(page).last().click({ timeout: UI_EXPECT_TIMEOUT });
+      } catch (error) {
+        // The result may open after the visibility check and block this click behind its modal.
+        // Only accept that completed battle; other click failures still fail the probe.
+        if (!(await result.isVisible())) throw error;
+      }
+    }
     // A short probe lets us restore time compression promptly after hits and launches.
     // The enclosing retry has the generous battle-completion deadline.
     await expect(result).toBeVisible({ timeout: 1_000 });
@@ -63,7 +71,7 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
     'you go in blind',
   );
   await page.getByRole('button', { name: 'Fight', exact: true }).click();
-  await expect(page.getByLabel('Own ship')).toContainText('Ship 1 · Quiver');
+  await expect(page.getByLabel('Own ship', { exact: true })).toContainText('Ship 1 · Quiver');
   await expect(page.getByRole('region', { name: 'Enemy design' })).toContainText('Corsair class');
   const result = await fightToTheEnd(page);
   await expect(result.getByRole('heading')).toHaveText('Ship 1 wins');
@@ -130,7 +138,7 @@ test('a campaign saved to a file loads again after the page is reloaded, and car
   // And it carries on: the ship goes into its next battle.
   await page.getByRole('button', { name: 'Fight tier 1' }).click();
   await page.getByRole('button', { name: 'Fight', exact: true }).click();
-  await expect(page.getByLabel('Own ship')).toContainText('Ship 1 · Sling');
+  await expect(page.getByLabel('Own ship', { exact: true })).toContainText('Ship 1 · Sling');
 
   // A file that is not a campaign is refused on the main menu.
   await page.reload();

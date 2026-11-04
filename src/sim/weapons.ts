@@ -362,6 +362,25 @@ export interface PointDefenceTargets {
 /** Fires point defence on nothing. */
 const NO_POINT_DEFENCE_TARGETS: PointDefenceTargets = { threats: [], ship: null };
 
+export type WeaponFireBlocker = 'lost' | 'no-target' | 'hold-fire' | 'waiting-range';
+
+/** Shared fire-control checks, also used to explain a mount's current orders and reach. */
+export const weaponFireBlocker = (
+  ship: ShipState,
+  slot: number,
+  range: number | null,
+  reach: number,
+): WeaponFireBlocker | null =>
+  (ship.integrity[slot] ?? 0) <= 0
+    ? 'lost'
+    : range === null
+      ? 'no-target'
+      : ship.weapons.mode === 'hold-fire'
+        ? 'hold-fire'
+        : range <= reach
+          ? null
+          : 'waiting-range';
+
 /**
  * Decides which weapons fire this step and the power they ask for: when firing freely at a target
  * within their effective range, as much as their integrity and the ship's temperature allow.
@@ -378,14 +397,13 @@ export const aimWeapons = (
 ): void => {
   const { weapons } = ship;
   const limit = thermalLimit(ship.heat / thermalProperties(ship.design).heatCapacity);
-  const inReach = (reach: number) =>
-    weapons.mode === 'fire-freely' && range !== null && range <= reach;
   let demand = 0;
   let beam = 0;
   let slug = 0;
   const beamWeapons = weapons.beamWeapons.map((state) => {
     const integrity = ship.integrity[state.slot] ?? 0;
-    const firing = integrity > 0 && inReach(effectiveRange(state.weapon));
+    const firing =
+      weaponFireBlocker(ship, state.slot, range, effectiveRange(state.weapon)) === null;
     const wanted = firing ? beamWeaponPower(state.weapon) * integrity * limit : 0;
     demand += wanted;
     beam += wanted * beamEfficiency(state.weapon);
@@ -394,7 +412,8 @@ export const aimWeapons = (
   const loaded = slugsLeft(ship) > 0;
   const kineticGuns = weapons.kineticGuns.map((state) => {
     const integrity = ship.integrity[state.slot] ?? 0;
-    const firing = loaded && integrity > 0 && inReach(kineticGunRange(state.gun));
+    const firing =
+      loaded && weaponFireBlocker(ship, state.slot, range, kineticGunRange(state.gun)) === null;
     const needed = Math.max(0, shotEnergy(state.gun) - state.charge) / TIME_STEP;
     const wanted = firing ? Math.min(kineticGunPower(state.gun) * integrity * limit, needed) : 0;
     demand += wanted;

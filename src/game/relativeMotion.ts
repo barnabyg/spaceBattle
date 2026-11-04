@@ -10,6 +10,8 @@ interface Moving {
 
 /** How another ship moves as seen from the own ship. */
 export interface RelativeMotion {
+  /** Full three-dimensional distance between the observed positions, m. */
+  readonly separation: number;
   /** The other ship's velocity minus the own ship's, m/s. */
   readonly relativeVelocity: Vec3;
   /** The size of the relative velocity, m/s. */
@@ -28,7 +30,7 @@ export const relativeMotion = (own: Moving, other: Moving): RelativeMotion => {
   const separation = length(offset);
   // Adding zero turns −0 into 0, so a still contact does not read as closing at "−0".
   const closingSpeed = (separation > 0 ? -dot(offset, relativeVelocity) / separation : 0) + 0;
-  return { relativeVelocity, relativeSpeed: length(relativeVelocity), closingSpeed };
+  return { separation, relativeVelocity, relativeSpeed: length(relativeVelocity), closingSpeed };
 };
 
 /** The contact the captain follows: the weapons target, or else the first contact. */

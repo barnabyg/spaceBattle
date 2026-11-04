@@ -81,6 +81,7 @@ import {
 } from './weapons';
 
 export { TIME_STEP };
+export type { WeaponReadiness } from './weaponReadiness';
 export type {
   AimPoint,
   BattleEvent,
@@ -920,7 +921,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
       const own = combatantOf(sideId);
       return {
         time: steps * TIME_STEP,
-        ownShip: observeOwnShip(own, contactOf(own), antiMissileEngagements(sideId, missiles)),
+        ownShip: observeOwnShip(
+          own,
+          contactOf(own),
+          antiMissileEngagements(sideId, missiles),
+          targetOf(own)?.ship ?? null,
+        ),
         contacts: combatants.filter((c) => c !== own).map((c) => observeContact(own.ship, c)),
         munitions: observeMunitions(slugs, missiles),
         events: [...(logs.get(sideId) ?? [])],

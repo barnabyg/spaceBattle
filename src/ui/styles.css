@@ -136,6 +136,8 @@ button {
 .tactical-map__labels {
   position: absolute;
   inset: 0;
+  /* Contain CSS2DRenderer's per-label depth indices beneath the legend and readouts. */
+  z-index: 0;
 }
 
 .instrument-view {
@@ -186,6 +188,34 @@ button {
   font-size: 0.7rem;
 }
 
+.contact-detail {
+  margin-top: 0.45rem;
+  padding: 0.4rem 0.55rem;
+  background: #07101cda;
+  border: 1px solid #43566e;
+  font-size: 0.75rem;
+}
+
+.contact-detail__stages {
+  display: flex;
+  gap: 0.55rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.3rem;
+  color: #9ba9bd;
+}
+
+.contact-detail__stages li[aria-current='step'] {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.25rem;
+}
+
+.contact-detail__explanation {
+  color: #d4dfef;
+}
+
 .side-panel {
   grid-area: side;
   padding: 1rem;
@@ -218,18 +248,52 @@ button {
 /* The symbol is the glyph's size, so the map centres the glyph on the ship's position. */
 .ship-symbol {
   position: relative;
-  width: 1rem;
-  height: 1rem;
+  width: 2rem;
+  height: 2rem;
   color: var(--side-colour);
   pointer-events: none;
 }
 
 .ship-symbol__glyph {
   display: block;
-  width: 1rem;
-  height: 1rem;
+  position: absolute;
+  inset: 0;
   border: 3px solid var(--side-colour);
-  background: color-mix(in srgb, var(--side-colour) 30%, transparent);
+  background: transparent;
+  box-shadow:
+    0 0 0 2px var(--bg),
+    inset 0 0 0 2px var(--bg);
+}
+
+.ship-symbol::after {
+  content: '';
+  position: absolute;
+  width: 0.35rem;
+  height: 0.35rem;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* Open motion arrowheads keep their screen size and cannot be mistaken for a position glyph. */
+.motion-tip {
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.motion-tip::after {
+  content: '';
+  position: absolute;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-top: 1.5px solid var(--vector-colour);
+  border-right: 1.5px solid var(--vector-colour);
+  transform-origin: 100% 0;
+  transform: translateX(-100%) rotate(calc(var(--angle, 0rad) + 45deg));
 }
 
 /* The nose marker: a tick out from the glyph, turned to the heading as seen on screen. */
@@ -242,11 +306,13 @@ button {
   border-radius: 0.125rem;
   background: var(--side-colour);
   transform-origin: 0 50%;
-  transform: rotate(var(--angle, 0rad)) translateX(0.6rem) scaleX(var(--length, 1));
+  transform: rotate(var(--angle, 0rad)) translateX(1.3rem) scaleX(var(--length, 1));
 }
 
 .ship-symbol--own .ship-symbol__glyph {
   border-radius: 50%;
+  inset: 0.3rem;
+  background: var(--bg);
 }
 
 .ship-symbol--contact .ship-symbol__glyph {
@@ -257,16 +323,41 @@ button {
   position: absolute;
   top: 50%;
   /* Clear of the nose marker, whichever way it points. */
-  left: 2.4rem;
+  left: 3rem;
   transform: translateY(-50%);
   font-size: 0.8rem;
   white-space: nowrap;
   text-shadow: 0 0 4px #000;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  padding: 0.15rem 0.3rem;
+}
+
+.ship-symbol__label--above {
+  top: -0.4rem;
+}
+
+.ship-symbol__label--below {
+  top: 2.4rem;
+}
+
+.map-separation {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1;
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .range-label {
   color: #4d6488;
   font-size: 0.7rem;
+  pointer-events: none;
 }
 
 .map-legend {
@@ -376,7 +467,7 @@ h3 {
   cursor: pointer;
 }
 
-.order-button:hover {
+.order-button:not(:disabled):hover {
   border-color: var(--accent);
 }
 
@@ -391,6 +482,20 @@ h3 {
 /* The tick is decoration: aria-pressed tells assistive tech, so it stays out of the button's name. */
 .order-button.active::before {
   content: '✓ ' / '';
+}
+
+/* Unavailable actions must look inert even while hovered, without relying on colour alone. */
+.order-button:disabled {
+  background: var(--panel);
+  color: var(--muted);
+  border-color: var(--panel-border);
+  border-style: dashed;
+  cursor: not-allowed;
+  font-weight: 400;
+}
+
+.order-button:disabled::before {
+  content: none;
 }
 
 .order-state {
