@@ -20,3 +20,35 @@ it('anchors a discharge at its mount, follows the ship transform and clears afte
   expect(cue?.visible).toBe(false);
   effects.dispose();
 });
+
+it('flashes only new damage, retains a damage outline, and clears when detail is lost', () => {
+  const effects = createShipEffects();
+  const part = {
+    section: 'forward' as const,
+    mount: null,
+    min: vec3(0, -2, -2),
+    max: vec3(10, 2, 2),
+  };
+  const damage = {
+    section: 'forward' as const,
+    mount: null,
+    severity: 0.2,
+    destroyed: false,
+    point: vec3(5, 0, 0),
+    size: vec3(10, 4, 4),
+  };
+  effects.update([], [], 0, [part]);
+  effects.update([], [damage], 1, [part]);
+  const flash = effects.element.getObjectByName('Damage flash');
+  const scar = effects.element.getObjectByName('Surface damage');
+  expect(flash?.visible).toBe(true);
+  expect(scar?.visible).toBe(true);
+  effects.update([], [damage], 2, [part]);
+  expect(flash?.visible).toBe(false);
+  expect(scar?.visible).toBe(true);
+  effects.update([], [], 3, []);
+  expect(scar?.visible).toBe(false);
+  effects.update([], [damage], 4, [part]);
+  expect(flash?.visible).toBe(false);
+  effects.dispose();
+});

@@ -260,8 +260,8 @@ const flashesOf = (look: Pick<ShipAppearance, 'impacts' | 'beamsLanding'>): Flas
 ];
 
 /** Brings a ship's model, orientation and hit spots up to date with what is observed. */
-const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance) => {
-  view.effects.update(look.firing);
+const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance, time: number) => {
+  view.effects.update(look.firing, look.damage, time, look.parts);
   toQuaternion(orientation, view.anchor.quaternion);
   if (shipModelNeedsRebuild(view.model, look)) {
     view.anchor.remove(view.model);
@@ -532,7 +532,7 @@ export const createInstrumentView = (
      */
     update(observation: SideObservation, enemy?: OwnShipObservation) {
       const ship = observation.ownShip;
-      updateShipView(own, ship.orientation, ship.appearance);
+      updateShipView(own, ship.orientation, ship.appearance, observation.time);
       ownPosition = ship.position;
       const seen = observation.contacts.find((c) => c.sideId === contactSide.id);
       contact.anchor.visible = seen !== undefined;
@@ -549,7 +549,7 @@ export const createInstrumentView = (
         fogged.visible = enemy === undefined;
         if (enemy) {
           contact.length = hullLength(HULLS[contactSide.design.hullSize]);
-          updateShipView(contact, enemy.orientation, enemy.appearance);
+          updateShipView(contact, enemy.orientation, enemy.appearance, observation.time);
           contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${range} · Test mode: full detail`;
           detailExplanation.textContent = 'Full design and state shown by Test mode.';
         } else {
@@ -558,7 +558,12 @@ export const createInstrumentView = (
           // Never frame an ordinary contact using its undisclosed design dimensions.
           contact.length = contactModelExtent(fogged) ?? 80;
           showFlashes(contact, seen.appearance);
-          contact.effects.update(seen.appearance.firing);
+          contact.effects.update(
+            seen.appearance.firing,
+            seen.appearance.damage,
+            observation.time,
+            seen.appearance.parts,
+          );
           contactCaption.textContent = `${contactSide.name} · ${seen.hullSize ?? 'unknown hull'} · ${CONTACT_DETAIL_TEXT[seen.detail]} · ${range}`;
           const descriptions = {
             position: 'Position tracked; shape and equipment unresolved.',

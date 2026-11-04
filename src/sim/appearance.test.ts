@@ -24,6 +24,22 @@ const contactOf = (battle: Battle, viewer: string) => {
 };
 
 describe('ship appearance', () => {
+  it('observes persistent surface damage only after damage, without exposing unresolved parts', () => {
+    const battle = createBattle(duelSetup(armedTestDesign(), armedTestDesign(), 1e6));
+    expect(battle.observe('red').ownShip.appearance.damage).toEqual([]);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.advance(1);
+    const damage = battle.observe('red').ownShip.appearance.damage;
+    expect(damage).toEqual(
+      expect.arrayContaining([expect.objectContaining({ section: 'forward' })]),
+    );
+    expect(damage?.some((d) => d.severity > 0)).toBe(true);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
+    battle.advance(1);
+    expect(battle.observe('red').ownShip.appearance.damage).toEqual(damage);
+    const far = createBattle(duelSetup(armedTestDesign(), armedTestDesign(), 1e10));
+    expect(contactOf(far, 'blue').appearance.damage).toEqual([]);
+  });
   it.each([
     ['laser', armedTestDesign()],
     ['charged-particle-beam', withForwardWeapon(TEST_CHARGED_BEAM)],

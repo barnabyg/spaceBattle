@@ -33,7 +33,7 @@ import type { BattleOutcome } from './outcome';
 import { burstEnergy, pointDefenceRange, type PointDefenceEngagement } from './pointDefence';
 import { powerPlantOf, type EnergyLedger, type PowerShare, type PowerSystem } from './power';
 import { rotate, type Quat } from './quaternion';
-import type { ShapePart } from './shape';
+import { shipShape, type ShapePart } from './shape';
 import type { IntelligenceReport } from './intelligence';
 import { perceive, sensorPower, type ContactDetail } from './sensors';
 import { coolantCapacity, fullDeflection, shieldsPowered } from './shields';
@@ -360,7 +360,19 @@ export interface WeaponFiring {
   readonly point: Vec3;
 }
 
+export interface SurfaceDamage {
+  readonly section: SectionKind;
+  readonly mount: number | null;
+  /** Fraction of exterior integrity lost (0–1), never internal component state. */
+  readonly severity: number;
+  readonly destroyed: boolean;
+  readonly point: Vec3;
+  /** Size of the affected part, m. */
+  readonly size: Vec3;
+}
+
 export interface ShipAppearance {
+  readonly damage?: readonly SurfaceDamage[];
   readonly firing?: readonly WeaponFiring[];
   /** kg; with the design it sets the centre of mass, the origin of the body frame. */
   readonly propellantMass: number;
@@ -427,6 +439,7 @@ export interface OwnShipObservation {
 
 /** How a contact looks from outside, as far as the side's sensors make it out. */
 export interface ContactAppearance {
+  readonly damage?: readonly SurfaceDamage[];
   readonly firing?: readonly WeaponFiring[];
   /** Drive thrust applied in the last step, N; its exhaust shows at any range. */
   readonly thrust: number;
@@ -751,6 +764,7 @@ const observeMissile = (missile: Missile): MissileObservation => ({
 });
 
 const observeAppearance = (observed: ObservedShip): ShipAppearance => ({
+  damage: observeSurfaceDamage(observed.ship),
   firing: observeFiring(observed),
   ...appearanceState(observed),
 });
@@ -872,6 +886,48 @@ const observeFiring = (observed: ObservedShip): WeaponFiring[] => {
   });
 };
 
+/** Only surface wear: armour/structure and exposed mounts, never machinery inside armour. */
+const observeSurfaceDamage = (ship: ShipState): SurfaceDamage[] => {
+  const slots = componentSlots(ship.design);
+  return shipShape(
+    ship.design,
+    ship.propellantMass,
+    ship.radiatorsDeployed,
+    ship.ammunitionSpent,
+  ).flatMap((part) => {
+    const section = ship.sections[part.section];
+    const designed =
+      ship.design.sections.find((s) => s.kind === part.section)?.armour.thickness ?? 0;
+    const slot = slots.findIndex(
+      (s) => s.mounted && s.section === part.section && s.index === part.mount,
+    );
+    const integrity = part.mount === null ? section.structure : (ship.integrity[slot] ?? 0);
+    const severity = Math.max(
+      1 - integrity,
+      part.mount === null && designed > 0 ? 1 - section.armour / designed : 0,
+    );
+    if (severity <= 0) return [];
+    return [
+      {
+        section: part.section,
+        mount: part.mount,
+        severity,
+        destroyed: integrity <= 0 || section.structure <= 0,
+        point: {
+          x: (part.min.x + part.max.x) / 2,
+          y: (part.min.y + part.max.y) / 2,
+          z: (part.min.z + part.max.z) / 2,
+        },
+        size: {
+          x: part.max.x - part.min.x,
+          y: part.max.y - part.min.y,
+          z: part.max.z - part.min.z,
+        },
+      },
+    ];
+  });
+};
+
 /** An enemy ship as the side whose ship is `viewer` perceives it with its sensors. */
 export const observeContact = (viewer: ShipState, contact: ObservedShip): ContactObservation => {
   const { ship } = contact;
@@ -914,6 +970,9 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
       ];
     }),
     appearance: {
+      damage: observeSurfaceDamage(ship).filter((d) =>
+        seen.parts.some((p) => p.section === d.section && p.mount === d.mount),
+      ),
       firing: observeFiring(contact).filter((f) =>
         seen.parts.some((p) => p.section === f.section && p.mount === f.mount),
       ),
