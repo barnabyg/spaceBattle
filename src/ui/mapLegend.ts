@@ -53,9 +53,12 @@ const line = (
 /** An arrow along the sample, from `x1` to its head at `x2`. */
 const arrow = (x1: number, x2: number, y: number, colour: string, { dashed = false } = {}) => [
   line([x1, y], [x2 - 4, y], colour, { dashed }),
-  svg('polygon', {
-    points: `${x2},${y} ${x2 - 5},${y - 3} ${x2 - 5},${y + 3}`,
-    style: `fill: ${colour}`,
+  svg('polyline', {
+    // Open chevron, with its vertex at the end of the shaft.
+    points: `${x2 - 5},${y - 3} ${x2},${y} ${x2 - 5},${y + 3}`,
+    fill: 'none',
+    stroke: colour,
+    'stroke-width': 1.5,
   }),
 ];
 
@@ -87,7 +90,7 @@ const bothShips = (colours: Colours, draw: (colour: string, y: number) => SVGEle
 const ENTRIES: Readonly<Record<MapLayer, LegendEntry>> = {
   velocity: {
     name: 'Velocity',
-    description: `Where each ship would drift in ${formatDuration(VECTOR_SECONDS)}, in the battle's fixed frame rather than relative to your ship. The only arrow whose length means something: the longer, the faster.`,
+    description: `Starts at the position symbol; its open arrowhead shows where each ship would drift in ${formatDuration(VECTOR_SECONDS)}, in the battle's fixed frame rather than relative to your ship. Longer means faster; the arrowhead is not a ship.`,
     sample: (colours) => bothShips(colours, (colour, y) => arrow(4, 36, y, colour)),
   },
   'relative-velocity': {
@@ -254,6 +257,36 @@ export const createMapLegend = (
   const body = el(
     'ul',
     { className: 'map-legend__entries', attrs: { id, 'aria-label': 'Map layers' } },
+    el(
+      'li',
+      { className: 'map-legend__entry' },
+      el('strong', { text: 'Ship positions' }),
+      el('p', {
+        className: 'map-legend__description',
+        text: 'Own ship: circle with a white centre. Contact: diamond with a white centre. These stay at the actual positions; labels belong to these symbols. Thin open arrowheads show motion, never another ship. Position symbols are always shown.',
+      }),
+      (() => {
+        const sample = svg('svg', {
+          class: 'map-legend__sample',
+          viewBox: `0 0 ${WIDTH} ${HEIGHT}`,
+          'aria-hidden': 'true',
+        });
+        const own = colours[0] ?? '#ffffff';
+        const contact = colours[1] ?? '#ffffff';
+        sample.append(
+          svg('circle', { cx: 10, cy: 8, r: 5, fill: 'none', stroke: own, 'stroke-width': 2.5 }),
+          svg('polygon', {
+            points: '28,1 35,8 28,15 21,8',
+            fill: 'none',
+            stroke: contact,
+            'stroke-width': 2.5,
+          }),
+          svg('circle', { cx: 10, cy: 8, r: 1.5, fill: '#ffffff' }),
+          svg('circle', { cx: 28, cy: 8, r: 1.5, fill: '#ffffff' }),
+        );
+        return sample;
+      })(),
+    ),
     ...items,
   );
   body.hidden = true;

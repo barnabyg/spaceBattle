@@ -13,6 +13,7 @@ import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { CONTACT_DETAIL_TEXT, formatDuration, formatKm, formatKmPerS } from './format';
 import { createMapLegend } from './mapLegend';
+import { createMotionVector, type MotionVector } from './mapMotion';
 import { loadMapLayers, MAP_LAYERS, saveMapLayers, type MapLayer } from './mapLayers';
 import {
   ANTI_MISSILE_PALENESS,
@@ -28,7 +29,6 @@ import {
   MUNITION_SIZE,
   PLANNED_BURN_COLOUR,
   PROJECTION_COLOUR,
-  RELATIVE_VELOCITY_DASH,
   RELATIVE_VELOCITY_PALENESS,
   RING_COLOURS,
   RING_SPACING_KM,
@@ -73,7 +73,7 @@ const toScene = (v: Vec3) => new THREE.Vector3(v.x / KM, v.y / KM, v.z / KM);
 interface ShipMarker {
   readonly symbol: CSS2DObject;
   readonly label: HTMLElement;
-  readonly velocity: THREE.ArrowHelper;
+  readonly velocity: MotionVector;
   readonly dropLine: THREE.Line;
   /** The nose marker on the symbol, turned to the ship's heading as seen on screen. */
   readonly heading: HTMLElement;
@@ -184,19 +184,19 @@ export const createTacticalMap = (
         'div',
         {
           className: `ship-symbol ship-symbol--${index === 0 ? 'own' : 'contact'}`,
-          attrs: { 'data-side': side.id, style: `--side-colour: ${colour}` },
+          attrs: {
+            'data-side': side.id,
+            style: `--side-colour: ${colour}`,
+            role: 'img',
+            'aria-label': `${side.name} ${index === 0 ? 'own ship' : 'contact'} position`,
+          },
         },
         el('span', { className: 'ship-symbol__glyph', attrs: { 'aria-hidden': 'true' } }),
         heading,
         label,
       ),
     );
-    const velocity = new THREE.ArrowHelper(
-      new THREE.Vector3(1, 0, 0),
-      new THREE.Vector3(),
-      1,
-      colour,
-    );
+    const velocity = createMotionVector(colour);
     const dropLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
       new THREE.LineDashedMaterial({ color: colour, ...DROP_LINE_DASH }),
@@ -211,7 +211,7 @@ export const createTacticalMap = (
     );
     scene.add(
       symbol,
-      onLayer(velocity, 'velocity'),
+      onLayer(velocity.group, 'velocity'),
       onLayer(dropLine, 'drop-lines'),
       onLayer(trail, 'trail'),
     );
@@ -236,17 +236,11 @@ export const createTacticalMap = (
 
   // The followed contact's velocity relative to the own ship: a dashed arrow from the contact, in
   // a pale tint of the contact's colour.
-  const relativeShaft = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
-    new THREE.LineDashedMaterial(),
-  );
-  const relativeHead = new THREE.Mesh(
-    new THREE.ConeGeometry(0.5, 1, 5),
-    new THREE.MeshBasicMaterial(),
-  );
-  const relativeArrow = new THREE.Group().add(relativeShaft, relativeHead);
-  relativeArrow.visible = false;
-  scene.add(onLayer(relativeArrow, 'relative-velocity'));
+  const relativeColour = (colours[1] ? new THREE.Color(colours[1]) : WHITE.clone())
+    .lerp(WHITE, RELATIVE_VELOCITY_PALENESS)
+    .getStyle();
+  const relativeArrow = createMotionVector(relativeColour, true);
+  scene.add(onLayer(relativeArrow.group, 'relative-velocity'));
   const showRelativeVelocity = (observation: SideObservation) => {
     const contact = followedContact(observation);
     const v = contact
@@ -254,28 +248,7 @@ export const createTacticalMap = (
           VECTOR_SECONDS,
         )
       : new THREE.Vector3();
-    const vLength = v.length();
-    relativeArrow.visible = contact !== undefined && vLength > 0;
-    if (!contact || vLength === 0) return;
-    relativeShaft.material.color
-      .copy(sideColours.get(contact.sideId) ?? WHITE)
-      .lerp(WHITE, RELATIVE_VELOCITY_PALENESS);
-    relativeHead.material.color.copy(relativeShaft.material.color);
-    const from = toScene(contact.position);
-    const direction = v.normalize();
-    const headLength = Math.min(vLength * 0.15, 8_000);
-    const headWidth = Math.min(vLength * 0.08, 4_000);
-    const tip = from.clone().addScaledVector(direction, vLength);
-    relativeShaft.geometry.setFromPoints([
-      from,
-      tip.clone().addScaledVector(direction, -headLength),
-    ]);
-    relativeShaft.computeLineDistances();
-    relativeShaft.material.dashSize = vLength * RELATIVE_VELOCITY_DASH.dash;
-    relativeShaft.material.gapSize = vLength * RELATIVE_VELOCITY_DASH.gap;
-    relativeHead.position.copy(tip).addScaledVector(direction, -headLength / 2);
-    relativeHead.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-    relativeHead.scale.set(headWidth, headLength, headWidth);
+    relativeArrow.update(contact ? toScene(contact.position) : new THREE.Vector3(), v);
   };
 
   // The own ship's projected path, through its planned burns.
@@ -459,17 +432,7 @@ export const createTacticalMap = (
     marker.label.textContent = text;
 
     const v = toScene(velocity).multiplyScalar(VECTOR_SECONDS);
-    const vLength = v.length();
-    marker.velocity.visible = vLength > 0;
-    if (vLength > 0) {
-      marker.velocity.position.copy(p);
-      marker.velocity.setDirection(v.normalize());
-      marker.velocity.setLength(
-        vLength,
-        Math.min(vLength * 0.15, 8_000),
-        Math.min(vLength * 0.08, 4_000),
-      );
-    }
+    marker.velocity.update(p, v);
 
     marker.dropLine.geometry.setFromPoints([p, new THREE.Vector3(p.x, p.y, planeZ)]);
     marker.dropLine.computeLineDistances();
@@ -521,9 +484,34 @@ export const createTacticalMap = (
   /** Turns the heading and planned-burn marks to the camera's view; run once it has moved. */
   const pointMarks = () => {
     for (const marker of markers.values()) {
+      if (marker.velocity.group.visible)
+        pointOnScreen(
+          marker.velocity.head,
+          marker.velocity.tip.position,
+          marker.velocity.direction,
+        );
       marker.heading.hidden = marker.nose === null || !layers.heading;
       if (marker.nose && !marker.heading.hidden)
         pointOnScreen(marker.heading, marker.at, marker.nose);
+    }
+    if (relativeArrow.group.visible)
+      pointOnScreen(relativeArrow.head, relativeArrow.tip.position, relativeArrow.direction);
+    // Separate labels when projected positions coincide; both glyphs stay at the true position.
+    const ownMarker = sides[0] ? markers.get(sides[0].id) : undefined;
+    if (ownMarker) {
+      const ownScreen = ownMarker.at.clone().project(camera);
+      for (const marker of markers.values()) {
+        if (marker === ownMarker) continue;
+        const contactScreen = marker.at.clone().project(camera);
+        const close =
+          marker.symbol.visible &&
+          Math.hypot(
+            ((ownScreen.x - contactScreen.x) * element.clientWidth) / 2,
+            ((ownScreen.y - contactScreen.y) * element.clientHeight) / 2,
+          ) < 80;
+        ownMarker.label.classList.toggle('ship-symbol__label--above', close);
+        marker.label.classList.toggle('ship-symbol__label--below', close);
+      }
     }
     for (const marker of plannedBurnMarkers) {
       if (marker.label.visible) pointOnScreen(marker.chevrons, marker.at, marker.direction);
@@ -545,7 +533,7 @@ export const createTacticalMap = (
       for (const [id, marker] of markers) {
         const visible = id === own.sideId || observation.contacts.some((c) => c.sideId === id);
         marker.symbol.visible = visible;
-        marker.velocity.visible = visible;
+        marker.velocity.group.visible = visible;
         marker.dropLine.visible = visible;
         marker.trail.visible = visible;
       }

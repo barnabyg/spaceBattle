@@ -65,6 +65,13 @@ To check it manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run de
 `C:/docs/git/spaceBattle` in PowerShell 7, then start a free battle in Firefox. Watch separation
 change, pause with Space, and zoom and rotate the map; the paused value should stay fixed.
 
+Ship positions have a thick circle (own ship) or diamond (contact) and a white centre. Thin,
+open arrowheads show motion from those positions and keep their size when zooming. Labels stay
+beside the position symbols and separate when the symbols overlap. For a manual check, use the
+same launch command above, pause a free battle, and toggle **Velocity** and **Relative velocity**
+in the legend. Zoom and rotate, comparing heading with motion: the circle and diamond should
+remain identifiable independently of the arrow tips.
+
 Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** (click twice to confirm) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost.
 
 In battle, the captain of a player side hears only what reaches their own hull, since there is no sound in vacuum: the drive's rumble while it burns, the ship's own guns, beams and launches, hits on the hull, and alarms for damage, overheating, an incoming missile and delta-v near the reserve. Enemy fire that misses makes no sound, and a battle between computer sides is silent. **Mute** (or M) and the volume slider in the top bar keep their settings for the browser session.
