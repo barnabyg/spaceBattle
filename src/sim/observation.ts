@@ -364,7 +364,7 @@ export interface WeaponFiring {
 export interface SurfaceDamage {
   readonly section: SectionKind;
   readonly mount: number | null;
-  /** Fraction of exterior integrity lost (0–1), never internal component state. */
+  /** Combined armour and exterior integrity loss (0–2), never internal component state. */
   readonly wear: number;
   readonly destroyed: boolean;
   readonly point: Vec3;
