@@ -144,7 +144,7 @@ describe('particle beams', () => {
     }
     const laser = createBattle(duelSetup(armedTestDesign(), armouredTarget(), 30_000 * KM));
     fireAtRed(laser);
-    laser.advance(1);
+    laser.advance(16);
     expect(own(laser, 'blue').weapons.lastHit?.attack).toBe('laser');
     expect(own(laser, 'blue').weapons.particleBeams).toEqual([]);
   });

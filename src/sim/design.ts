@@ -74,7 +74,7 @@ export interface LaserDesign {
   readonly type: 'laser';
   /** kg */
   readonly mass: number;
-  /** Power carried off in the beam while firing, W. */
+  /** Sustained average beam power at full supply, W; shots peak at sixteen times this. */
   readonly beamPower: number;
   /** Fraction of the electrical power drawn that leaves in the beam; the rest is heat (0–1). */
   readonly efficiency: number;

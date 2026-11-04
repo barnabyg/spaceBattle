@@ -31,7 +31,7 @@ const contactAt = (range: number, fire = false): ContactObservation => {
   });
   const battle = createBattle(duelSetup(testDesign(), red, range));
   if (fire) battle.giveOrder('red', { type: 'weapons', target: 'blue', mode: 'fire-freely' });
-  battle.advance(1);
+  battle.advance(15.5);
   const contact = battle.observe('blue').contacts[0];
   if (!contact) throw new Error('No contact');
   return contact;

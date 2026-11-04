@@ -1,5 +1,6 @@
 import type { SideId, SideSetup } from './battle';
-import { effectiveRange } from './beams';
+import { effectiveRange, LASER_BURST_POWER } from './beams';
+import { laserChargeFraction } from './weapons';
 import { componentSlots } from './components';
 import { intactShape } from './damage';
 import {
@@ -178,7 +179,12 @@ export interface BeamWeaponObservation {
 }
 
 /** One laser and what it is doing. */
-export type LaserObservation = BeamWeaponObservation;
+export interface LaserObservation extends BeamWeaponObservation {
+  /** Fraction of the local buffer charged (0–1). */
+  readonly charge: number;
+  /** Electrical energy in the local buffer, J, separate from ship capacitors. */
+  readonly storedEnergy: number;
+}
 
 /** One particle beam, charged or neutral, and what it is doing. */
 export interface ParticleBeamObservation extends BeamWeaponObservation {
@@ -641,7 +647,7 @@ const observeWeapons = (
     integrity: ship.integrity[state.slot] ?? 0,
     firing: state.beamPower > 0,
     beamPower: state.beamPower,
-    fullBeamPower: state.weapon.beamPower,
+    fullBeamPower: state.weapon.beamPower * (state.weapon.type === 'laser' ? LASER_BURST_POWER : 1),
     effectiveRange: effectiveRange(state.weapon),
   });
   return {
@@ -650,7 +656,13 @@ const observeWeapons = (
     target: weapons.target,
     mode: weapons.mode,
     aim: weapons.aim,
-    lasers: weapons.beamWeapons.filter((w) => w.attack === 'laser').map(observeBeamWeapon),
+    lasers: weapons.beamWeapons
+      .filter((w) => w.attack === 'laser')
+      .map((state) => ({
+        ...observeBeamWeapon(state),
+        charge: laserChargeFraction(ship, state),
+        storedEnergy: state.charge,
+      })),
     particleBeams: weapons.beamWeapons.flatMap((state) =>
       state.attack === 'laser' ? [] : [{ ...observeBeamWeapon(state), kind: state.attack }],
     ),
