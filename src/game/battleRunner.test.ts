@@ -24,7 +24,55 @@ import {
 
 const runner = () => createBattleRunner(createBattle(testSetup()));
 
+const majorEvents: readonly BattleEvent[] = [
+  { type: 'armour-breached', time: 0.1, side: 'blue', section: 'forward' },
+  { type: 'structural-failure', time: 0.1, side: 'red', section: 'engine' },
+  { type: 'withdrawal', time: 0.1, side: 'red' },
+  {
+    type: 'battle-ended',
+    time: 0.1,
+    outcome: { time: 0.1, winner: null, sides: [] },
+  },
+  {
+    type: 'magazine-explosion',
+    time: 0.1,
+    side: 'blue',
+    section: 'middle',
+    index: 0,
+    warheads: 1,
+    energy: 1e12,
+  },
+];
+
 describe('battle runner', () => {
+  it.each(majorEvents)(
+    'records a slowdown for $type, preserves it at 1× and clears it on speed selection',
+    (event) => {
+      const real = createBattle(testSetup());
+      let nextEvent = event;
+      const scripted: Battle = { ...real, step: () => [nextEvent] };
+      const r = createBattleRunner(scripted);
+      r.update(0.1);
+      expect(r.slowdownEvent).toBeNull();
+      r.setTimeCompression(1000);
+      expect(r.update(0.1)).toEqual([event]);
+      expect(r.timeCompression).toBe(1);
+      expect(r.slowdownEvent).toEqual(event);
+      r.togglePause();
+      expect(r.slowdownEvent).toEqual(event);
+      r.togglePause();
+      nextEvent = { type: 'armour-breached', time: 0.2, side: 'red', section: 'middle' };
+      r.update(0.1);
+      expect(r.slowdownEvent).toEqual(event);
+      r.faster();
+      expect(r.slowdownEvent).toBeNull();
+      nextEvent = event;
+      r.update(0.1);
+      expect(r.slowdownEvent).toEqual(event);
+      r.slower();
+      expect(r.slowdownEvent).toBeNull();
+    },
+  );
   it('runs simulated time at real time by default', () => {
     const r = runner();
     for (let i = 0; i < 10; i++) r.update(0.1);
@@ -121,19 +169,19 @@ describe('battle runner', () => {
     expect(r.battle.time).toBeCloseTo(1, 1);
   });
 
-  it('drops to real time when a laser hits', () => {
+  it('keeps time compression during continuous laser fire', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), testDesign(), 50_000e3));
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
     const r = createBattleRunner(battle);
     r.setTimeCompression(1000);
     const events = r.update(0.1);
-    expect(events.map((e) => e.type)).toEqual(['hit']);
-    expect(r.timeCompression).toBe(1);
-    // The rest of the update's compressed time is not run.
-    expect(r.battle.time).toBeLessThan(16); // Fifteen seconds charging, then light travel time.
+    expect(events.some((e) => e.type === 'hit')).toBe(true);
+    expect(r.timeCompression).toBe(1000);
+    expect(r.battle.time).toBeCloseTo(100);
+    expect(r.slowdownEvent).toBeNull();
   });
 
-  it('drops to real time when a slug hits', () => {
+  it('keeps time compression when a slug hits', () => {
     // Red is left to an idle player: the computer would dodge a slug from this far off.
     const setup = duelSetup(gunnedTestDesign(1), testDesign(), 1_000e3);
     const battle = createBattle({
@@ -144,20 +192,22 @@ describe('battle runner', () => {
     const r = createBattleRunner(battle);
     r.setTimeCompression(1000);
     const events = r.update(0.1);
-    expect(events.map((e) => e.type)).toEqual(['impact']);
-    expect(r.timeCompression).toBe(1);
-    expect(r.battle.time).toBeLessThan(100);
+    expect(events.some((e) => e.type === 'impact')).toBe(true);
+    expect(r.timeCompression).toBe(1000);
+    expect(r.slowdownEvent).toBeNull();
+    expect(r.battle.time).toBeCloseTo(100);
   });
 
-  it('drops to real time when a missile is launched', () => {
+  it('keeps time compression when a missile is launched', () => {
     const battle = createBattle(duelSetup(launchingTestDesign(1), testDesign(), 10_000e3));
     battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
     const r = createBattleRunner(battle);
     r.setTimeCompression(1000);
     const events = r.update(0.1);
     expect(events.map((e) => e.type)).toEqual(['launch']);
-    expect(r.timeCompression).toBe(1);
-    expect(r.battle.time).toBeCloseTo(0.1, 9);
+    expect(r.timeCompression).toBe(1000);
+    expect(r.slowdownEvent).toBeNull();
+    expect(r.battle.time).toBeCloseTo(100);
   });
 
   it('drops to real time when a nuclear warhead goes off', () => {
@@ -178,7 +228,7 @@ describe('battle runner', () => {
     expect(r.battle.time).toBeCloseTo(detonation?.time ?? NaN, 9);
   });
 
-  it('drops to real time when point defence shoots down a missile', () => {
+  it('keeps time compression when point defence shoots down a missile', () => {
     const battle = createBattle(
       duelSetup(launchingTestDesign(1), defendedTestDesign({ mounts: 4 }), 500e3),
     );
@@ -192,11 +242,11 @@ describe('battle runner', () => {
     }
     const intercept = events.find((e) => e.type === 'intercept');
     expect(intercept).toBeDefined();
-    expect(r.timeCompression).toBe(1);
-    expect(r.battle.time).toBeCloseTo(intercept?.time ?? NaN, 9);
+    expect(r.timeCompression).toBe(1000);
+    expect(r.slowdownEvent).toBeNull();
   });
 
-  it('drops to real time when an anti-missile missile misses', () => {
+  it('keeps time compression when an anti-missile missile misses', () => {
     const { warhead } = TEST_ANTI_MISSILE_MISSILE;
     const antiMissile = {
       ...TEST_ANTI_MISSILE_MISSILE,
@@ -211,12 +261,12 @@ describe('battle runner', () => {
     r.setTimeCompression(1000);
     const events: BattleEvent[] = [];
     for (let i = 0; i < 100 && !events.some((e) => e.type === 'miss'); i++) {
-      events.push(...r.update(0.25));
+      events.push(...r.update(0.001));
     }
     const miss = events.find((e) => e.type === 'miss');
     expect(miss).toBeDefined();
-    expect(r.timeCompression).toBe(1);
-    expect(r.battle.time).toBeCloseTo(miss?.time ?? NaN, 9);
+    expect(r.timeCompression).toBe(1000);
+    expect(r.slowdownEvent).toBeNull();
   });
 
   it('drops to real time when a component is lost', () => {
@@ -242,9 +292,15 @@ describe('battle runner', () => {
     };
     const r = createBattleRunner(scripted);
     r.setTimeCompression(100);
+    expect(r.slowdownEvent).toBeNull();
     expect(r.update(0.1)).toEqual([lost]);
+    expect(r.slowdownEvent).toEqual(lost);
     expect(stepsTaken).toBe(50);
     expect(r.timeCompression).toBe(1);
+    r.update(0.1);
+    expect(r.slowdownEvent).toEqual(lost);
+    r.setTimeCompression(100);
+    expect(r.slowdownEvent).toBeNull();
   });
 
   it('stops when the battle ends', () => {
