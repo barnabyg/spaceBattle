@@ -6,6 +6,9 @@ for (const custom of [false, true]) {
   }, testInfo) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
+    page.on('console', (message) => {
+      if (message.type() === 'warning' || message.type() === 'error') errors.push(message.text());
+    });
     await page.goto(`/docs/research/ship-identity-review.html${custom ? '?custom' : ''}`);
     await expect(page.locator('body')).toHaveAttribute('data-ready', 'true');
     await expect(page.locator('canvas')).toHaveCount(custom ? 4 : 11);

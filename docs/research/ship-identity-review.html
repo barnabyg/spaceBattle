@@ -34,7 +34,7 @@
   </header>
   <main></main>
   <script type="module">
-    import * as THREE from '/node_modules/three/build/three.module.js';
+    import * as THREE from 'three';
     import { HAND_MADE_DESIGNS, handMadeDesign } from '/src/data/designs.ts';
     import { createShipModel, disposeShipModel } from '/src/ui/shipModel.ts';
     import { hullLength, HULLS } from '/src/sim/hull.ts';
@@ -96,12 +96,13 @@
       scene.add(model);
       const length = hullLength(HULLS[design.hullSize]);
       const camera = new THREE.PerspectiveCamera(35, article.clientWidth / 290, 1, 10000);
-      const centre = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
-      camera.position.set(
-        length * 0.42,
-        length * 0.8,
-        length * (look.radiatorsDeployed ? 3.2 : 1.6),
-      );
+      const bounds = new THREE.Box3().setFromObject(model);
+      const centre = bounds.getCenter(new THREE.Vector3());
+      camera.position.set(length * 0.42, length * 0.8, length * 1.6);
+      if (look.radiatorsDeployed) {
+        const radius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
+        camera.position.setLength((radius / Math.sin(THREE.MathUtils.degToRad(35 / 2))) * 1.1);
+      }
       camera.position.add(centre);
       camera.lookAt(centre);
       renderer.render(scene, camera);
