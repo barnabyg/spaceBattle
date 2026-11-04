@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Ship identity review</title>
+  <style>
+    body {
+      margin: 0;
+      background: #05070d;
+      color: #d8e0ec;
+      font: 16px system-ui;
+    }
+    header {
+      padding: 12px 20px;
+    }
+    main {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+    }
+    article {
+      border: 1px solid #283140;
+    }
+    h2 {
+      margin: 8px 16px 0;
+      font-size: 18px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 290px;
+    }
+  </style>
+  <header>
+    Ship identity review · same camera, light and display scale · nose right · radiators folded
+  </header>
+  <main></main>
+  <script type="module">
+    import * as THREE from '/node_modules/three/build/three.module.js';
+    import { HAND_MADE_DESIGNS, handMadeDesign } from '/src/data/designs.ts';
+    import { createShipModel, disposeShipModel } from '/src/ui/shipModel.ts';
+    import { hullLength, HULLS } from '/src/sim/hull.ts';
+    import { shipShape } from '/src/sim/shape.ts';
+    import { buildDesign, specificationOf } from '/src/shipyard/shipyard.ts';
+    import { catalogueComponent } from '/src/data/components.ts';
+
+    const custom = new URLSearchParams(location.search).has('custom');
+    const spec = specificationOf(handMadeDesign('lance'));
+    const laser = buildDesign({ ...spec, name: 'Player laser' }).design;
+    const gun = buildDesign({
+      ...spec,
+      name: 'Player kinetic',
+      components: [
+        ...spec.components.map((entry) =>
+          entry.component.type === 'laser'
+            ? { component: catalogueComponent('kinetic-gun') }
+            : entry,
+        ),
+        { component: catalogueComponent('magazine-slugs') },
+      ],
+    }).design;
+    const entries = custom
+      ? [
+          { design: laser },
+          { design: gun },
+          {
+            design: laser,
+            label: 'Player laser · panels deployed',
+            look: { radiatorsDeployed: true, temperature: 800 },
+          },
+          {
+            design: gun,
+            label: 'Player kinetic · forward section lost',
+            look: {
+              parts: shipShape(gun, gun.propellantMass, false).filter(
+                (p) => p.section !== 'forward',
+              ),
+              thrust: 1e6,
+            },
+          },
+        ]
+      : HAND_MADE_DESIGNS.map((design) => ({ design }));
+    for (const { design, label, look = {} } of entries) {
+      const article = document.createElement('article');
+      const title = document.createElement('h2');
+      title.textContent = label ?? `${design.name} · ${design.hullSize}`;
+      article.append(title);
+      document.querySelector('main').append(article);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(article.clientWidth, 290);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color('#05070d');
+      const light = new THREE.DirectionalLight('#fff4e0', 3);
+      light.position.set(300, 500, 400);
+      scene.add(light, new THREE.AmbientLight('#8090b0', 0.5));
+      const model = createShipModel(design, look);
+      scene.add(model);
+      const length = hullLength(HULLS[design.hullSize]);
+      const camera = new THREE.PerspectiveCamera(35, article.clientWidth / 290, 1, 10000);
+      const centre = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
+      camera.position.set(
+        length * 0.42,
+        length * 0.8,
+        length * (look.radiatorsDeployed ? 3.2 : 1.6),
+      );
+      camera.position.add(centre);
+      camera.lookAt(centre);
+      renderer.render(scene, camera);
+      // Copy the completed frame before releasing WebGL; a gallery should not retain a
+      // context per ship or depend on the browser preserving a disposed drawing buffer.
+      const canvas = document.createElement('canvas');
+      canvas.width = renderer.domElement.width;
+      canvas.height = renderer.domElement.height;
+      canvas.getContext('2d').drawImage(renderer.domElement, 0, 0);
+      article.append(canvas);
+      disposeShipModel(model);
+      renderer.dispose();
+    }
+    document.body.dataset.ready = 'true';
+  </script>
+</html>

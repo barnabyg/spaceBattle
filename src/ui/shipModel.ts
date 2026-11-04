@@ -5,6 +5,7 @@ import { shipShape, type ShapePart } from '../sim/shape';
 import { massProperties, NO_AMMUNITION_SPENT } from '../sim/ship';
 import { mountDetail, sectionGeometry, shipSurface } from './shipDetail';
 import { hullFittings } from './shipFittings';
+import { hullIdentity } from './shipIdentity';
 
 /** What a mesh of a ship model stands for. */
 export type ShipModelPartKind = 'section' | 'mount' | 'nozzle' | 'exhaust';
@@ -235,6 +236,7 @@ export const createShipModel = (design: Design, look: Partial<ShipLook> = {}): T
           part.section,
           mountClearance,
           [material, structure, recess, marking],
+          hullIdentity(design, part.section),
         ),
       );
       hull.add(mesh);
