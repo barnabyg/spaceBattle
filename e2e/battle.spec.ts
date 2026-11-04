@@ -356,9 +356,7 @@ test('toggle orders show which is selected, to sight and to assistive tech', asy
   await expect(atEnemy).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('a ship without shields takes no shield orders and shows no shields state', async ({
-  page,
-}) => {
+test('a ship without shields disables shield orders and explains why', async ({ page }) => {
   await startFreeBattle(page);
   await page.keyboard.press(' ');
   for (const name of ['Shields up', 'Shields down']) {
@@ -366,5 +364,5 @@ test('a ship without shields takes no shield orders and shows no shields state',
     await expect(button).toBeDisabled();
     await expect(button).toHaveAttribute('aria-pressed', 'false');
   }
-  await expect(page.getByLabel('Shields state')).toBeHidden();
+  await expect(page.getByLabel('Shields state')).toHaveText('Shields unavailable · none installed');
 });

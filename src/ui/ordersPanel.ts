@@ -13,7 +13,14 @@ import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/powe
 import { distance, length, vec3 } from '../sim/vector';
 import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
-import { formatDuration, formatKm, formatKmPerS, formatMetresPerS, formatMW } from './format';
+import {
+  formatDuration,
+  formatKm,
+  formatKmPerS,
+  formatMetresPerS,
+  formatMW,
+  formatPercent,
+} from './format';
 
 const DEGREES = Math.PI / 180;
 
@@ -347,6 +354,14 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     className: 'order-state',
     attrs: { 'aria-label': 'Shields state' },
   });
+  const shieldsProtection = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Shield protection' },
+  });
+  const shieldsTiming = el('p', {
+    className: 'order-state',
+    text: 'Orders apply while paused; protection updates when the battle advances.',
+  });
 
   const targetEnemy = button('Target enemy');
   const noTarget = button('No target');
@@ -517,6 +532,8 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     el('h3', { text: 'Shields' }),
     el('div', { className: 'order-row' }, raiseShields, lowerShields),
     shieldsState,
+    shieldsProtection,
+    shieldsTiming,
     el('h3', { text: 'Weapons' }),
     el('div', { className: 'order-row' }, targetEnemy, noTarget),
     el('div', { className: 'order-row' }, fireFreely, holdFire),
@@ -594,16 +611,24 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       setPressed(deployRadiators, ship.heat.radiatorsDeployed);
       setPressed(retractRadiators, !ship.heat.radiatorsDeployed);
       const shielded = ship.shields.shields.length > 0;
-      raiseShields.disabled = !shielded;
-      lowerShields.disabled = !shielded;
-      shieldsState.hidden = !shielded;
-      shieldsState.textContent = shielded
+      const workingShields = ship.shields.shields.some((shield) => shield.integrity > 0);
+      raiseShields.disabled = !workingShields;
+      lowerShields.disabled = !workingShields;
+      shieldsState.textContent = workingShields
         ? ship.shields.raised
           ? 'Shields raised'
           : 'Shields lowered'
-        : '';
-      setPressed(raiseShields, shielded && ship.shields.raised);
-      setPressed(lowerShields, shielded && !ship.shields.raised);
+        : shielded
+          ? 'Shields unavailable · all lost'
+          : 'Shields unavailable · none installed';
+      setPressed(raiseShields, workingShields && ship.shields.raised);
+      setPressed(lowerShields, workingShields && !ship.shields.raised);
+      shieldsProtection.hidden = !workingShields;
+      shieldsTiming.hidden = !workingShields;
+      const damagedShields = ship.shields.shields.some((shield) => shield.integrity < 1);
+      shieldsProtection.textContent = ship.shields.raised
+        ? `Protection last step: ${formatPercent(ship.shields.powered)} power${damagedShields ? ' · damaged shields' : ''}`
+        : 'No protection while lowered';
 
       weapons = { target: ship.weapons.target, mode: ship.weapons.mode, aim: ship.weapons.aim };
       enemy = observation.contacts[0]?.sideId ?? null;
