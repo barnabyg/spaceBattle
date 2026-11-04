@@ -21,6 +21,7 @@ import {
   updateContactModel,
 } from './contactModel';
 import { CONTACT_DETAIL_TEXT, formatKm } from './format';
+import { SIDE_COLOURS } from './mapStyle';
 import { createShipModel, disposeShipModel, softGlowTexture, updateShipModel } from './shipModel';
 
 /** The sun, far off in this direction (world frame, z up as on the tactical map). */
@@ -129,6 +130,7 @@ const createSky = () => {
 /** One ship as the view draws it, alone on its own layer at the origin. */
 interface ShipView {
   readonly side: SideSetup;
+  readonly colour: string;
   readonly layer: number;
   length: number;
   /** Turned to the ship's orientation; holds its model and hit spots. */
@@ -150,9 +152,14 @@ const setLayer = (object: THREE.Object3D, layer: number) => {
   });
 };
 
-const createShipView = (scene: THREE.Scene, side: SideSetup, layer: number): ShipView => {
+const createShipView = (
+  scene: THREE.Scene,
+  side: SideSetup,
+  layer: number,
+  colour: string,
+): ShipView => {
   const anchor = new THREE.Group();
-  const model = createShipModel(side.design);
+  const model = createShipModel(side.design, {}, colour);
   const spots = Array.from({ length: MAX_SPOTS }, () => {
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -195,6 +202,7 @@ const createShipView = (scene: THREE.Scene, side: SideSetup, layer: number): Shi
   scene.add(anchor, burstLight, burstGlow, interceptGlow);
   return {
     side,
+    colour,
     layer,
     length: hullLength(HULLS[side.design.hullSize]),
     anchor,
@@ -331,7 +339,10 @@ const telescopePosition = (munition: MunitionObservation, own: Vec3, contact: Ve
  * the contact only as the sensors make it out (see `createContactModel`), unless test mode hands
  * `update` the enemy's own view of its ship to draw in full. One renderer draws both halves.
  */
-export const createInstrumentView = (sides: readonly SideSetup[]) => {
+export const createInstrumentView = (
+  sides: readonly SideSetup[],
+  colours: readonly string[] = SIDE_COLOURS,
+) => {
   const ownSide = sides[0];
   const contactSide = sides[1];
   if (!ownSide || !contactSide) throw new Error('The instrument view needs two sides');
@@ -392,9 +403,9 @@ export const createInstrumentView = (sides: readonly SideSetup[]) => {
   ambient.layers.enableAll();
   scene.add(sunlight, ambient);
 
-  const own = createShipView(scene, ownSide, 1);
-  const contact = createShipView(scene, contactSide, 2);
-  const fogged = createContactModel();
+  const own = createShipView(scene, ownSide, 1, colours[0] ?? '#ffffff');
+  const contact = createShipView(scene, contactSide, 2, colours[1] ?? '#ffffff');
+  const fogged = createContactModel(contact.colour);
   contact.anchor.add(fogged);
   setLayer(fogged, contact.layer);
 

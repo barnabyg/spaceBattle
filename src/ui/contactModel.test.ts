@@ -6,6 +6,7 @@ import {
   contactModelDetail,
   contactModelExtent,
   createContactModel,
+  disposeContactModel,
   updateContactModel,
   type ContactModelPartData,
 } from './contactModel';
@@ -38,6 +39,42 @@ const contactAt = (range: number, fire = false): ContactObservation => {
 };
 
 describe('contact model', () => {
+  it('keeps each contact colour on its dot and resolved outlines without recolouring its armour', () => {
+    const blue = createContactModel('#4fa3ff');
+    const red = createContactModel('#ff5a4f');
+    const coloursOf = (model: THREE.Group) => {
+      const colours: string[] = [];
+      model.traverseVisible((object) => {
+        if (
+          !(object instanceof THREE.LineSegments) &&
+          !(object instanceof THREE.Sprite) &&
+          !(object instanceof THREE.Mesh)
+        )
+          return;
+        const material: unknown = object.material;
+        if (
+          material instanceof THREE.LineBasicMaterial ||
+          material instanceof THREE.SpriteMaterial ||
+          material instanceof THREE.MeshStandardMaterial ||
+          material instanceof THREE.MeshBasicMaterial
+        ) {
+          colours.push(material.color.getHexString());
+        }
+      });
+      return colours;
+    };
+    for (const range of [10_000_000 * KM, 1_000 * KM, 100_000 * KM]) {
+      updateContactModel(blue, contactAt(range));
+      updateContactModel(red, contactAt(range));
+      expect(coloursOf(blue)).toContain('4fa3ff');
+      expect(coloursOf(blue)).not.toContain('ff5a4f');
+      expect(coloursOf(red)).toContain('ff5a4f');
+      if (range === 1_000 * KM) expect(coloursOf(red)).toContain('9aa0a8');
+    }
+    disposeContactModel(red);
+    disposeContactModel(blue);
+  });
+
   it('frames only observed geometry and forgets detail as range opens', () => {
     const model = createContactModel();
     updateContactModel(model, contactAt(1_000 * KM));

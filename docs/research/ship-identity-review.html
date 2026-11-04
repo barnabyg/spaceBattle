@@ -41,6 +41,7 @@
     import { shipShape } from '/src/sim/shape.ts';
     import { buildDesign, specificationOf } from '/src/shipyard/shipyard.ts';
     import { catalogueComponent } from '/src/data/components.ts';
+    import { SIDE_COLOURS } from '/src/ui/mapStyle.ts';
 
     const custom = new URLSearchParams(location.search).has('custom');
     const spec = specificationOf(handMadeDesign('lance'));
@@ -78,10 +79,20 @@
           },
         ]
       : HAND_MADE_DESIGNS.map((design) => ({ design }));
-    for (const { design, label, look = {} } of entries) {
+    const reviewEntries = new URLSearchParams(location.search).has('accents')
+      ? entries.flatMap((entry) =>
+          SIDE_COLOURS.map((accent, index) => ({
+            ...entry,
+            accent,
+            label: `${entry.label ?? entry.design.name} · ${index === 0 ? 'Blue' : 'Red'}`,
+          })),
+        )
+      : entries;
+    for (const { design, label, look = {}, accent } of reviewEntries) {
       const article = document.createElement('article');
       const title = document.createElement('h2');
       title.textContent = label ?? `${design.name} · ${design.hullSize}`;
+      if (accent) title.style.borderLeft = `8px solid ${accent}`;
       article.append(title);
       document.querySelector('main').append(article);
       const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -92,7 +103,7 @@
       const light = new THREE.DirectionalLight('#fff4e0', 3);
       light.position.set(300, 500, 400);
       scene.add(light, new THREE.AmbientLight('#8090b0', 0.5));
-      const model = createShipModel(design, look);
+      const model = createShipModel(design, look, accent);
       scene.add(model);
       const length = hullLength(HULLS[design.hullSize]);
       const camera = new THREE.PerspectiveCamera(35, article.clientWidth / 290, 1, 10000);

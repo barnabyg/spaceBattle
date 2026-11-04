@@ -42,6 +42,38 @@ const coreBounds = (object: THREE.Object3D): THREE.Box3 => {
 };
 
 describe('ship model', () => {
+  it('accents shared designs independently while preserving the hull and equipment', () => {
+    const design = handMadeDesign('lance');
+    const coloursOf = (model: THREE.Group) => {
+      const colours: string[] = [];
+      model.traverseVisible((object) => {
+        if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) {
+          colours.push(object.material.color.getHexString());
+        }
+      });
+      return colours;
+    };
+    const blue = createShipModel(design, {}, '#4fa3ff');
+    const red = createShipModel(design, {}, '#ff5a4f');
+    expect(coloursOf(blue)).toContain('4fa3ff');
+    expect(coloursOf(blue)).not.toContain('ff5a4f');
+    expect(coloursOf(red)).toContain('ff5a4f');
+    expect(coloursOf(red)).not.toContain('4fa3ff');
+    expect(coloursOf(red)).toContain('737d86');
+    expect(coloursOf(red)).toContain('3a4250');
+    updateShipModel(red, {
+      propellantMass: design.propellantMass,
+      radiatorsDeployed: true,
+      temperature: 300,
+      thrust: 0,
+    });
+    expect(coloursOf(red)).toContain('ff5a4f');
+    expect(coloursOf(red)).not.toContain('4fa3ff');
+    disposeShipModel(red);
+    expect(coloursOf(blue)).toContain('4fa3ff');
+    disposeShipModel(blue);
+  });
+
   it('extends observed radiators in place through deployment and cancellation without rebuilding', () => {
     const design = handMadeDesign('rime');
     const battle = createBattle(duelSetup(design, testDesign(), 1_000_000));

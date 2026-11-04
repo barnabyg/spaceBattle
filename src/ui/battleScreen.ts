@@ -60,11 +60,11 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
 
   const timeControls = createTimeControls(runner);
   // Each side keeps its own colour, whichever side the viewer is.
-  const map = createTacticalMap(
-    ordered,
-    ordered.map((s) => SIDE_COLOURS[battle.sides.indexOf(s) % SIDE_COLOURS.length] ?? '#ffffff'),
+  const colours = ordered.map(
+    (s) => SIDE_COLOURS[battle.sides.indexOf(s) % SIDE_COLOURS.length] ?? '#ffffff',
   );
-  const instruments = createInstrumentView(ordered);
+  const map = createTacticalMap(ordered, colours);
+  const instruments = createInstrumentView(ordered, colours);
   const status = createStatusPanel();
   const damage = createDamagePanel(viewer.id);
   const orders = createOrdersPanel((order) => {
