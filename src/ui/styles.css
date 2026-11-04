@@ -136,6 +136,8 @@ button {
 .tactical-map__labels {
   position: absolute;
   inset: 0;
+  /* Contain CSS2DRenderer's per-label depth indices beneath the legend and readouts. */
+  z-index: 0;
 }
 
 .instrument-view {
@@ -355,6 +357,7 @@ button {
 .range-label {
   color: #4d6488;
   font-size: 0.7rem;
+  pointer-events: none;
 }
 
 .map-legend {
