@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { timeCompressionButtons } from './freeBattle';
+import { CAMPAIGN_BATTLE_TIMEOUT, CAMPAIGN_TEST_TIMEOUT } from './timeouts';
 
 /** The credits the hub shows, as a number. */
 const credits = async (page: Page): Promise<number> =>
@@ -19,15 +20,17 @@ const fightToTheEnd = async (page: Page) => {
   const result = page.getByRole('dialog', { name: 'Battle result' });
   await expect(async () => {
     if (!(await result.isVisible())) await timeCompressionButtons(page).last().click();
+    // A short probe lets us restore time compression promptly after hits and launches.
+    // The enclosing retry has the generous battle-completion deadline.
     await expect(result).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 150_000 });
+  }).toPass({ timeout: CAMPAIGN_BATTLE_TIMEOUT });
   return result;
 };
 
 test('a new campaign builds its first ship, fights tier 1 and is paid for the win', async ({
   page,
 }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(CAMPAIGN_TEST_TIMEOUT);
   await page.goto('/');
   // Test mode for its faster time compression; the campaign plays the same.
   await page.getByRole('checkbox', { name: 'Test mode' }).check();

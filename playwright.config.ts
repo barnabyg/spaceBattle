@@ -1,10 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
+import { UI_EXPECT_TIMEOUT, UI_TEST_TIMEOUT } from './e2e/timeouts';
 
 // Override with E2E_PORT to run two checkouts side by side.
 const port = Number(process.env.E2E_PORT ?? 5199);
 
 export default defineConfig({
   testDir: 'e2e',
+  timeout: UI_TEST_TIMEOUT,
+  expect: { timeout: UI_EXPECT_TIMEOUT },
+  // Bounds the entire browser suite, including the campaign's longer safety limit.
+  globalTimeout: 20 * 60_000,
   forbidOnly: !!process.env.CI,
   // Stop at the first failure in CI only; local runs report every failure.
   maxFailures: process.env.CI ? 1 : 0,
@@ -29,6 +34,7 @@ export default defineConfig({
     },
   ],
   webServer: {
+    timeout: 120_000,
     command: `npx vite --port ${port} --strictPort`,
     url: `http://localhost:${port}`,
     reuseExistingServer: !process.env.CI,

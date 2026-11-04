@@ -16,6 +16,30 @@ Run from the repository root after `npm ci` (and `npx playwright install firefox
 | `npm run e2e`       | End-to-end tests in Firefox (Playwright).                                              |
 | `npm run typecheck` | Type checks the app, and the headless core without DOM types.                          |
 
+## Test timeouts
+
+Timeouts detect hangs; they are not runtime targets or performance assertions. Leave at least
+three times the representative runtime under normal full-suite load, with additional margin
+for random scenarios, software rendering and slower CI hosts. Assertions finish as soon as
+their condition holds; a larger limit adds no delay to a passing test. If a timeout fires,
+inspect progress and timings before changing it again.
+
+Playwright's limits live in `e2e/timeouts.ts`: ordinary UI tests get 60 s and assertions 15 s;
+simulation waits get 60 s inside 120 s tests. The campaign battle gets 10 min inside a 12 min
+test, including setup and post-battle checks. Its previous 150 s limit was exceeded under
+full-suite load despite isolated runs taking about 20 s; 10 min is a provisional safety margin,
+not an established expected duration. The short 1 s campaign probe only controls how often
+the test restores time compression after events; it is not the battle's deadline.
+
+Vitest's default is 15 s. Longer headless simulation tests retain their existing explicit
+20–300 s limits, already several times their documented runtimes. The browser suite has a
+20 min hard limit, nested within the CI job's 30 min limit. CI still stops at the first failure;
+local runs report all failures, with no automatic retries.
+
+These are test-runner changes; manual game verification does not apply. From the repository
+root, run `npm.cmd run verify` to exercise every gate and confirm tests finish within their
+safety limits.
+
 ## Playing
 
 On Windows, double-click `run.bat` in the repository root. It installs the dependencies on first run, then starts the game in Firefox; close its window to stop the game. From a terminal, `npm run dev` does the same once dependencies are installed.
