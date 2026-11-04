@@ -10,6 +10,7 @@ import type { Commander } from '../sim/battle';
 import type { Design } from '../sim/design';
 import { CAPTAIN_SKILLS } from '../sim/captain';
 import { designSummary } from './designSummary';
+import { createDesignPreview } from './designPreview';
 import { el } from './el';
 import { formatKm, formatKmPerS, SKILL_TEXT } from './format';
 import { SIDE_COLOURS } from './mapStyle';
@@ -194,9 +195,13 @@ const createSideChoice = (
   };
   commander.addEventListener('change', showSkill);
   showSkill();
+  const preview = createDesignPreview();
+  preview.element.setAttribute('aria-label', `${side.name} ship preview`);
   const summary = el('dl', { className: 'status-list design-summary' });
   const showSummary = () => {
     const chosen = designs.find((d) => d.id === design.value);
+    preview.show(chosen ?? null);
+    summary.replaceChildren();
     if (!chosen) return;
     summary.replaceChildren(
       ...designSummary(chosen).flatMap(([label, value]) => [
@@ -219,6 +224,7 @@ const createSideChoice = (
     },
     el('h2', { className: 'setup-side__name', text: side.name }),
     el('label', { className: 'field' }, el('span', { text: 'Design' }), design),
+    preview.element,
     summary,
     el('label', { className: 'field' }, el('span', { text: 'Commander' }), commander),
     skillField,
@@ -229,6 +235,9 @@ const createSideChoice = (
     commander,
     /** Shows or hides the skill choice after the commander was changed from outside. */
     showSkill,
+    dispose() {
+      preview.dispose();
+    },
     value: (): FreeBattleSide => ({
       designId: design.value,
       commander: commander.value === 'computer' ? 'computer' : 'player',
@@ -320,6 +329,10 @@ export const createSetupScreen = (
     /** Puts the keyboard on the start button. */
     focus() {
       start.focus();
+    },
+    dispose() {
+      blue.dispose();
+      red.dispose();
     },
   };
 };

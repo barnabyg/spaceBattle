@@ -853,6 +853,11 @@ h3 {
   color: var(--side-colour);
 }
 
+.setup-side .design-preview {
+  height: 12rem;
+  flex-shrink: 0;
+}
+
 .design-summary {
   padding: 0.8rem 0;
   border-top: 1px solid var(--panel-border);

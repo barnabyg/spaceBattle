@@ -19,6 +19,8 @@ export const createDesignPreview = () => {
   });
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(1);
+  renderer.domElement.setAttribute('role', 'img');
+  renderer.domElement.setAttribute('aria-label', 'No design selected');
   element.append(renderer.domElement);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#05070d');
@@ -60,6 +62,7 @@ export const createDesignPreview = () => {
         disposeShipModel(model);
         model = null;
       }
+      renderer.domElement.setAttribute('aria-label', 'No design selected');
       if (!design) return;
       try {
         model = createShipModel(design);
@@ -68,6 +71,7 @@ export const createDesignPreview = () => {
         return;
       }
       turntable.add(model);
+      renderer.domElement.setAttribute('aria-label', `${design.name} ship preview`);
       const length = hullLength(HULLS[design.hullSize]);
       camera.position.set(length * 0.65, length * 0.5, length * 1.05);
       camera.lookAt(0, 0, 0);
