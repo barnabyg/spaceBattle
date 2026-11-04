@@ -244,7 +244,8 @@ describe('power and heat', () => {
     battle.giveOrder('blue', { type: 'power', priorities });
     battle.giveOrder('blue', { type: 'radiators', deployed: true });
     expect(own(battle).power.priorities).toEqual(priorities);
-    expect(own(battle).heat.radiatorsDeployed).toBe(true);
+    expect(own(battle).heat.radiatorsDeployed).toBe(false);
+    expect(own(battle).heat.radiatorDeploymentRemaining).toBe(5);
   });
 
   it('rejects a power order that does not rank every system once', () => {

@@ -669,8 +669,9 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
         const row = priorityRows[rank];
         if (row) row.share.textContent = `${formatMW(supplied)} of ${formatMW(demand)}`;
       });
-      setPressed(deployRadiators, ship.heat.radiatorsDeployed);
-      setPressed(retractRadiators, !ship.heat.radiatorsDeployed);
+      const deploying = ship.heat.radiatorDeploymentRemaining > 0;
+      setPressed(deployRadiators, ship.heat.radiatorsDeployed || deploying);
+      setPressed(retractRadiators, !ship.heat.radiatorsDeployed && !deploying);
       const shielded = ship.shields.shields.length > 0;
       const workingShields = ship.shields.shields.some((shield) => shield.integrity > 0);
       const shieldReason = workingShields

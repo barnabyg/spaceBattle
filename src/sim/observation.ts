@@ -95,6 +95,8 @@ export interface HeatObservation {
   /** Laser heat the coolant shields carried into the ship in the last step, W. */
   readonly absorbed: number;
   readonly radiatorsDeployed: boolean;
+  /** Simulated seconds left to deploy; zero when idle. */
+  readonly radiatorDeploymentRemaining: number;
   /** Radiating area now exposed, m². */
   readonly radiatorArea: number;
   /** The fraction of their full power systems may use at this temperature. */
@@ -568,6 +570,7 @@ const observeHeat = (ship: ShipState): HeatObservation => {
     radiated: ship.heatFlow.radiated,
     absorbed: ship.heatFlow.absorbed,
     radiatorsDeployed: ship.radiatorsDeployed,
+    radiatorDeploymentRemaining: ship.radiatorDeploymentRemaining,
     radiatorArea: radiators.area,
     thermalLimit: thermalLimit(temperature),
   };

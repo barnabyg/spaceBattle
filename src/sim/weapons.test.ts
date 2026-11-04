@@ -157,6 +157,7 @@ describe('hits', () => {
           duelSetup(armedTestDesign(), handMadeDesign(id), 30_000 * KM, orientation),
         );
         battle.giveOrder('red', { type: 'radiators', deployed });
+        battle.advance(5);
         fireAtRed(battle);
         const hits = hitsOn(battle.advance(2), 'red');
         expect(hits.length).toBeGreaterThan(0);

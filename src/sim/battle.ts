@@ -300,6 +300,8 @@ const checkOrder = (order: Order): Order => {
 const WITHDRAWAL_ALIGNMENT = Math.cos((10 * Math.PI) / 180);
 /** How many recent events each side's observation keeps. */
 const EVENT_LOG_LENGTH = 20;
+/** Simulated seconds to deploy radiators; they remain folded until ready. */
+const RADIATOR_DEPLOYMENT_TIME = 5;
 /** Mixed into the battle's seed for the errors in fire control's tracks, kept apart from the rest. */
 const TRACKING_SEED = 0x9e3779b9;
 /** Mixed into the battle's seed for what signal interceptors learn before it, kept apart too. */
@@ -807,6 +809,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
     steps += 1;
 
     const time = steps * TIME_STEP;
+    for (const { ship } of combatants) {
+      if (ship.radiatorDeploymentRemaining > 0) {
+        const remaining = ship.radiatorDeploymentRemaining - TIME_STEP;
+        ship.radiatorDeploymentRemaining = remaining < 1e-9 ? 0 : remaining;
+        if (ship.radiatorDeploymentRemaining === 0) ship.radiatorsDeployed = true;
+      }
+    }
     const events: BattleEvent[] = [...pending, ...launches];
     pending = [];
     const ctx = { time, random, events };
@@ -860,7 +869,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
           ship.priorities = checked.priorities;
           break;
         case 'radiators':
-          ship.radiatorsDeployed = checked.deployed;
+          if (!checked.deployed) {
+            ship.radiatorsDeployed = false;
+            ship.radiatorDeploymentRemaining = 0;
+          } else if (!ship.radiatorsDeployed && ship.radiatorDeploymentRemaining === 0) {
+            ship.radiatorDeploymentRemaining = RADIATOR_DEPLOYMENT_TIME;
+          }
           break;
         case 'shields':
           ship.shieldsRaised = checked.raised;
