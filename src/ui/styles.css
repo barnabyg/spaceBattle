@@ -186,6 +186,34 @@ button {
   font-size: 0.7rem;
 }
 
+.contact-detail {
+  margin-top: 0.45rem;
+  padding: 0.4rem 0.55rem;
+  background: #07101cda;
+  border: 1px solid #43566e;
+  font-size: 0.75rem;
+}
+
+.contact-detail__stages {
+  display: flex;
+  gap: 0.55rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.3rem;
+  color: #9ba9bd;
+}
+
+.contact-detail__stages li[aria-current='step'] {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.25rem;
+}
+
+.contact-detail__explanation {
+  color: #d4dfef;
+}
+
 .side-panel {
   grid-area: side;
   padding: 1rem;

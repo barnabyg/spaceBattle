@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" />
+  <title>Contact detail review</title>
+  <style>
+    body {
+      margin: 0;
+      background: #05070d;
+      color: #d8e0ec;
+      font: 16px system-ui;
+    }
+    header {
+      padding: 16px;
+    }
+    main {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+    }
+    article {
+      border: 1px solid #43566e;
+    }
+    h2,
+    p {
+      margin: 12px;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+    }
+  </style>
+  <header>
+    Contact detail · same observed ship, camera and display scale · existing sensor stages
+  </header>
+  <main></main>
+  <script type="module">
+    import * as THREE from 'three';
+    import { createBattle } from '/src/sim/battle.ts';
+    import { duelSetup, testDesign, withSection, TEST_LASER } from '/src/sim/testing.ts';
+    import {
+      createContactModel,
+      updateContactModel,
+      disposeContactModel,
+    } from '/src/ui/contactModel.ts';
+
+    const target = withSection(withSection(testDesign(), 'middle', { mounts: [] }), 'forward', {
+      mounts: [TEST_LASER],
+    });
+    const stages = [
+      [10_000_000_000, 'Position only', 'A tracked point; no disclosed shape.'],
+      [100_000_000, 'Silhouette', 'Uniform unlit outline; no resolved surfaces.'],
+      [50_000_000, 'Sections', 'Resolved armour and section seams; equipment still plain.'],
+      [1_000_000, 'Mounts', 'Resolved equipment outlined; firing mounts glow.'],
+    ];
+    for (const [range, title, description] of stages) {
+      const battle = createBattle(duelSetup(testDesign(), target, range));
+      const contact = battle.observe('blue').contacts[0];
+      const article = document.createElement('article');
+      const heading = document.createElement('h2');
+      heading.textContent = title;
+      const text = document.createElement('p');
+      text.textContent = description;
+      article.append(heading, text);
+      document.querySelector('main').append(article);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(1);
+      renderer.setSize(article.clientWidth, 360);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color('#05070d');
+      const light = new THREE.DirectionalLight('#fff4e0', 3);
+      light.position.set(300, 500, 400);
+      scene.add(light, new THREE.AmbientLight('#8090b0', 0.5));
+      const model = createContactModel();
+      updateContactModel(model, contact);
+      scene.add(model);
+      const camera = new THREE.PerspectiveCamera(35, article.clientWidth / 360, 0.5, 10000);
+      camera.up.set(0, 0, 1);
+      camera.position.set(100, 160, 85);
+      camera.lookAt(0, 0, 0);
+      renderer.render(scene, camera);
+      const image = document.createElement('canvas');
+      image.width = renderer.domElement.width;
+      image.height = renderer.domElement.height;
+      image.getContext('2d').drawImage(renderer.domElement, 0, 0);
+      article.append(image);
+      disposeContactModel(model);
+      renderer.dispose();
+    }
+    document.body.dataset.ready = 'true';
+  </script>
+</html>

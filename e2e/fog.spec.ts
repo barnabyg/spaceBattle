@@ -14,6 +14,53 @@ test('setup offers a captain skill only for a computer side', async ({ page }) =
   await expect(blue.getByLabel('Captain skill')).toBeVisible();
 });
 
+test('ordinary play explains the resolved contact stage without revealing the enemy design', async ({
+  page,
+}) => {
+  await startFreeBattle(page);
+  const telescope = page.getByLabel('Contact through telescope');
+  await expect(telescope.getByLabel('Resolved contact detail')).toBeVisible();
+  await expect(telescope.locator('[aria-current="step"]')).toHaveCount(1);
+  await expect(telescope).not.toContainText('Bastion');
+  await expect(telescope).not.toContainText('Test mode');
+  const stage = await telescope.getAttribute('data-detail');
+  await expect(telescope.locator('[aria-current="step"]')).toHaveAttribute(
+    'data-detail',
+    stage ?? '',
+  );
+});
+
+test('contact stage review renders representative observations without WebGL errors', async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'warning' || message.type() === 'error') errors.push(message.text());
+  });
+  await page.goto('/docs/research/contact-detail-review.html');
+  await expect(page.locator('body')).toHaveAttribute('data-ready', 'true');
+  await expect(page.locator('canvas')).toHaveCount(4);
+  for (const canvas of await page.locator('canvas').all()) {
+    const litPixels = await canvas.evaluate((element) => {
+      if (!(element instanceof HTMLCanvasElement)) throw new Error('Missing contact image');
+      const context = element.getContext('2d');
+      if (!context) throw new Error('Missing review image');
+      const pixels = context.getImageData(0, 0, element.width, element.height).data;
+      let lit = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if ((pixels[i] ?? 0) > 40) lit++;
+      }
+      return lit;
+    });
+    expect(litPixels).toBeGreaterThan(5);
+  }
+  expect(errors).toEqual([]);
+  const path = testInfo.outputPath('contact-detail-stages.png');
+  await page.screenshot({ path, fullPage: true });
+  await testInfo.attach('Contact stages', { path, contentType: 'image/png' });
+});
+
 test('the player withdraws and sees the result', async ({ page }) => {
   test.setTimeout(SIMULATION_TEST_TIMEOUT);
   await startFreeBattle(page);

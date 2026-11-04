@@ -25,8 +25,11 @@ const FIRING_COLOUR = '#ffe2a8';
 /** The meshes and materials a contact model reuses from one update to the next. */
 interface ContactParts {
   detail: ContactDetail;
+  extent: number | null;
   readonly hull: THREE.Group;
   readonly box: THREE.BoxGeometry;
+  readonly edges: THREE.EdgesGeometry;
+  readonly edgeMaterial: THREE.LineBasicMaterial;
   /** Meshes by part, each made the first time the part shows. */
   readonly meshes: Map<string, THREE.Mesh>;
   readonly dot: THREE.Sprite;
@@ -54,6 +57,7 @@ export const createContactModel = (): THREE.Group => {
   const model = new THREE.Group();
   model.name = 'Contact';
   const hull = new THREE.Group();
+  const box = new THREE.BoxGeometry(1, 1, 1);
   const glow = (colour: string, kind?: ContactModelPartKind) => {
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -76,13 +80,17 @@ export const createContactModel = (): THREE.Group => {
   model.add(hull, dot, exhaust);
   models.set(model, {
     detail: 'position',
+    extent: null,
     hull,
-    box: new THREE.BoxGeometry(1, 1, 1),
+    box,
+    edges: new THREE.EdgesGeometry(box),
+    edgeMaterial: new THREE.LineBasicMaterial({ color: '#bfcee0' }),
     meshes: new Map(),
     dot,
     exhaust,
     materials: {
-      silhouette: new THREE.MeshBasicMaterial({ color: '#15171b' }),
+      // Unlit and uniform: a readable outline without suggesting resolved surface features.
+      silhouette: new THREE.MeshBasicMaterial({ color: '#677587' }),
       heavy: new THREE.MeshStandardMaterial({ color: '#8b929c', metalness: 0.6, roughness: 0.45 }),
       ablative: new THREE.MeshStandardMaterial({
         color: '#5d564e',
@@ -111,6 +119,10 @@ export const createContactModel = (): THREE.Group => {
 export const contactModelDetail = (model: THREE.Group): ContactDetail | null =>
   models.get(model)?.detail ?? null;
 
+/** Largest disclosed hull extent, m; null while only the position is known. */
+export const contactModelExtent = (model: THREE.Group): number | null =>
+  models.get(model)?.extent ?? null;
+
 const keyOf = (part: ShapePart) => `${part.section}/${String(part.mount)}`;
 
 /** Brings a contact model up to date with what the sensors make out of the contact. */
@@ -119,6 +131,13 @@ export const updateContactModel = (model: THREE.Group, contact: ContactObservati
   if (!parts) return;
   const { appearance } = contact;
   parts.detail = contact.detail;
+  const bounds = new THREE.Box3();
+  for (const part of appearance.outline) {
+    bounds.expandByPoint(new THREE.Vector3(part.min.x, part.min.y, part.min.z));
+    bounds.expandByPoint(new THREE.Vector3(part.max.x, part.max.y, part.max.z));
+  }
+  const size = bounds.getSize(new THREE.Vector3());
+  parts.extent = bounds.isEmpty() ? null : Math.max(size.x, size.y, size.z);
   const shown = new Set<string>();
   const show = (
     key: string,
@@ -132,9 +151,14 @@ export const updateContactModel = (model: THREE.Group, contact: ContactObservati
       parts.meshes.set(key, mesh);
       parts.hull.add(mesh);
       mesh.layers.mask = model.layers.mask;
+      // Seams appear only on resolved parts; silhouette boxes remain an undivided shape.
+      const edges = new THREE.LineSegments(parts.edges, parts.edgeMaterial);
+      edges.layers.mask = model.layers.mask;
+      mesh.add(edges);
     }
     mesh.material = material;
     mesh.userData = data;
+    for (const child of mesh.children) child.visible = data.kind !== 'silhouette';
     mesh.scale.set(
       Math.max(1e-3, part.max.x - part.min.x),
       Math.max(1e-3, part.max.y - part.min.y),
@@ -196,6 +220,8 @@ export const disposeContactModel = (model: THREE.Group): void => {
   const parts = models.get(model);
   if (!parts) return;
   parts.box.dispose();
+  parts.edges.dispose();
+  parts.edgeMaterial.dispose();
   Object.values(parts.materials).forEach((material) => {
     material.dispose();
   });
