@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { SectionKind } from '../sim/design';
 import { sectionGeometry } from './shipDetail';
-import type { HullIdentity } from './shipIdentity';
+import type { HullIdentity } from '../sim/exterior';
 
 /** Four octagonal stations form a substantial armour shell with tapered ends and flat facets. */
 const armourShell = (size: THREE.Vector3, front: number, aft: number): THREE.BufferGeometry => {

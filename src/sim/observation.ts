@@ -1,4 +1,5 @@
 import type { SideId, SideSetup } from './battle';
+import { resolvedShipAppearance, type ResolvedShipAppearance } from './exterior';
 import { effectiveRange } from './beams';
 import { componentSlots } from './components';
 import { intactShape } from './damage';
@@ -484,6 +485,10 @@ export interface ContactMountObservation {
  * made out.
  */
 export interface ContactObservation {
+  /** All surviving parts are currently resolved, not merely one mount. */
+  readonly fullyResolved: boolean;
+  /** Exterior appearance only, disclosed while all surviving parts are resolved. */
+  readonly detailedAppearance: ResolvedShipAppearance | null;
   readonly sideId: SideId;
   readonly position: Vec3;
   readonly velocity: Vec3;
@@ -935,6 +940,18 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
   const silhouette = seen.detail !== 'position';
   const slots = componentSlots(ship.design);
   return {
+    fullyResolved: seen.fullyResolved,
+    detailedAppearance: seen.fullyResolved
+      ? resolvedShipAppearance(
+          ship.design,
+          seen.parts,
+          ship.propellantMass,
+          ship.radiatorsDeployed,
+          temperatureOf(ship),
+          ship.thrust,
+          ship.ammunitionSpent,
+        )
+      : null,
     sideId: contact.side.id,
     position: ship.position,
     velocity: ship.velocity,

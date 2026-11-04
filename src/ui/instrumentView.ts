@@ -25,10 +25,12 @@ import { CONTACT_DETAIL_TEXT, formatKm } from './format';
 import { SIDE_COLOURS } from './mapStyle';
 import {
   createShipModel,
+  createResolvedShipModel,
   disposeShipModel,
   shipModelNeedsRebuild,
   softGlowTexture,
   updateShipModel,
+  updateResolvedShipModel,
 } from './shipModel';
 
 /** The sun, far off in this direction (world frame, z up as on the tactical map). */
@@ -137,6 +139,7 @@ const createSky = () => {
 /** One ship as the view draws it, alone on its own layer at the origin. */
 interface ShipView {
   readonly effects: ReturnType<typeof createShipEffects>;
+  modelSource: 'design' | 'contact' | 'empty';
   readonly side: SideSetup;
   readonly colour: string;
   readonly layer: number;
@@ -165,9 +168,10 @@ const createShipView = (
   side: SideSetup,
   layer: number,
   colour: string,
+  knownDesign = true,
 ): ShipView => {
   const anchor = new THREE.Group();
-  const model = createShipModel(side.design, {}, colour);
+  const model = knownDesign ? createShipModel(side.design, {}, colour) : new THREE.Group();
   const effects = createShipEffects();
   const spots = Array.from({ length: MAX_SPOTS }, () => {
     const sprite = new THREE.Sprite(
@@ -211,10 +215,11 @@ const createShipView = (
   scene.add(anchor, burstLight, burstGlow, interceptGlow);
   return {
     effects,
+    modelSource: knownDesign ? 'design' : 'empty',
     side,
     colour,
     layer,
-    length: hullLength(HULLS[side.design.hullSize]),
+    length: knownDesign ? hullLength(HULLS[side.design.hullSize]) : 80,
     anchor,
     model,
     spots,
@@ -263,10 +268,11 @@ const flashesOf = (look: Pick<ShipAppearance, 'impacts' | 'beamsLanding'>): Flas
 const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance, time: number) => {
   view.effects.update(look.firing, look.damage, time, look.parts);
   toQuaternion(orientation, view.anchor.quaternion);
-  if (shipModelNeedsRebuild(view.model, look)) {
+  if (view.modelSource !== 'design' || shipModelNeedsRebuild(view.model, look)) {
     view.anchor.remove(view.model);
     disposeShipModel(view.model);
     view.model = createShipModel(view.side.design, look, view.colour);
+    view.modelSource = 'design';
     setLayer(view.model, view.layer);
     view.anchor.add(view.model);
   } else {
@@ -423,7 +429,7 @@ export const createInstrumentView = (
   scene.add(sunlight, ambient);
 
   const own = createShipView(scene, ownSide, 1, colours[0] ?? '#ffffff');
-  const contact = createShipView(scene, contactSide, 2, colours[1] ?? '#ffffff');
+  const contact = createShipView(scene, contactSide, 2, colours[1] ?? '#ffffff', false);
   const fogged = createContactModel(contact.colour);
   contact.anchor.add(fogged);
   setLayer(fogged, contact.layer);
@@ -538,32 +544,45 @@ export const createInstrumentView = (
       contact.anchor.visible = seen !== undefined;
       contactPosition = seen?.position ?? null;
       contactDetail.hidden = seen === undefined;
-      contactPane.dataset.detail = enemy && seen ? 'test-mode' : (seen?.detail ?? 'none');
+      contactPane.dataset.detail =
+        enemy && seen ? 'test-mode' : seen?.fullyResolved ? 'full' : (seen?.detail ?? 'none');
       if (!seen) contactCaption.textContent = `${contactSide.name} · no contact`;
       slugGlints.clear();
       missileGlints.clear();
       antiMissileGlints.clear();
       if (seen) {
         const range = formatKm(distance(seen.position, ship.position));
-        contact.model.visible = enemy !== undefined;
-        fogged.visible = enemy === undefined;
+        const detailed = seen.fullyResolved ? seen.detailedAppearance : null;
+        contact.model.visible = enemy !== undefined || detailed !== null;
+        fogged.visible = enemy === undefined && detailed === null;
         if (enemy) {
           contact.length = hullLength(HULLS[contactSide.design.hullSize]);
           updateShipView(contact, enemy.orientation, enemy.appearance, observation.time);
           contactCaption.textContent = `${contactSide.name} · ${contactSide.design.name} · ${range} · Test mode: full detail`;
           detailExplanation.textContent = 'Full design and state shown by Test mode.';
+        } else if (detailed) {
+          toQuaternion(seen.orientation ?? IDENTITY, contact.anchor.quaternion);
+          if (contact.modelSource !== 'contact' || shipModelNeedsRebuild(contact.model, detailed)) {
+            contact.anchor.remove(contact.model);
+            disposeShipModel(contact.model);
+            contact.model = createResolvedShipModel(detailed, contact.colour);
+            contact.modelSource = 'contact';
+            setLayer(contact.model, contact.layer);
+            contact.anchor.add(contact.model);
+          } else {
+            updateResolvedShipModel(contact.model, detailed);
+          }
+          contact.length = seen.hullSize ? hullLength(HULLS[seen.hullSize]) : 80;
+          showFlashes(contact, seen.appearance);
+          contactCaption.textContent = `${contactSide.name} · ${seen.hullSize ?? 'unknown hull'} · Full exterior detail · ${range}`;
+          detailExplanation.textContent =
+            'Every surviving section and mount is currently resolved. Full exterior detail; interior equipment and stores remain hidden.';
         } else {
           toQuaternion(seen.orientation ?? IDENTITY, contact.anchor.quaternion);
           updateContactModel(fogged, seen);
           // Never frame an ordinary contact using its undisclosed design dimensions.
           contact.length = contactModelExtent(fogged) ?? 80;
           showFlashes(contact, seen.appearance);
-          contact.effects.update(
-            seen.appearance.firing,
-            seen.appearance.damage,
-            observation.time,
-            seen.appearance.parts,
-          );
           contactCaption.textContent = `${contactSide.name} · ${seen.hullSize ?? 'unknown hull'} · ${CONTACT_DETAIL_TEXT[seen.detail]} · ${range}`;
           const descriptions = {
             position: 'Position tracked; shape and equipment unresolved.',
@@ -573,13 +592,20 @@ export const createInstrumentView = (
           };
           detailExplanation.textContent = descriptions[seen.detail];
         }
+        if (!enemy)
+          contact.effects.update(
+            seen.appearance.firing,
+            seen.appearance.damage,
+            observation.time,
+            seen.appearance.parts,
+          );
         for (const [index, label] of stageLabels.entries()) {
-          if (!enemy && detailStages[index] === seen.detail)
+          if (!enemy && !detailed && detailStages[index] === seen.detail)
             label.setAttribute('aria-current', 'step');
           else label.removeAttribute('aria-current');
         }
         const stages = contactDetail.querySelector('ol');
-        if (stages) stages.hidden = enemy !== undefined;
+        if (stages) stages.hidden = enemy !== undefined || detailed !== null;
         for (const munition of observation.munitions) {
           const at = telescopePosition(munition, ship.position, seen.position);
           if (!at) continue;

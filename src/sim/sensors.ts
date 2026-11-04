@@ -65,6 +65,8 @@ const extent = (min: ShapePart['min'], max: ShapePart['max']): number =>
 
 /** What one side's sensors make out of a ship at a range. */
 export interface Perception {
+  /** Every surviving section and mount passes the same resolving rule. */
+  readonly fullyResolved: boolean;
   /** The finest detail made out at the contact, m; infinite without a working sensor. */
   readonly resolution: number;
   readonly detail: ContactDetail;
@@ -96,7 +98,7 @@ export const perceive = (sensors: SensorPower, target: ShipState, range: number)
     }
   }
   if (intact.length === 0 || extent(min, max) < smallest) {
-    return { resolution, detail: 'position', outline: [], parts: [] };
+    return { fullyResolved: false, resolution, detail: 'position', outline: [], parts: [] };
   }
   const sections = intact.filter(
     (part) => part.mount === null && extent(part.min, part.max) >= smallest,
@@ -108,6 +110,7 @@ export const perceive = (sensors: SensorPower, target: ShipState, range: number)
       extent(part.min, part.max) >= smallest,
   );
   return {
+    fullyResolved: sections.length + mounts.length === intact.length,
     resolution,
     detail: mounts.length > 0 ? 'mounts' : sections.length > 0 ? 'sections' : 'silhouette',
     outline: intact.filter((part) => part.mount === null || extent(part.min, part.max) >= smallest),
