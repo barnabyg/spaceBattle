@@ -35,6 +35,25 @@ limiting the actual protection.
 The correction is limited to availability and protection feedback. Simulation
 order handling and the existing selected-button styling are preserved.
 
+## Follow-up: unavailable controls on Lance
+
+The reporter confirmed that the design was the default **Lance**, which has no
+shields, anti-missile missiles or point defence. The earlier equipped-ship checks
+missed the visible problem: unavailable buttons retained the enabled fill and
+pointer cursor, so clicking them looked like an unresponsive toggle.
+
+Unavailable order buttons now have a muted fill, dashed border and unavailable
+cursor, without hover highlighting. Defence controls explain missing or lost
+equipment beside their group and in their tooltip/accessibility description.
+The anti-missile launch action also explains when no ammunition or unengaged
+incoming missile is available. Working-equipment modes retain their filled,
+bold, ticked selection, exactly like **Target enemy**, even after hovering the
+opposite button. This changes feedback only; battle orders and rules are unchanged.
+
+`e2e/defenceControls.spec.ts` reproduces Lance's missing description before the
+fix and verifies disabled appearance, then clicks both options on **Rime**,
+**Bulwark** and **Rampart**, comparing their persistent highlight with **Target enemy**.
+
 Both missing-availability explanations were demonstrated red before correction:
 the no-shield state was empty/hidden, and a ship whose shield had zero integrity
 still displayed **Shields raised**. Both now explain unavailability and disable
@@ -59,3 +78,8 @@ the adjacent state. Pause with Space and repeat: the order applies immediately,
 while the nearby explanation identifies protection as last-step information.
 Resume to update shield power. Start another battle with **Lance** to check that
 both controls are disabled with an explanation that no shields are installed.
+On Lance, also inspect **Anti-missile missiles** and **Point defence**: their
+buttons should have dashed outlines, show why they are unavailable and never
+highlight on hover. Repeat with Bulwark's **Automatic / By order only** and
+Rampart's **Missiles only / Missiles, then ship**: the selected option should stay
+filled and ticked, including while paused and while hovering the opposite option.

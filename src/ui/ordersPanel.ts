@@ -42,6 +42,18 @@ const setPressed = (orderButton: HTMLButtonElement, pressed: boolean) => {
   orderButton.setAttribute('aria-pressed', String(pressed));
 };
 
+/** Explain unavailable equipment beside the controls, on hover and to assistive tech. */
+const setAvailability = (orderButton: HTMLButtonElement, reason: string | null) => {
+  orderButton.disabled = reason !== null;
+  if (reason === null) {
+    orderButton.removeAttribute('title');
+    orderButton.removeAttribute('aria-description');
+  } else {
+    orderButton.title = reason;
+    orderButton.setAttribute('aria-description', reason);
+  }
+};
+
 /** An aim point as the value of an option: "whole", "middle" or "forward/0". */
 const aimValue = (aim: AimPoint | null): string =>
   aim === null ? 'whole' : aim.mount === null ? aim.section : `${aim.section}/${String(aim.mount)}`;
@@ -661,8 +673,13 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       setPressed(retractRadiators, !ship.heat.radiatorsDeployed);
       const shielded = ship.shields.shields.length > 0;
       const workingShields = ship.shields.shields.some((shield) => shield.integrity > 0);
-      raiseShields.disabled = !workingShields;
-      lowerShields.disabled = !workingShields;
+      const shieldReason = workingShields
+        ? null
+        : shielded
+          ? 'All shields lost'
+          : 'No shields installed';
+      setAvailability(raiseShields, shieldReason);
+      setAvailability(lowerShields, shieldReason);
       shieldsState.textContent = workingShields
         ? ship.shields.raised
           ? 'Shields raised'
@@ -726,24 +743,46 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       launch.classList.toggle('active', salvo !== null && !targetsMissile(salvo.target));
       launchState.textContent = describeLaunch(ship.weapons);
       const antiMissiles = missilesIn(ship.weapons, 'anti-missile');
-      const defending = antiMissiles.designs.length > 0;
-      automaticDefence.disabled = !defending;
-      byOrderOnly.disabled = !defending;
+      const missileDefenceReason =
+        antiMissiles.designs.length === 0
+          ? 'No anti-missile missiles installed'
+          : ship.weapons.launchers.length === 0
+            ? 'No launchers installed'
+            : !canLaunch
+              ? 'All launchers lost'
+              : null;
+      const defending = missileDefenceReason === null;
+      setAvailability(automaticDefence, missileDefenceReason);
+      setAvailability(byOrderOnly, missileDefenceReason);
       setPressed(automaticDefence, defending && ship.weapons.antiMissile.automatic);
       setPressed(byOrderOnly, defending && !ship.weapons.antiMissile.automatic);
       nearest = nearestIncoming(observation)?.id ?? null;
-      launchAtNearest.disabled = !canLaunch || antiMissiles.left === 0 || nearest === null;
+      setAvailability(
+        launchAtNearest,
+        missileDefenceReason ??
+          (antiMissiles.left === 0
+            ? 'No anti-missile missiles remaining'
+            : nearest === null
+              ? 'No unengaged incoming missile'
+              : null),
+      );
       launchAtNearest.classList.toggle(
         'active',
         salvo !== null && typeof salvo.target !== 'string',
       );
-      antiMissileState.textContent = describeAntiMissile(ship.weapons);
-      const defended = ship.weapons.pointDefence.length > 0;
+      antiMissileState.textContent = missileDefenceReason ?? describeAntiMissile(ship.weapons);
+      const pointDefenceReason =
+        ship.weapons.pointDefence.length === 0
+          ? 'No point defence installed'
+          : ship.weapons.pointDefence.some((gun) => gun.integrity > 0)
+            ? null
+            : 'All point defence lost';
+      const defended = pointDefenceReason === null;
       for (const [priority, priorityButton] of Object.entries(pointDefenceButtons)) {
-        priorityButton.disabled = !defended;
+        setAvailability(priorityButton, pointDefenceReason);
         setPressed(priorityButton, defended && ship.weapons.pointDefencePriority === priority);
       }
-      pointDefenceState.textContent = describePointDefence(ship.weapons);
+      pointDefenceState.textContent = pointDefenceReason ?? describePointDefence(ship.weapons);
     },
   };
 };

@@ -467,7 +467,7 @@ h3 {
   cursor: pointer;
 }
 
-.order-button:hover {
+.order-button:not(:disabled):hover {
   border-color: var(--accent);
 }
 
@@ -482,6 +482,20 @@ h3 {
 /* The tick is decoration: aria-pressed tells assistive tech, so it stays out of the button's name. */
 .order-button.active::before {
   content: '✓ ' / '';
+}
+
+/* Unavailable actions must look inert even while hovered, without relying on colour alone. */
+.order-button:disabled {
+  background: var(--panel);
+  color: var(--muted);
+  border-color: var(--panel-border);
+  border-style: dashed;
+  cursor: not-allowed;
+  font-weight: 400;
+}
+
+.order-button:disabled::before {
+  content: none;
 }
 
 .order-state {
