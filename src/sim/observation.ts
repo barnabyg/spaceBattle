@@ -937,6 +937,9 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
   const seen = perceive(sensorPower(viewer), ship, distance(viewer.position, ship.position));
   const silhouette = seen.detail !== 'position';
   const slots = componentSlots(ship.design);
+  const firing = observeFiring(contact).filter((f) =>
+    seen.parts.some((p) => p.section === f.section && p.mount === f.mount),
+  );
   return {
     fullyResolved: seen.fullyResolved,
     detailedAppearance: seen.fullyResolved
@@ -976,11 +979,7 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
           section: part.section,
           mount: part.mount,
           component: component as MountedComponentDesign,
-          firing:
-            firedFrom(ship, slot) ||
-            (contact.launches ?? []).some(
-              (l) => l.section === part.section && l.mount === part.mount,
-            ),
+          firing: firing.some((f) => f.section === part.section && f.mount === part.mount),
         },
       ];
     }),
@@ -988,9 +987,7 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
       damage: observeSurfaceDamage(ship).filter((d) =>
         seen.parts.some((p) => p.section === d.section && p.mount === d.mount),
       ),
-      firing: observeFiring(contact).filter((f) =>
-        seen.parts.some((p) => p.section === f.section && p.mount === f.mount),
-      ),
+      firing,
       thrust: ship.thrust,
       temperature: temperatureOf(ship),
       radiatorsDeployed: ship.radiatorsDeployed,
