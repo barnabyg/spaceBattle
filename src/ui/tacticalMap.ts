@@ -520,6 +520,7 @@ export const createTacticalMap = (
 
   const sideName = (id: SideId) => sides.find((s) => s.id === id)?.name ?? id;
   let previousCentre: THREE.Vector3 | undefined;
+  let frameInitialPositions = true;
 
   return {
     element,
@@ -618,6 +619,28 @@ export const createTacticalMap = (
       }
     },
     render() {
+      if (
+        frameInitialPositions &&
+        previousCentre &&
+        element.clientWidth > 0 &&
+        element.clientHeight > 0
+      ) {
+        resize();
+        const extent = Math.max(
+          0,
+          ...[...markers.values()]
+            .filter((marker) => marker.symbol.visible)
+            .map((marker) => marker.at.distanceTo(controls.target)),
+        );
+        // Fit the observed positions once, with room for fixed-size glyphs and labels.
+        // Subsequent zoom and rotation belong entirely to the captain.
+        const distance =
+          (2 * extent) / (Math.sin((camera.fov * Math.PI) / 360) * Math.min(1, camera.aspect));
+        const offset = camera.position.clone().sub(controls.target);
+        offset.setLength(Math.min(controls.maxDistance, Math.max(offset.length(), distance)));
+        camera.position.copy(controls.target).add(offset);
+        frameInitialPositions = false;
+      }
       controls.update();
       pointMarks();
       updateScaleBar();

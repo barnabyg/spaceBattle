@@ -11,6 +11,8 @@ test('positions remain identifiable at vector origins with motion layers hidden 
   const contact = map.getByRole('img', { name: 'Red contact position' });
   await expect(own).toBeVisible();
   await expect(contact).toBeVisible();
+  await expect(own).toBeInViewport({ ratio: 1 });
+  await expect(contact).toBeInViewport({ ratio: 1 });
   await expect(own).toContainText('Blue');
   await expect(contact).toContainText('Red');
   const before = await own.boundingBox();

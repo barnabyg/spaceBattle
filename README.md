@@ -66,11 +66,13 @@ To check it manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run de
 change, pause with Space, and zoom and rotate the map; the paused value should stay fixed.
 
 Ship positions have a thick circle (own ship) or diamond (contact) and a white centre. Thin,
-open arrowheads show motion from those positions and keep their size when zooming. Labels stay
-beside the position symbols and separate when the symbols overlap. For a manual check, use the
+open arrowheads show motion from those positions and keep their size when zooming. The initial
+view fits both observed positions with room for labels; after that, zoom and rotation are yours.
+Labels stay beside the position symbols and separate when the symbols overlap. For a manual check, use the
 same launch command above, pause a free battle, and toggle **Velocity** and **Relative velocity**
 in the legend. Zoom and rotate, comparing heading with motion: the circle and diamond should
 remain identifiable independently of the arrow tips.
+The [map position review](docs/research/map-positions.png) shows both symbols and their motion arrows.
 
 Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** (click twice to confirm) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost.
 
