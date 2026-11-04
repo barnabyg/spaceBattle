@@ -3,11 +3,12 @@ import type {
   MissileDesignObservation,
   MissileObservation,
   SideObservation,
+  WeaponReadiness,
   WeaponsObservation,
 } from '../sim/battle';
 import type { MissileRole } from '../sim/design';
 import type { ManoeuvreObservation } from '../sim/manoeuvre';
-import { targetsMissile } from '../sim/missile';
+import { MISSILE_REACH_TIME, targetsMissile } from '../sim/missile';
 import type { AimPoint, FireMode, ManoeuvreGoal, Order, PointDefencePriority } from '../sim/orders';
 import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/power';
 import { distance, length, vec3 } from '../sim/vector';
@@ -122,8 +123,44 @@ const describeWeapons = (weapons: WeaponsObservation): string => {
     }
     return parts.join(' · ');
   }
-  const reach = Math.max(...working.map((w) => w.effectiveRange));
-  return `Out of range · reach ${formatKm(reach)}`;
+  const ranged = weapons.readiness.filter(
+    (weapon) => weapon.rangeKind === 'effective' && weapon.status !== 'lost',
+  );
+  if (ranged.length > 0 && ranged.every((weapon) => weapon.inRange === false)) {
+    return `Out of range · reach ${formatKm(Math.max(...ranged.map((weapon) => weapon.range ?? 0)))}`;
+  }
+  return 'No weapons firing · see individual statuses';
+};
+
+const WEAPON_STATUS_TEXT: Readonly<Record<WeaponReadiness['status'], string>> = {
+  lost: 'Lost',
+  'no-target': 'No target selected',
+  'hold-fire': 'Holding fire',
+  'no-ammunition': 'No ammunition in working magazines',
+  'no-power': 'No power in last step',
+  'no-solution': 'No interception solution',
+  'heat-limited': 'Heat limits firing',
+  'waiting-range': 'Waiting for range',
+  firing: 'Firing in last step',
+  charging: 'Charging / firing in last step',
+  'awaiting-step': 'Awaiting simulation step',
+  'by-order': 'Launch by order',
+  reloading: 'Reloading',
+  defensive: 'Defensive weapon',
+};
+
+/** The simulation supplies reach and eligibility; this only formats what the captain knows. */
+const describeWeaponRange = (weapon: WeaponReadiness): string => {
+  const name = `${COMPONENT_TEXT[weapon.kind]} · ${SECTION_TEXT[weapon.section]} mount ${weapon.mount + 1}${weapon.missile ? ` · ${weapon.missile}` : ''}`;
+  const range =
+    weapon.range === null
+      ? 'No missile reach available'
+      : weapon.rangeKind === 'defensive'
+        ? `Defensive · interception reach ${formatKm(weapon.range)}`
+        : weapon.rangeKind === 'estimate'
+          ? `${weapon.inRange === null ? 'No target' : weapon.inRange ? 'Within estimated reach' : 'Beyond estimated reach'} · estimate ${formatKm(weapon.range)}`
+          : `${weapon.inRange === null ? 'No target' : weapon.inRange ? 'In range' : 'Out of range'} · effective ${formatKm(weapon.range)}`;
+  return `${name} · ${range} · ${WEAPON_STATUS_TEXT[weapon.status]}`;
 };
 
 /** The missile designs the ship carries in a role, and how many of them are left. */
@@ -371,6 +408,12 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     className: 'order-state',
     attrs: { 'aria-label': 'Weapons state' },
   });
+  const targetSeparation = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Weapon target separation' },
+  });
+  const weaponRanges = el('div', { attrs: { role: 'list', 'aria-label': 'Weapon ranges' } });
+  let rangeLines = '';
   const aimSelect = el('select', { attrs: { 'aria-label': 'Aim at' } });
   const aimField = el('label', { className: 'field' }, el('span', { text: 'Aim at' }), aimSelect);
   /** The parts on offer to aim at, by option value, as last shown. */
@@ -535,6 +578,12 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     shieldsProtection,
     shieldsTiming,
     el('h3', { text: 'Weapons' }),
+    targetSeparation,
+    weaponRanges,
+    el('p', {
+      className: 'order-state',
+      text: `Effective range is fire control's cutoff, not a hit or damage guarantee. Missile reach estimates ${formatDuration(MISSILE_REACH_TIME)} at boost speed; target motion and manoeuvres matter, and launches beyond it are allowed. Firing and power describe the last simulation step.`,
+    }),
     el('div', { className: 'order-row' }, targetEnemy, noTarget),
     el('div', { className: 'order-row' }, fireFreely, holdFire),
     el('div', { className: 'order-row' }, aimField),
@@ -651,6 +700,24 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       setPressed(fireFreely, weapons.mode === 'fire-freely');
       setPressed(holdFire, weapons.mode === 'hold-fire');
       weaponsState.textContent = describeWeapons(ship.weapons);
+      targetSeparation.textContent =
+        ship.weapons.targetRange === null
+          ? 'No target selected'
+          : `Separation to ${ship.weapons.target}: ${formatKm(ship.weapons.targetRange)}`;
+      const lines = ship.weapons.readiness.map(describeWeaponRange);
+      const nextLines = lines.join('\n');
+      if (nextLines !== rangeLines) {
+        rangeLines = nextLines;
+        weaponRanges.replaceChildren(
+          ...lines.map((text) =>
+            el('p', {
+              className: 'order-state',
+              text,
+              attrs: { role: 'listitem' },
+            }),
+          ),
+        );
+      }
       const canLaunch = ship.weapons.launchers.some((l) => l.integrity > 0);
       const { salvo } = ship.weapons;
       launch.disabled = !canLaunch || missilesIn(ship.weapons, 'anti-ship').left === 0;
