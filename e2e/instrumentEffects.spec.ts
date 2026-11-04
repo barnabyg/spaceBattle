@@ -49,11 +49,11 @@ test('instrument images distinguish actual weapon sources and lasting damage', a
     };
     const initial = draw();
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
-    battle.step();
+    battle.advance(15.1);
     const firing = draw();
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
     battle.giveOrder('red', { type: 'weapons', target: 'blue', mode: 'fire-freely' });
-    battle.advance(1);
+    battle.advance(15.1);
     const damaged = draw();
     battle.giveOrder('red', { type: 'weapons', target: 'blue', mode: 'hold-fire' });
     battle.advance(1);

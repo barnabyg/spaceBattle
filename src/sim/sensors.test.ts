@@ -189,7 +189,7 @@ describe('sensors and contacts', () => {
     // Close in, it makes out the laser turret on red's nose, aims at it and wrecks it.
     const close = createBattle(duelSetup(blue, ARMED_RED, 1_000 * KM));
     close.giveOrder('blue', aimAt({ section: 'forward', mount: 0 }));
-    const events = close.advance(60);
+    const events = close.advance(80); // Allow complete charged shots to exceed the turret's integrity.
     const hits = events.filter((e) => e.type === 'hit' && e.attacker === 'blue');
     expect(hits.length).toBeGreaterThan(0);
     expect(hits.every((e) => e.type === 'hit' && e.mount === 0)).toBe(true);

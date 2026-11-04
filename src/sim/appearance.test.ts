@@ -50,7 +50,7 @@ describe('ship appearance', () => {
       .observe('red')
       .ownShip.appearance.damage?.find((d) => d.section === 'forward' && d.mount === null);
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
-    battle.advance(1);
+    battle.advance(15.2);
     const after = battle
       .observe('red')
       .ownShip.appearance.damage?.find((d) => d.section === 'forward' && d.mount === null);
@@ -60,7 +60,7 @@ describe('ship appearance', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), armedTestDesign(), 1e6));
     expect(battle.observe('red').ownShip.appearance.damage).toEqual([]);
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
-    battle.advance(1);
+    battle.advance(15.2);
     const damage = battle.observe('red').ownShip.appearance.damage;
     expect(damage).toEqual(
       expect.arrayContaining([expect.objectContaining({ section: 'forward' })]),
@@ -82,6 +82,10 @@ describe('ship appearance', () => {
       const battle = createBattle(duelSetup(design, testDesign(), 1e6));
       battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
       battle.step();
+      if (kind === 'laser') {
+        expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
+        battle.advance(15);
+      }
       const own = battle.observe('blue').ownShip.appearance.firing;
       expect(own).toEqual([expect.objectContaining({ section: 'forward', mount: 0, kind })]);
       expect(contactOf(battle, 'red').appearance.firing).toEqual(own);
@@ -155,7 +159,7 @@ describe('ship appearance', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), testDesign(), 30_000 * KM));
     expect(contactOf(battle, 'blue').appearance.beamsLanding).toEqual([]);
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
-    battle.advance(5);
+    battle.advance(15.5); // Observe during a burst, after its light has reached red.
     const red = contactOf(battle, 'blue').appearance;
     // Red faces blue nose-on, so the beam lands on the middle of its nose, give or take blue's
     // tracking error of a few millimetres.

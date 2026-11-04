@@ -122,6 +122,22 @@ test('power and radiator orders work while paused', async ({ page }) => {
 
   await expect(page.getByLabel('Radiators')).toContainText('Retracted');
   await page.getByRole('button', { name: 'Deploy radiators' }).click();
+  await expect(page.getByLabel('Radiators')).toContainText('Deploying · 5.0 s');
+  await page.waitForTimeout(1_000);
+  await expect(page.getByLabel('Radiators')).toContainText('Deploying · 5.0 s');
+  await expect(page.getByRole('button', { name: 'Deploy radiators' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: 'Retract radiators' }).click();
+  await expect(page.getByLabel('Radiators')).toContainText('Retracted');
+  await page.getByRole('button', { name: 'Deploy radiators' }).click();
+  await page.getByRole('button', { name: 'Resume' }).click();
+  await expect(page.getByLabel('Radiators')).toContainText('Deployed');
+  await page.getByRole('button', { name: 'Retract radiators' }).click();
+  await expect(page.getByLabel('Radiators')).toContainText('Retracted');
+  await timeCompressionButton(page, '10×').click();
+  await page.getByRole('button', { name: 'Deploy radiators' }).click();
   await expect(page.getByLabel('Radiators')).toContainText('Deployed');
 });
 

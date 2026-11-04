@@ -51,7 +51,7 @@ describe('computer captain skill', () => {
     medium.advance(10 * MINUTE);
     expect(noseTowardsBlue(high)).toBeLessThan(-0.95);
     expect(noseTowardsBlue(medium)).toBeGreaterThan(-0.5);
-    expect(high.observe('red').ownShip.weapons.lasers[0]?.firing).toBe(true);
+    expect(high.observe('red').ownShip.energyLedger.beamEmitted).toBeGreaterThan(0);
   });
 
   it.each(['low', 'medium', 'high'] as const)(

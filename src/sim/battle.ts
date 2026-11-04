@@ -11,6 +11,7 @@ import {
 } from './design';
 import { pursuitRefused, WITHDRAWAL_TIME, withdrawingRefused, type Pursuer } from './engagement';
 import { involves, type BattleEvent, type HitEvent } from './events';
+import { RADIATOR_DEPLOYMENT_TIME } from './heat';
 import {
   manoeuvreCommand,
   manoeuvreThrottle,
@@ -810,6 +811,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
     steps += 1;
 
     const time = steps * TIME_STEP;
+    for (const { ship } of combatants) {
+      if (ship.radiatorDeploymentRemaining > 0) {
+        const remaining = ship.radiatorDeploymentRemaining - TIME_STEP;
+        ship.radiatorDeploymentRemaining = remaining < 1e-9 ? 0 : remaining;
+        if (ship.radiatorDeploymentRemaining === 0) ship.radiatorsDeployed = true;
+      }
+    }
     const events: BattleEvent[] = [...pending, ...launches];
     pending = [];
     const ctx = { time, random, events };
@@ -863,7 +871,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
           ship.priorities = checked.priorities;
           break;
         case 'radiators':
-          ship.radiatorsDeployed = checked.deployed;
+          if (!checked.deployed) {
+            ship.radiatorsDeployed = false;
+            ship.radiatorDeploymentRemaining = 0;
+          } else if (!ship.radiatorsDeployed && ship.radiatorDeploymentRemaining === 0) {
+            ship.radiatorDeploymentRemaining = RADIATOR_DEPLOYMENT_TIME;
+          }
           break;
         case 'shields':
           ship.shieldsRaised = checked.raised;

@@ -205,7 +205,7 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   [
     'Radiators',
     ({ ownShip: { heat } }) =>
-      `${heat.radiatorsDeployed ? 'Deployed' : 'Retracted'} · ${Math.round(heat.radiatorArea).toLocaleString('en-GB')} m²`,
+      `${heat.radiatorDeploymentRemaining > 0 ? `Deploying · ${heat.radiatorDeploymentRemaining.toFixed(1)} s` : heat.radiatorsDeployed ? 'Deployed' : 'Retracted'} · ${Math.round(heat.radiatorArea).toLocaleString('en-GB')} m²`,
   ],
 ];
 

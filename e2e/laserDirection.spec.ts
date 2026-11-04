@@ -33,7 +33,7 @@ test('beam arrows identify both firing sides and clear with fire or the beam lay
     const idle = visible();
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
     battle.giveOrder('red', { type: 'weapons', target: 'blue', mode: 'fire-freely' });
-    battle.advance(0.1);
+    battle.advance(15.1);
     update();
     const firing = visible();
     // Move the ships and resize the viewport: labels and fixed-size chevrons still identify

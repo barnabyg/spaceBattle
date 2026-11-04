@@ -89,6 +89,7 @@ interface ModelParts {
   fullThrust?: number;
   /** Reference geometry for tracking body-frame shifts without knowing a contact's stores. */
   readonly builtParts: readonly ShapePart[];
+  readonly radiators: readonly THREE.Mesh[];
   readonly radiatorsDeployed: boolean;
   readonly hull: THREE.Group;
   readonly radiator: THREE.MeshStandardMaterial;
@@ -123,7 +124,7 @@ const boxMesh = (part: ShapePart, material: THREE.Material, data: ShipModelPartD
  * A ship model built from its design, in the ship's body frame (centre of mass at the origin, nose
  * along +x), with a core matching the simulation's section and mount envelopes. Exterior fittings
  * are purely decorative and belong to their section; they never change hits or mass properties.
- * Rebuild it when the radiators deploy or retract; `updateShipModel` handles everything else.
+ * `updateShipModel` moves the radiators without rebuilding the model.
  * Optional per-ship `accent` colours markings and trim; unassigned designs keep neutral paint.
  */
 export const createShipModel = (
@@ -232,6 +233,7 @@ export const createResolvedShipModel = (
 
   const model = new THREE.Group();
   const hull = new THREE.Group();
+  const radiators: THREE.Mesh[] = [];
   model.add(hull);
 
   for (const part of shape) {
@@ -274,7 +276,10 @@ export const createResolvedShipModel = (
       const component = section?.mounts.find((mount) => mount.index === part.mount);
       const data: ShipModelPartData = { kind: 'mount', section: part.section, mount: part.mount };
       if (!component || component.type === 'radiator') {
-        hull.add(boxMesh(part, radiator, data));
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), radiator);
+        mesh.userData = data;
+        radiators.push(mesh);
+        hull.add(mesh);
       } else {
         const mesh = mountDetail(component.type, turret, trim, optic);
         mesh.userData = data;
@@ -364,6 +369,7 @@ export const createResolvedShipModel = (
 
   models.set(model, {
     builtParts: shape,
+    radiators,
     radiatorsDeployed,
     hull,
     radiator,
@@ -396,7 +402,7 @@ export const shipModelNeedsRebuild = (
 const scratch = new THREE.Color();
 
 /**
- * Brings a model up to date without building anything: radiator glow from temperature, exhaust
+ * Brings a model up to date without building anything: radiator extension and glow, exhaust
  * from thrust, lost parts hidden, and the hull shifted as burning propellant and spending
  * ammunition move the centre of mass.
  */
@@ -411,7 +417,7 @@ export const updateShipModel = (model: THREE.Group, look: ShipLook): void => {
     look.ammunitionSpent ?? NO_AMMUNITION_SPENT,
   );
   updateResolvedShipModel(model, {
-    parts: shape,
+    parts: look.parts ?? shape,
     temperature: look.temperature,
     throttle: Math.min(1, Math.max(0, look.thrust / (parts.fullThrust ?? 1))),
   });
@@ -440,6 +446,17 @@ export const updateResolvedShipModel = (
   );
   const current = look.parts.find((p) => p.section === reference?.section && p.mount === null);
   parts.hull.position.x = reference && current ? current.max.x - reference.max.x : 0;
+  for (const mesh of parts.radiators) {
+    const data = mesh.userData as ShipModelPartData;
+    const part = look.parts.find((p) => p.section === data.section && p.mount === data.mount);
+    if (!part) continue;
+    mesh.scale.set(part.max.x - part.min.x, part.max.y - part.min.y, part.max.z - part.min.z);
+    mesh.position.set(
+      (part.min.x + part.max.x) / 2 - parts.hull.position.x,
+      (part.min.y + part.max.y) / 2,
+      (part.min.z + part.max.z) / 2,
+    );
+  }
   parts.radiator.emissive.copy(heatGlow(look.temperature, scratch));
   const throttle = look.throttle;
   const engine = look.parts.some((p) => p.section === 'engine' && p.mount === null);

@@ -4,7 +4,7 @@ Battle models use the same per-side colour assignment as the tactical map, inclu
 the player commands Red. Hull markings and weapon/nozzle trim carry the accent; armour,
 equipment detail, radiator heat and exhaust colours retain their normal appearance.
 Each model owns its materials, so opposing ships can share a design without sharing paint.
-Radiator deployment rebuilds the model with the same accent.
+Radiator deployment animates in place while retaining the same accent.
 
 Contacts retain the sensor detail limit: position dots and unresolved silhouettes use the
 side colour; resolved sections and mounts have coloured outlines around their normal materials.
@@ -23,7 +23,8 @@ npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }
    the battle and pause with Space. The same ship design should have blue trim and markings
    in Blue's instrument view and red trim and markings in Red's view, matching the map icons.
    Drag to orbit the own ship and check that its armour and equipment remain recognisable.
-2. Deploy and retract radiators while paused. The own ship's accent should keep its colour.
+2. Order the radiators deployed, resume at 1× for five seconds, then pause to inspect them.
+   Repeat with retraction. The own ship's accent should keep its colour throughout the motion.
 3. Start another free battle with Red commanded by the player. Red's own ship should still
    have red accents and Blue's contact blue accents. Disable Test mode and repeat: contacts
    should keep their side colour as dots, silhouettes or resolved outlines without revealing
@@ -38,7 +39,7 @@ npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }
 ## Rendering interface
 
 `createShipModel(design, look, accent?)` accepts an optional CSS colour for per-instance
-markings and trim. Pass it again when rebuilding; `updateShipModel` preserves the materials.
+markings and trim. `updateShipModel` preserves the materials while moving the radiators.
 `createContactModel(accent?)` applies the same colour to disclosed contact imagery.
 `createInstrumentView(sides, colours?)` takes colours in the same side order as
 `createTacticalMap`; the battle screen supplies one shared list to both views.

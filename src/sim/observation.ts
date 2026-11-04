@@ -1,6 +1,7 @@
 import type { SideId, SideSetup } from './battle';
 import { resolvedShipAppearance, type ResolvedShipAppearance } from './exterior';
-import { effectiveRange } from './beams';
+import { effectiveRange, LASER_BURST_POWER } from './beams';
+import { laserChargeFraction } from './weapons';
 import { componentSlots } from './components';
 import { intactShape } from './damage';
 import {
@@ -17,7 +18,12 @@ import {
   type WarheadType,
 } from './design';
 import type { BattleEvent, BeamKind, HitEvent, MunitionKind, ParticleBeamKind } from './events';
-import { thermalLimit, thermalProperties, workingRadiators } from './heat';
+import {
+  RADIATOR_DEPLOYMENT_TIME,
+  thermalLimit,
+  thermalProperties,
+  workingRadiators,
+} from './heat';
 import { kineticGunRange, shotEnergy, type Motion, type Slug } from './kinetic';
 import { observeWeaponReadiness, type WeaponReadiness } from './weaponReadiness';
 import { observeManoeuvre, type ContactMotion, type ManoeuvreObservation } from './manoeuvre';
@@ -51,7 +57,7 @@ import {
   type ShipCondition,
   type ShipState,
 } from './ship';
-import { distance, type Vec3 } from './vector';
+import { add, distance, scale, sub, type Vec3 } from './vector';
 import {
   designMissiles,
   missilesLeft,
@@ -96,6 +102,8 @@ export interface HeatObservation {
   /** Laser heat the coolant shields carried into the ship in the last step, W. */
   readonly absorbed: number;
   readonly radiatorsDeployed: boolean;
+  /** Simulated seconds left to deploy; zero when idle. */
+  readonly radiatorDeploymentRemaining: number;
   /** Radiating area now exposed, m². */
   readonly radiatorArea: number;
   /** The fraction of their full power systems may use at this temperature. */
@@ -172,7 +180,12 @@ export interface BeamWeaponObservation {
 }
 
 /** One laser and what it is doing. */
-export type LaserObservation = BeamWeaponObservation;
+export interface LaserObservation extends BeamWeaponObservation {
+  /** Fraction of the local buffer charged (0–1). */
+  readonly charge: number;
+  /** Electrical energy in the local buffer, J, separate from ship capacitors. */
+  readonly storedEnergy: number;
+}
 
 /** One particle beam, charged or neutral, and what it is doing. */
 export interface ParticleBeamObservation extends BeamWeaponObservation {
@@ -384,7 +397,10 @@ export interface ShipAppearance {
   readonly temperature: number;
   /** Drive thrust applied in the last step, N. */
   readonly thrust: number;
-  /** The parts still there, in the body frame: sections not failed, mounts not wrecked. */
+  /**
+   * Visible parts in the body frame, with radiators extending during deployment.
+   * These visual bounds do not change the simulation's hit envelopes or cooling.
+   */
   readonly parts: readonly ShapePart[];
   /** Where beams landed on the ship in the last step. */
   readonly beamsLanding: readonly BeamLanding[];
@@ -603,6 +619,7 @@ const observeHeat = (ship: ShipState): HeatObservation => {
     radiated: ship.heatFlow.radiated,
     absorbed: ship.heatFlow.absorbed,
     radiatorsDeployed: ship.radiatorsDeployed,
+    radiatorDeploymentRemaining: ship.radiatorDeploymentRemaining,
     radiatorArea: radiators.area,
     thermalLimit: thermalLimit(temperature),
   };
@@ -665,7 +682,7 @@ const observeWeapons = (
     integrity: ship.integrity[state.slot] ?? 0,
     firing: state.beamPower > 0,
     beamPower: state.beamPower,
-    fullBeamPower: state.weapon.beamPower,
+    fullBeamPower: state.weapon.beamPower * (state.weapon.type === 'laser' ? LASER_BURST_POWER : 1),
     effectiveRange: effectiveRange(state.weapon),
   });
   return {
@@ -674,7 +691,13 @@ const observeWeapons = (
     target: weapons.target,
     mode: weapons.mode,
     aim: weapons.aim,
-    lasers: weapons.beamWeapons.filter((w) => w.attack === 'laser').map(observeBeamWeapon),
+    lasers: weapons.beamWeapons
+      .filter((w) => w.attack === 'laser')
+      .map((state) => ({
+        ...observeBeamWeapon(state),
+        charge: laserChargeFraction(ship, state),
+        storedEnergy: state.charge,
+      })),
     particleBeams: weapons.beamWeapons.flatMap((state) =>
       state.attack === 'laser' ? [] : [{ ...observeBeamWeapon(state), kind: state.attack }],
     ),
@@ -768,6 +791,24 @@ const observeMissile = (missile: Missile): MissileObservation => ({
   acceleration: missile.acceleration,
 });
 
+/** Animate only parts already observed; sensor resolution and hit envelopes stay physical. */
+const appearanceParts = (ship: ShipState, parts: readonly ShapePart[]): readonly ShapePart[] => {
+  if (ship.radiatorDeploymentRemaining === 0 || parts.length === 0) return parts;
+  const progress = 1 - ship.radiatorDeploymentRemaining / RADIATOR_DEPLOYMENT_TIME;
+  // Ease the extension into and out of motion, driven entirely by simulated time.
+  const fraction = progress * progress * (3 - 2 * progress);
+  const deployed = shipShape(ship.design, ship.propellantMass, true, ship.ammunitionSpent);
+  const mix = (a: Vec3, b: Vec3) => add(a, scale(sub(b, a), fraction));
+  return parts.map((part) => {
+    const component = ship.design.sections.find((s) => s.kind === part.section)?.mounts[
+      part.mount ?? -1
+    ];
+    if (component?.type !== 'radiator') return part;
+    const end = deployed.find((p) => p.section === part.section && p.mount === part.mount);
+    return end ? { ...part, min: mix(part.min, end.min), max: mix(part.max, end.max) } : part;
+  });
+};
+
 const observeAppearance = (observed: ObservedShip): ShipAppearance => ({
   damage: observeSurfaceDamage(observed.ship),
   firing: observeFiring(observed),
@@ -784,7 +825,7 @@ const appearanceState = ({
   radiatorsDeployed: ship.radiatorsDeployed,
   temperature: temperatureOf(ship),
   thrust: ship.thrust,
-  parts: intactShape(ship),
+  parts: appearanceParts(ship, intactShape(ship)),
   beamsLanding,
   impacts,
 });
@@ -945,7 +986,7 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
     detailedAppearance: seen.fullyResolved
       ? resolvedShipAppearance(
           ship.design,
-          seen.parts,
+          appearanceParts(ship, seen.parts),
           ship.propellantMass,
           ship.radiatorsDeployed,
           temperatureOf(ship),
@@ -991,8 +1032,8 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
       thrust: ship.thrust,
       temperature: temperatureOf(ship),
       radiatorsDeployed: ship.radiatorsDeployed,
-      outline: seen.outline,
-      parts: seen.parts,
+      outline: appearanceParts(ship, seen.outline),
+      parts: appearanceParts(ship, seen.parts),
       beamsLanding: contact.beamsLanding,
       impacts: contact.impacts,
     },
