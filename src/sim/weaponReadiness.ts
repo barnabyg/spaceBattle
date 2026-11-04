@@ -6,7 +6,7 @@ import { TIME_STEP } from './time';
 import { temperatureOf, type ShipState } from './ship';
 import { thermalLimit } from './heat';
 import { distance } from './vector';
-import { designMissiles, missilesLeft, slugsLeft } from './weapons';
+import { designMissiles, missilesLeft, slugsLeft, weaponFireBlocker } from './weapons';
 import { missileReach } from './missile';
 import { pointDefenceRange } from './pointDefence';
 
@@ -52,17 +52,8 @@ export const observeWeaponReadiness = (
   const slots = componentSlots(ship.design);
   const range = target ? distance(ship.position, target.position) : null;
   const status = (slot: number, reach: number): WeaponReadiness['status'] =>
-    (ship.integrity[slot] ?? 0) <= 0
-      ? 'lost'
-      : !target
-        ? 'no-target'
-        : ship.weapons.mode === 'hold-fire'
-          ? 'hold-fire'
-          : range !== null && range > reach
-            ? 'waiting-range'
-            : thermalLimit(temperatureOf(ship)) < 1
-              ? 'heat-limited'
-              : 'awaiting-step';
+    weaponFireBlocker(ship, slot, range, reach) ??
+    (thermalLimit(temperatureOf(ship)) < 1 ? 'heat-limited' : 'awaiting-step');
   const place = (slot: number) => ({
     section: slots[slot]?.section ?? 'forward',
     mount: slots[slot]?.index ?? 0,
