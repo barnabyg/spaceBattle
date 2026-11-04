@@ -189,7 +189,7 @@ const ENTRIES: Readonly<Record<MapLayer, LegendEntry>> = {
   beams: {
     name: 'Beams',
     description:
-      'Your beams while they fire at the target: laser solid green, charged-particle solid purple, neutral-particle dashed cyan.',
+      'Beams while firing, including resolved enemy weapons: laser solid green, charged-particle solid purple, neutral-particle dashed cyan. Double chevrons point from the named firing ship towards its target. This indicates fire, not a hit or damage.',
     sample: () =>
       Object.values(BEAM_STYLES).map(({ colour, dashed }, i) =>
         line([3, 3 + 5 * i], [37, 3 + 5 * i], colour, { dashed, opacity: BEAM_OPACITY }),
