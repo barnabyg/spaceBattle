@@ -3,6 +3,7 @@ import { createBattle, type Battle } from './battle';
 import { fromAxisAngle } from './quaternion';
 import { shipShape } from './shape';
 import { fullCondition } from './ship';
+import { componentSlots } from './components';
 import {
   armedTestDesign,
   duelSetup,
@@ -26,6 +27,39 @@ const contactOf = (battle: Battle, viewer: string) => {
 };
 
 describe('ship appearance', () => {
+  it('keeps damage outlines on radiator panels as they extend', () => {
+    const design = armedTestDesign();
+    const setup = duelSetup(design, design, 1e6);
+    const full = fullCondition(design);
+    const battle = createBattle({
+      ...setup,
+      sides: setup.sides.map((side) =>
+        side.id === 'red'
+          ? {
+              ...side,
+              condition: {
+                ...full,
+                integrity: full.integrity.map((value, index) =>
+                  componentSlots(design)[index]?.component.type === 'radiator' ? 0.5 : value,
+                ),
+              },
+            }
+          : side,
+      ),
+    });
+    const folded = battle
+      .observe('red')
+      .ownShip.appearance.damage?.find((d) => d.section === 'middle' && d.mount === 0);
+    battle.giveOrder('red', { type: 'radiators', deployed: true });
+    battle.advance(2.5);
+    const midway = contactOf(battle, 'blue').appearance.damage?.find(
+      (d) => d.section === 'middle' && d.mount === 0,
+    );
+    expect(midway?.size.y).toBeGreaterThan(folded?.size.y ?? Infinity);
+    expect(midway?.wear).toBe(folded?.wear);
+    battle.giveOrder('red', { type: 'radiators', deployed: false });
+    expect(battle.observe('red').ownShip.appearance.damage).toContainEqual(folded);
+  });
   it('continues observing new structural damage after armour is exhausted', () => {
     const design = withSection(armedTestDesign(), 'forward', {
       armour: { type: 'heavy', thickness: 0.01 },

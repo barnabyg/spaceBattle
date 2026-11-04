@@ -935,11 +935,9 @@ const observeFiring = (observed: ObservedShip): WeaponFiring[] => {
 /** Only surface wear: armour/structure and exposed mounts, never machinery inside armour. */
 const observeSurfaceDamage = (ship: ShipState): SurfaceDamage[] => {
   const slots = componentSlots(ship.design);
-  return shipShape(
-    ship.design,
-    ship.propellantMass,
-    ship.radiatorsDeployed,
-    ship.ammunitionSpent,
+  return appearanceParts(
+    ship,
+    shipShape(ship.design, ship.propellantMass, ship.radiatorsDeployed, ship.ammunitionSpent),
   ).flatMap((part) => {
     const section = ship.sections[part.section];
     const designed =
