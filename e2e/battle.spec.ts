@@ -114,11 +114,17 @@ test('a manoeuvre order shows its goal and planned burns on the map', async ({ p
 test('power and radiator orders work while paused', async ({ page }) => {
   await startFreeBattle(page);
   await page.keyboard.press(' ');
-  const priorities = page.getByRole('list', { name: 'Power priorities' }).getByRole('listitem');
-  await expect(priorities.first()).toContainText('Shields');
-  await page.getByRole('button', { name: 'Raise Drive' }).click();
-  await page.getByRole('button', { name: 'Raise Drive' }).click();
-  await expect(priorities.first()).toContainText('Drive');
+  await page.getByLabel('Drive priority', { exact: true }).selectOption('0');
+  await expect(page.getByLabel('Drive priority', { exact: true })).toHaveValue('0');
+  await expect(page.getByLabel('Capacitors priority', { exact: true })).toHaveValue('3');
+  await page.getByLabel('Capacitors priority', { exact: true }).selectOption('1');
+  await expect(page.getByLabel('Capacitors priority', { exact: true })).toHaveValue('1');
+  await expect(page.getByLabel('Weapons priority', { exact: true })).toHaveValue('3');
+  await expect(page.getByRole('progressbar', { name: 'Drive power supplied' })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Drive power supplied' })).toHaveAttribute(
+    'aria-valuetext',
+    'No demand',
+  );
 
   await expect(page.getByLabel('Radiators')).toContainText('Retracted');
   await page.getByRole('button', { name: 'Deploy radiators' }).click();

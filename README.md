@@ -49,6 +49,14 @@ safety limits.
 
 ## Playing
 
+Battle power controls show a supply bar for each system and a priority selector (1 is first).
+Selecting a priority moves that system and shifts the others. Systems before **Capacitors** can
+use stored energy; systems after it rely on reactor power. Bars show the previous simulation
+step's supply against demand, with exact power and percentage or **No demand** alongside them.
+To check, launch using the manual withdrawal command below, pause a free battle, move **Drive**
+to first and **Capacitors** to second, then order a burn and resume. Priorities stay selected;
+the drive's bar and power figures update as the battle advances.
+
 With **Fire freely** and a target in range, lasers charge from allocated weapons power, then
 fire short shots. At full supply they charge for 15 seconds and fire for one second at
 16 times their listed average beam power; charging continues during the shot. Individual weapon

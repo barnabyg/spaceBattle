@@ -85,7 +85,7 @@ const SYSTEM_TEXT: Readonly<Record<PowerSystem, string>> = {
   drive: 'Drive',
   shields: 'Shields',
   weapons: 'Weapons',
-  capacitors: 'Capacitor charging',
+  capacitors: 'Capacitors',
 };
 
 /** The active goal and how far off it the ship is, e.g. "Holding 100,000 km · error 1,200 km". */
@@ -332,63 +332,51 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     attrs: { 'aria-label': 'Order refused', role: 'status' },
   });
 
-  // One row per rank; each update shows the system now at that rank.
+  // Each system keeps its own control; selecting a priority moves it in the full ranking.
   let priorities: readonly PowerSystem[] = DEFAULT_PRIORITIES;
-  const swapRanks = (rank: number, other: number) => {
-    const a = priorities[rank];
-    const b = priorities[other];
-    if (!a || !b) return;
+  const movePriority = (system: PowerSystem, rank: number) => {
     const next = [...priorities];
-    next[rank] = b;
-    next[other] = a;
+    next.splice(next.indexOf(system), 1);
+    next.splice(rank, 0, system);
     giveOrder({ type: 'power', priorities: next });
-    // Relabel at once, so a second click before the next frame acts on the new order.
     priorities = next;
     labelPriorityRows();
   };
   const labelPriorityRows = () => {
-    priorities.forEach((system, rank) => {
-      const row = priorityRows[rank];
-      if (!row) return;
-      row.name.textContent = SYSTEM_TEXT[system];
-      row.raise.setAttribute('aria-label', `Raise ${SYSTEM_TEXT[system]}`);
-      row.lower.setAttribute('aria-label', `Lower ${SYSTEM_TEXT[system]}`);
+    priorityRows.forEach((row) => {
+      row.priority.value = String(priorities.indexOf(row.system));
     });
   };
-  const priorityRows = POWER_SYSTEMS.map((_, rank) => {
-    const name = el('span', { className: 'priority-name' });
+  const priorityRows = POWER_SYSTEMS.map((system) => {
+    const name = el('span', { className: 'priority-name', text: SYSTEM_TEXT[system] });
     const share = el('span', { className: 'priority-share' });
-    const raise = el('button', {
-      className: 'order-button priority-button',
-      text: '▲',
-      attrs: { type: 'button' },
+    const supply = el('progress', {
+      attrs: { max: '1', value: '0', 'aria-label': `${SYSTEM_TEXT[system]} power supplied` },
     });
-    const lower = el('button', {
-      className: 'order-button priority-button',
-      text: '▼',
-      attrs: { type: 'button' },
+    const priority = el(
+      'select',
+      { attrs: { 'aria-label': `${SYSTEM_TEXT[system]} priority` } },
+      ...POWER_SYSTEMS.map((_, rank) =>
+        el('option', {
+          text: `${rank + 1}${rank === 0 ? ' · First' : rank === POWER_SYSTEMS.length - 1 ? ' · Last' : ''}`,
+          attrs: { value: String(rank) },
+        }),
+      ),
+    );
+    priority.addEventListener('change', () => {
+      movePriority(system, Number(priority.value));
     });
-    raise.addEventListener('click', () => {
-      swapRanks(rank, rank - 1);
-    });
-    lower.addEventListener('click', () => {
-      swapRanks(rank, rank + 1);
-    });
-    raise.disabled = rank === 0;
-    lower.disabled = rank === POWER_SYSTEMS.length - 1;
     return {
-      name,
+      system,
       share,
-      raise,
-      lower,
+      supply,
+      priority,
       element: el(
         'li',
         {},
-        el('span', { className: 'priority-rank', text: `${rank + 1}.` }),
-        name,
+        el('label', { className: 'priority-heading' }, name, priority),
+        supply,
         share,
-        raise,
-        lower,
       ),
     };
   });
@@ -590,6 +578,10 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     withdrawState,
     refusal,
     el('h3', { text: 'Power' }),
+    el('p', {
+      className: 'order-state',
+      text: 'Power is supplied in priority order, first to last. Systems ahead of Capacitors may also draw stored energy; those after it use reactor power only. Bars show supply as a share of demand on the last step.',
+    }),
     priorityList,
     el('h3', { text: 'Radiators' }),
     el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
@@ -674,10 +666,16 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
 
       priorities = ship.power.priorities;
       labelPriorityRows();
-      priorities.forEach((system, rank) => {
+      priorityRows.forEach((row) => {
+        const { system } = row;
         const { demand, supplied } = ship.power.systems[system];
-        const row = priorityRows[rank];
-        if (row) row.share.textContent = `${formatMW(supplied)} of ${formatMW(demand)}`;
+        row.share.textContent =
+          demand > 0
+            ? `${formatMW(supplied)} / ${formatMW(demand)} · ${formatPercent(supplied / demand)} supplied`
+            : 'No demand';
+        row.supply.value = demand > 0 ? Math.min(1, supplied / demand) : 0;
+        row.supply.setAttribute('aria-valuetext', row.share.textContent);
+        row.element.classList.toggle('power-shortfall', supplied < demand);
       });
       const deploying = ship.heat.radiatorDeploymentRemaining > 0;
       setPressed(deployRadiators, ship.heat.radiatorsDeployed || deploying);
