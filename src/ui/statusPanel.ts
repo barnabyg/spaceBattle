@@ -7,6 +7,7 @@ import { POWER_SYSTEMS } from '../sim/power';
 import { distance, length } from '../sim/vector';
 import { BEAM_TEXT } from './damagePanel';
 import { el } from './el';
+import { hasEquipment } from './equipment';
 import {
   formatGeV,
   formatGJ,
@@ -212,10 +213,11 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
 /** Numbers about the captain's ship and its contact, in real units. */
 export const createStatusPanel = () => {
   const values = READOUTS.map(([label]) => el('dd', { attrs: { 'aria-label': label } }));
+  const labels = READOUTS.map(([label]) => el('dt', { text: label }));
   const list = el(
     'dl',
     { className: 'status-list' },
-    ...READOUTS.flatMap(([label], i) => [el('dt', { text: label }), values[i] ?? el('dd')]),
+    ...READOUTS.flatMap((_, i) => [labels[i] ?? el('dt'), values[i] ?? el('dd')]),
   );
   const element = el(
     'section',
@@ -227,9 +229,29 @@ export const createStatusPanel = () => {
   return {
     element,
     update(observation: SideObservation) {
-      READOUTS.forEach(([, show], i) => {
+      READOUTS.forEach(([label, show], i) => {
         const value = values[i];
-        if (value) value.textContent = show(observation);
+        const ship = observation.ownShip;
+        const absent =
+          label === 'Shields'
+            ? ship.shields.shields.length === 0
+            : label === 'Radiators'
+              ? !hasEquipment(ship, 'radiator')
+              : label === 'Stored energy'
+                ? !hasEquipment(ship, 'capacitor')
+                : label === 'Beam power'
+                  ? !hasEquipment(ship, 'laser', 'charged-particle-beam', 'neutral-particle-beam')
+                  : label === 'Point defence'
+                    ? ship.weapons.pointDefence.length === 0
+                    : label === 'Ammunition'
+                      ? !hasEquipment(ship, 'magazine')
+                      : false;
+        const heading = labels[i];
+        if (heading) heading.hidden = absent;
+        if (value) {
+          value.hidden = absent;
+          value.textContent = show(observation);
+        }
       });
     },
   };

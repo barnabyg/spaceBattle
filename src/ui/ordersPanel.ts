@@ -14,6 +14,7 @@ import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/powe
 import { distance, length, vec3 } from '../sim/vector';
 import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
+import { hasEquipment, hasPoweredWeapons } from './equipment';
 import {
   formatDuration,
   formatKm,
@@ -549,6 +550,63 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     giveOrder({ type: 'manoeuvre', goal: 'none' });
   });
 
+  const radiatorsSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Radiators' }),
+    el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
+  );
+  const shieldsSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Shields' }),
+    el('div', { className: 'order-row' }, raiseShields, lowerShields),
+    shieldsState,
+    shieldsProtection,
+    shieldsTiming,
+  );
+  const missilesSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Anti-ship missiles' }),
+    el('div', { className: 'order-row' }, salvoSize.element, launch, callOff),
+    launchState,
+  );
+  const antiMissileSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Anti-missile missiles' }),
+    el('div', { className: 'order-row' }, automaticDefence, byOrderOnly, launchAtNearest),
+    antiMissileState,
+  );
+  const pointDefenceSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Point defence' }),
+    el(
+      'div',
+      { className: 'order-row' },
+      pointDefenceButtons.missiles,
+      pointDefenceButtons['missiles-then-ship'],
+    ),
+    pointDefenceState,
+  );
+  const weaponsSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Weapons' }),
+    targetSeparation,
+    weaponRanges,
+    el('p', {
+      className: 'order-state',
+      text: `Effective range is fire control's cutoff, not a hit or damage guarantee. Missile reach estimates ${formatDuration(MISSILE_REACH_TIME)} at boost speed; target motion and manoeuvres matter, and launches beyond it are allowed. Firing and power describe the last simulation step.`,
+    }),
+    el('div', { className: 'order-row' }, targetEnemy, noTarget),
+    el('div', { className: 'order-row' }, fireFreely, holdFire),
+    el('div', { className: 'order-row' }, aimField),
+    weaponsState,
+    missilesSection,
+  );
   const element = el(
     'section',
     { className: 'panel', attrs: { 'aria-label': 'Orders' } },
@@ -583,37 +641,11 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       text: 'Power is supplied in priority order, first to last. Systems ahead of Capacitors may also draw stored energy; those after it use reactor power only. Bars show supply as a share of demand on the last step.',
     }),
     priorityList,
-    el('h3', { text: 'Radiators' }),
-    el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
-    el('h3', { text: 'Shields' }),
-    el('div', { className: 'order-row' }, raiseShields, lowerShields),
-    shieldsState,
-    shieldsProtection,
-    shieldsTiming,
-    el('h3', { text: 'Weapons' }),
-    targetSeparation,
-    weaponRanges,
-    el('p', {
-      className: 'order-state',
-      text: `Effective range is fire control's cutoff, not a hit or damage guarantee. Missile reach estimates ${formatDuration(MISSILE_REACH_TIME)} at boost speed; target motion and manoeuvres matter, and launches beyond it are allowed. Firing and power describe the last simulation step.`,
-    }),
-    el('div', { className: 'order-row' }, targetEnemy, noTarget),
-    el('div', { className: 'order-row' }, fireFreely, holdFire),
-    el('div', { className: 'order-row' }, aimField),
-    weaponsState,
-    el('div', { className: 'order-row' }, salvoSize.element, launch, callOff),
-    launchState,
-    el('h3', { text: 'Anti-missile missiles' }),
-    el('div', { className: 'order-row' }, automaticDefence, byOrderOnly, launchAtNearest),
-    antiMissileState,
-    el('h3', { text: 'Point defence' }),
-    el(
-      'div',
-      { className: 'order-row' },
-      pointDefenceButtons.missiles,
-      pointDefenceButtons['missiles-then-ship'],
-    ),
-    pointDefenceState,
+    radiatorsSection,
+    shieldsSection,
+    weaponsSection,
+    antiMissileSection,
+    pointDefenceSection,
   );
 
   return {
@@ -625,6 +657,17 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     },
     update(observation: SideObservation) {
       const ship = observation.ownShip;
+      const poweredWeapons = hasPoweredWeapons(ship);
+      const antiShipMissiles = missilesIn(ship.weapons, 'anti-ship').designs.length > 0;
+      radiatorsSection.hidden = !hasEquipment(ship, 'radiator');
+      shieldsSection.hidden = ship.shields.shields.length === 0;
+      missilesSection.hidden = !antiShipMissiles || ship.weapons.launchers.length === 0;
+      antiMissileSection.hidden =
+        missilesIn(ship.weapons, 'anti-missile').designs.length === 0 ||
+        ship.weapons.launchers.length === 0;
+      pointDefenceSection.hidden = ship.weapons.pointDefence.length === 0;
+      weaponsSection.hidden =
+        !poweredWeapons && !hasEquipment(ship, 'point-defence') && !antiShipMissiles;
       const { attitude, manoeuvre } = ship;
       attitudeState.textContent = manoeuvre
         ? 'Set by the manoeuvre'
@@ -668,6 +711,14 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       labelPriorityRows();
       priorityRows.forEach((row) => {
         const { system } = row;
+        row.element.hidden =
+          system === 'shields'
+            ? ship.shields.shields.length === 0
+            : system === 'weapons'
+              ? !poweredWeapons
+              : system === 'capacitors'
+                ? !hasEquipment(ship, 'capacitor')
+                : false;
         const { demand, supplied } = ship.power.systems[system];
         row.share.textContent =
           demand > 0
