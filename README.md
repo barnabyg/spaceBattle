@@ -157,7 +157,14 @@ In battle, the time controls in the top bar pause the battle (or Space) and set 
 
 You know the enemy only as a contact: its position and motion always, the rest only as far as your sensors make it out at the range. The tactical map labels the contact with what is made out (position only, silhouette, sections, mounts), and **Aim at** in the weapons orders offers each section and mount once it is made out; until then the weapons aim at the whole ship.
 
-The tactical map's **Legend** shows how each layer is drawn and what it means, such as velocity, relative velocity, heading, trails and planned burns, with a switch to hide or show each one; the choices are kept for the browser session.
+The tactical map's **Legend** shows how each layer is drawn and what it means, such as velocity, relative velocity, heading, trails and planned burns, with a switch to hide or show each one; the choices are kept for the browser session. **Trail**, **Drop lines**, **Projected path** and **Planned burns** start off by default; saved session choices take precedence.
+
+To check the defaults manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }`
+from `C:/docs/git/spaceBattle` in PowerShell 7. Open a fresh Firefox browser session, start a
+free battle and open **Legend**. Those four layers should be unchecked and the others checked.
+Enable **Trail** and **Planned burns**, pause and order **Hold** at 150,000 km: planned burn
+labels should appear. Disable **Planned burns** to hide them. Reload and start another battle;
+the changed layer choices should be retained.
 
 The map's **Separation** readout names the followed contact (the weapons target, or the first
 contact otherwise) and shows its full three-dimensional distance in km. It stays readable while

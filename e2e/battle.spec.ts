@@ -99,6 +99,8 @@ test('a manoeuvre order shows its goal and planned burns on the map', async ({ p
     'false',
   );
   const burns = page.getByRole('region', { name: 'Tactical map' }).locator('.planned-burn');
+  await page.getByRole('button', { name: 'Legend' }).click();
+  await page.getByRole('checkbox', { name: 'Planned burns' }).check();
   await expect(burns.first()).toBeVisible();
   await expect(burns.first()).toContainText('Burn');
 
