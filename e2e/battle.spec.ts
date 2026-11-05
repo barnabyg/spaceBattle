@@ -114,11 +114,18 @@ test('a manoeuvre order shows its goal and planned burns on the map', async ({ p
 test('power and radiator orders work while paused', async ({ page }) => {
   await startFreeBattle(page);
   await page.keyboard.press(' ');
-  const priorities = page.getByRole('list', { name: 'Power priorities' }).getByRole('listitem');
-  await expect(priorities.first()).toContainText('Shields');
-  await page.getByRole('button', { name: 'Raise Drive' }).click();
-  await page.getByRole('button', { name: 'Raise Drive' }).click();
-  await expect(priorities.first()).toContainText('Drive');
+  await page.getByRole('tab', { name: 'Power', exact: true }).click();
+  await page.getByLabel('Drive priority', { exact: true }).selectOption('0');
+  await expect(page.getByLabel('Drive priority', { exact: true })).toHaveValue('0');
+  await expect(page.getByLabel('Capacitors priority', { exact: true })).toHaveValue('3');
+  await page.getByLabel('Capacitors priority', { exact: true }).selectOption('1');
+  await expect(page.getByLabel('Capacitors priority', { exact: true })).toHaveValue('1');
+  await expect(page.getByLabel('Weapons priority', { exact: true })).toHaveValue('3');
+  await expect(page.getByRole('progressbar', { name: 'Drive power supplied' })).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: 'Drive power supplied' })).toHaveAttribute(
+    'aria-valuetext',
+    'No demand',
+  );
 
   await expect(page.getByLabel('Radiators')).toContainText('Retracted');
   await page.getByRole('button', { name: 'Deploy radiators' }).click();
@@ -159,14 +166,17 @@ test('weapons orders work while paused and the damage panel shows each section',
 }) => {
   await startFreeBattle(page);
   await page.keyboard.press(' ');
+  await page.getByRole('tab', { name: 'Damage', exact: true }).click();
   const damage = page.getByRole('region', { name: 'Damage' });
   await expect(damage.getByLabel('Forward section')).toHaveText(
     'ablative armour 50 mm of 50 mm · structure 100%',
   );
   await expect(damage.getByText('Laser (mount)')).toBeVisible();
 
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   const weapons = page.getByLabel('Weapons state');
   await expect(weapons).toHaveText('Holding fire');
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByRole('button', { name: 'Fire freely' }).click();
   // The opening pass starts beyond laser range.
   await expect(weapons).toContainText('Out of range · reach');
@@ -202,10 +212,12 @@ test('a ship with kinetic guns shows its guns, magazine and ammunition', async (
   await page.keyboard.press(' ');
   await expect(page.getByLabel('Ammunition')).toHaveText('600 of 600 slugs');
   await expect(page.getByLabel('Slugs in flight')).toHaveText('0 ours · 0 incoming');
+  await page.getByRole('tab', { name: 'Damage', exact: true }).click();
   const damage = page.getByRole('region', { name: 'Damage' });
   await expect(damage.getByText('Kinetic gun (mount)')).toHaveCount(2);
   await expect(damage.getByText('Magazine', { exact: true })).toBeVisible();
 
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByRole('button', { name: 'Fire freely' }).click();
   // The opening pass starts beyond the guns' reach.
   await expect(page.getByLabel('Weapons state')).toHaveText('Out of range · reach 30,000 km');
@@ -216,10 +228,12 @@ test('ships with particle beams show their beams, the charged one short-ranged',
 }) => {
   await startFreeBattle(page, { blue: { design: 'Torch' }, red: { design: 'Needle' } });
   await page.keyboard.press(' ');
+  await page.getByRole('tab', { name: 'Damage', exact: true }).click();
   const damage = page.getByRole('region', { name: 'Damage' });
   await expect(damage.getByText('Charged particle beam (mount)')).toBeVisible();
   await expect(page.getByLabel('Beam power')).toHaveText('Charged particle beam 0 MW');
 
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByRole('button', { name: 'Fire freely' }).click();
   // The opening pass starts far beyond the charged beam's reach.
   const weapons = page.getByLabel('Weapons state');
@@ -236,12 +250,15 @@ test('a ship with launchers launches missiles by order, preserving time compress
   await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
     '0 ours · 0 incoming',
   );
+  await page.getByRole('tab', { name: 'Damage', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Damage' }).getByText('Launcher (mount)'),
   ).toHaveCount(2);
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   const launch = page.getByLabel('Launch state');
   await expect(launch).toContainText('12 missiles ready · reach');
 
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByLabel('Missiles', { exact: true }).fill('2');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await expect(launch).toHaveText('Launching · 2 to go · 12 missiles left');
@@ -252,7 +269,10 @@ test('a ship with launchers launches missiles by order, preserving time compress
   );
   await expect(selectedTimeCompression(page)).toHaveText('10×');
   await expect(page.getByLabel('Ammunition')).toHaveText('10 of 12 missiles');
-  await expect(page.getByRole('list', { name: 'Battle log' })).toContainText('Missile launched');
+  await page.getByRole('tab', { name: 'Damage', exact: true }).click();
+  await expect(page.getByRole('list', { name: 'Battle log', includeHidden: true })).toContainText(
+    'Missile launched',
+  );
 });
 
 test('a ship with anti-missile missiles shows them apart, and takes missile defence orders', async ({
@@ -267,6 +287,7 @@ test('a ship with anti-missile missiles shows them apart, and takes missile defe
     '0 ours · 0 incoming',
   );
   await expect(page.getByLabel('Launch state')).toContainText('6 missiles ready · reach');
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   const state = page.getByLabel('Anti-missile state');
   await expect(state).toHaveText('Automatic · 16 left');
   // No enemy missile is on its way yet.
@@ -290,9 +311,11 @@ test('a ship with point defence shows its guns and rounds, and takes priority or
   await expect(page.getByLabel('Point defence', { exact: true })).toHaveText(
     '0 of 2 firing · 0 shot down',
   );
+  await page.getByRole('tab', { name: 'Damage', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Damage' }).getByText('Point defence (mount)'),
   ).toHaveCount(2);
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   const state = page.getByLabel('Point defence state');
   await expect(state).toHaveText('Ready · reach 25 km · 0 shot down');
 
@@ -310,10 +333,12 @@ test('a shielded ship shows its shields, and they can be lowered and raised', as
   const shields = page.getByLabel('Shields', { exact: true });
   await expect(shields).toContainText('Raised');
   await expect(shields).toContainText('coolant 300 MW forward, 300 MW engine');
+  await page.getByRole('tab', { name: 'Damage', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Damage' }).getByText('Coolant shield', { exact: true }),
   ).toHaveCount(2);
 
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByRole('button', { name: 'Shields down' }).click();
   await expect(shields).toHaveText('Lowered');
   await page.getByRole('button', { name: 'Shields up' }).click();
@@ -323,6 +348,7 @@ test('a shielded ship shows its shields, and they can be lowered and raised', as
 test('toggle orders show which is selected, to sight and to assistive tech', async ({ page }) => {
   await startFreeBattle(page, { blue: { design: 'Rime' } });
   await page.keyboard.press(' ');
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   const up = page.getByRole('button', { name: 'Shields up' });
   const down = page.getByRole('button', { name: 'Shields down' });
   const state = page.getByLabel('Shields state');
@@ -354,6 +380,7 @@ test('toggle orders show which is selected, to sight and to assistive tech', asy
   await expect(down).toHaveAttribute('aria-pressed', 'false');
   await expect(state).toHaveText('Shields raised');
 
+  await page.getByRole('tab', { name: 'Power', exact: true }).click();
   const deploy = page.getByRole('button', { name: 'Deploy radiators' });
   const retract = page.getByRole('button', { name: 'Retract radiators' });
   await expect(retract).toHaveAttribute('aria-pressed', 'true');
@@ -362,6 +389,7 @@ test('toggle orders show which is selected, to sight and to assistive tech', asy
   await expect(deploy).toHaveAttribute('aria-pressed', 'true');
   await expect(retract).toHaveAttribute('aria-pressed', 'false');
 
+  await page.getByRole('tab', { name: 'Navigation', exact: true }).click();
   const atEnemy = page.getByRole('button', { name: 'Point at enemy' });
   const away = page.getByRole('button', { name: 'Point away' });
   await atEnemy.click();
@@ -372,13 +400,13 @@ test('toggle orders show which is selected, to sight and to assistive tech', asy
   await expect(atEnemy).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('a ship without shields disables shield orders and explains why', async ({ page }) => {
+test('a ship without shields hides shield orders', async ({ page }) => {
   await startFreeBattle(page);
   await page.keyboard.press(' ');
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   for (const name of ['Shields up', 'Shields down']) {
     const button = page.getByRole('button', { name });
-    await expect(button).toBeDisabled();
-    await expect(button).toHaveAttribute('aria-pressed', 'false');
+    await expect(button).toHaveCount(0);
   }
-  await expect(page.getByLabel('Shields state')).toHaveText('Shields unavailable · none installed');
+  await expect(page.getByLabel('Shields state')).toBeHidden();
 });

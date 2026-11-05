@@ -69,6 +69,7 @@ test('shield orders apply while paused and protection waits for the next step', 
 }) => {
   await page.clock.install();
   await startFreeBattle(page, { blue: { design: 'Rime' } });
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   const up = page.getByRole('button', { name: 'Shields up' });
   const down = page.getByRole('button', { name: 'Shields down' });
   const state = page.getByLabel('Shields state');

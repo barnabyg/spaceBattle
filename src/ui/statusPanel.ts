@@ -7,6 +7,7 @@ import { POWER_SYSTEMS } from '../sim/power';
 import { distance, length } from '../sim/vector';
 import { BEAM_TEXT } from './damagePanel';
 import { el } from './el';
+import { hasEquipment } from './equipment';
 import {
   formatGeV,
   formatGJ,
@@ -106,6 +107,13 @@ const describeClosing = (closingSpeed: number): string => {
 
 /** Each readout: its label and how to show it from the captain's observation. */
 const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] = [
+  [
+    'Incoming missiles',
+    (o) =>
+      count(
+        o.munitions.filter((m) => m.kind === 'missile' && m.target === o.ownShip.sideId).length,
+      ),
+  ],
   [
     'Separation',
     (o) => {
@@ -212,24 +220,82 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
 /** Numbers about the captain's ship and its contact, in real units. */
 export const createStatusPanel = () => {
   const values = READOUTS.map(([label]) => el('dd', { attrs: { 'aria-label': label } }));
-  const list = el(
-    'dl',
-    { className: 'status-list' },
-    ...READOUTS.flatMap(([label], i) => [el('dt', { text: label }), values[i] ?? el('dd')]),
+  const labels = READOUTS.map(([label]) => el('dt', { text: label }));
+  const summaryLabels = [
+    'Separation',
+    'Closing speed',
+    'Delta-v',
+    'Temperature',
+    'Incoming missiles',
+  ];
+  const powerLabels = [
+    'Power generated',
+    'Power demand',
+    'Stored energy',
+    'Heat generated',
+    'Heat radiated',
+    'Radiators',
+  ];
+  const weaponsLabels = [
+    'Shields',
+    'Beam power',
+    'Ammunition',
+    'Slugs in flight',
+    'Missiles in flight',
+    'Anti-missile missiles in flight',
+    'Point defence',
+  ];
+  const makeList = (included: (label: string) => boolean) =>
+    el(
+      'dl',
+      { className: 'status-list' },
+      ...READOUTS.flatMap(([label], i) =>
+        included(label) ? [labels[i] ?? el('dt'), values[i] ?? el('dd')] : [],
+      ),
+    );
+  const summaryElement = el(
+    'section',
+    { className: 'battle-summary', attrs: { 'aria-label': 'Essential status' } },
+    makeList((label) => summaryLabels.includes(label)),
   );
+  const powerElement = makeList((label) => powerLabels.includes(label));
+  const weaponsElement = makeList((label) => weaponsLabels.includes(label));
   const element = el(
     'section',
     { className: 'panel', attrs: { 'aria-label': 'Ship status' } },
     el('h2', { text: 'Status' }),
-    list,
+    makeList((label) => ![...summaryLabels, ...powerLabels, ...weaponsLabels].includes(label)),
   );
 
   return {
     element,
+    summaryElement,
+    powerElement,
+    weaponsElement,
     update(observation: SideObservation) {
-      READOUTS.forEach(([, show], i) => {
+      READOUTS.forEach(([label, show], i) => {
         const value = values[i];
-        if (value) value.textContent = show(observation);
+        const ship = observation.ownShip;
+        const absent =
+          label === 'Shields'
+            ? ship.shields.shields.length === 0
+            : label === 'Radiators'
+              ? !hasEquipment(ship, 'radiator')
+              : label === 'Stored energy'
+                ? !hasEquipment(ship, 'capacitor')
+                : label === 'Beam power'
+                  ? !hasEquipment(ship, 'laser', 'charged-particle-beam', 'neutral-particle-beam')
+                  : label === 'Point defence'
+                    ? ship.weapons.pointDefence.length === 0
+                    : label === 'Ammunition'
+                      ? !hasEquipment(ship, 'magazine')
+                      : false;
+        const heading = labels[i];
+        if (heading) heading.hidden = absent;
+        if (value) {
+          value.hidden = absent;
+          value.textContent = show(observation);
+        }
       });
     },
   };

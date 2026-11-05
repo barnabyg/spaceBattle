@@ -14,6 +14,7 @@ import { DEFAULT_PRIORITIES, POWER_SYSTEMS, type PowerSystem } from '../sim/powe
 import { distance, length, vec3 } from '../sim/vector';
 import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
+import { hasEquipment, hasPoweredWeapons } from './equipment';
 import {
   formatDuration,
   formatKm,
@@ -85,7 +86,7 @@ const SYSTEM_TEXT: Readonly<Record<PowerSystem, string>> = {
   drive: 'Drive',
   shields: 'Shields',
   weapons: 'Weapons',
-  capacitors: 'Capacitor charging',
+  capacitors: 'Capacitors',
 };
 
 /** The active goal and how far off it the ship is, e.g. "Holding 100,000 km · error 1,200 km". */
@@ -332,63 +333,51 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     attrs: { 'aria-label': 'Order refused', role: 'status' },
   });
 
-  // One row per rank; each update shows the system now at that rank.
+  // Each system keeps its own control; selecting a priority moves it in the full ranking.
   let priorities: readonly PowerSystem[] = DEFAULT_PRIORITIES;
-  const swapRanks = (rank: number, other: number) => {
-    const a = priorities[rank];
-    const b = priorities[other];
-    if (!a || !b) return;
+  const movePriority = (system: PowerSystem, rank: number) => {
     const next = [...priorities];
-    next[rank] = b;
-    next[other] = a;
+    next.splice(next.indexOf(system), 1);
+    next.splice(rank, 0, system);
     giveOrder({ type: 'power', priorities: next });
-    // Relabel at once, so a second click before the next frame acts on the new order.
     priorities = next;
     labelPriorityRows();
   };
   const labelPriorityRows = () => {
-    priorities.forEach((system, rank) => {
-      const row = priorityRows[rank];
-      if (!row) return;
-      row.name.textContent = SYSTEM_TEXT[system];
-      row.raise.setAttribute('aria-label', `Raise ${SYSTEM_TEXT[system]}`);
-      row.lower.setAttribute('aria-label', `Lower ${SYSTEM_TEXT[system]}`);
+    priorityRows.forEach((row) => {
+      row.priority.value = String(priorities.indexOf(row.system));
     });
   };
-  const priorityRows = POWER_SYSTEMS.map((_, rank) => {
-    const name = el('span', { className: 'priority-name' });
+  const priorityRows = POWER_SYSTEMS.map((system) => {
+    const name = el('span', { className: 'priority-name', text: SYSTEM_TEXT[system] });
     const share = el('span', { className: 'priority-share' });
-    const raise = el('button', {
-      className: 'order-button priority-button',
-      text: '▲',
-      attrs: { type: 'button' },
+    const supply = el('progress', {
+      attrs: { max: '1', value: '0', 'aria-label': `${SYSTEM_TEXT[system]} power supplied` },
     });
-    const lower = el('button', {
-      className: 'order-button priority-button',
-      text: '▼',
-      attrs: { type: 'button' },
+    const priority = el(
+      'select',
+      { attrs: { 'aria-label': `${SYSTEM_TEXT[system]} priority` } },
+      ...POWER_SYSTEMS.map((_, rank) =>
+        el('option', {
+          text: `${rank + 1}${rank === 0 ? ' · First' : rank === POWER_SYSTEMS.length - 1 ? ' · Last' : ''}`,
+          attrs: { value: String(rank) },
+        }),
+      ),
+    );
+    priority.addEventListener('change', () => {
+      movePriority(system, Number(priority.value));
     });
-    raise.addEventListener('click', () => {
-      swapRanks(rank, rank - 1);
-    });
-    lower.addEventListener('click', () => {
-      swapRanks(rank, rank + 1);
-    });
-    raise.disabled = rank === 0;
-    lower.disabled = rank === POWER_SYSTEMS.length - 1;
     return {
-      name,
+      system,
       share,
-      raise,
-      lower,
+      supply,
+      priority,
       element: el(
         'li',
         {},
-        el('span', { className: 'priority-rank', text: `${rank + 1}.` }),
-        name,
+        el('label', { className: 'priority-heading' }, name, priority),
+        supply,
         share,
-        raise,
-        lower,
       ),
     };
   });
@@ -561,7 +550,64 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     giveOrder({ type: 'manoeuvre', goal: 'none' });
   });
 
-  const element = el(
+  const radiatorsSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Radiators' }),
+    el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
+  );
+  const shieldsSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Shields' }),
+    el('div', { className: 'order-row' }, raiseShields, lowerShields),
+    shieldsState,
+    shieldsProtection,
+    shieldsTiming,
+  );
+  const missilesSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Anti-ship missiles' }),
+    el('div', { className: 'order-row' }, salvoSize.element, launch, callOff),
+    launchState,
+  );
+  const antiMissileSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Anti-missile missiles' }),
+    el('div', { className: 'order-row' }, automaticDefence, byOrderOnly, launchAtNearest),
+    antiMissileState,
+  );
+  const pointDefenceSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Point defence' }),
+    el(
+      'div',
+      { className: 'order-row' },
+      pointDefenceButtons.missiles,
+      pointDefenceButtons['missiles-then-ship'],
+    ),
+    pointDefenceState,
+  );
+  const weaponsSection = el(
+    'div',
+    {},
+    el('h3', { text: 'Weapons' }),
+    targetSeparation,
+    weaponRanges,
+    el('p', {
+      className: 'order-state',
+      text: `Effective range is fire control's cutoff, not a hit or damage guarantee. Missile reach estimates ${formatDuration(MISSILE_REACH_TIME)} at boost speed; target motion and manoeuvres matter, and launches beyond it are allowed. Firing and power describe the last simulation step.`,
+    }),
+    el('div', { className: 'order-row' }, targetEnemy, noTarget),
+    el('div', { className: 'order-row' }, fireFreely, holdFire),
+    el('div', { className: 'order-row' }, aimField),
+    weaponsState,
+    missilesSection,
+  );
+  const navigationElement = el(
     'section',
     { className: 'panel', attrs: { 'aria-label': 'Orders' } },
     el('h2', { text: 'Orders' }),
@@ -586,53 +632,53 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     ),
     manoeuvreState,
     planState,
-    el('h3', { text: 'Withdrawal' }),
-    el('div', { className: 'order-row' }, withdraw),
-    withdrawState,
-    refusal,
+  );
+  const powerElement = el(
+    'section',
+    { className: 'panel', attrs: { 'aria-label': 'Power orders' } },
     el('h3', { text: 'Power' }),
-    priorityList,
-    el('h3', { text: 'Radiators' }),
-    el('div', { className: 'order-row' }, deployRadiators, retractRadiators),
-    el('h3', { text: 'Shields' }),
-    el('div', { className: 'order-row' }, raiseShields, lowerShields),
-    shieldsState,
-    shieldsProtection,
-    shieldsTiming,
-    el('h3', { text: 'Weapons' }),
-    targetSeparation,
-    weaponRanges,
     el('p', {
       className: 'order-state',
-      text: `Effective range is fire control's cutoff, not a hit or damage guarantee. Missile reach estimates ${formatDuration(MISSILE_REACH_TIME)} at boost speed; target motion and manoeuvres matter, and launches beyond it are allowed. Firing and power describe the last simulation step.`,
+      text: 'Power is supplied in priority order, first to last. Systems ahead of Capacitors may also draw stored energy; those after it use reactor power only. Bars show supply as a share of demand on the last step.',
     }),
-    el('div', { className: 'order-row' }, targetEnemy, noTarget),
-    el('div', { className: 'order-row' }, fireFreely, holdFire),
-    el('div', { className: 'order-row' }, aimField),
-    weaponsState,
-    el('div', { className: 'order-row' }, salvoSize.element, launch, callOff),
-    launchState,
-    el('h3', { text: 'Anti-missile missiles' }),
-    el('div', { className: 'order-row' }, automaticDefence, byOrderOnly, launchAtNearest),
-    antiMissileState,
-    el('h3', { text: 'Point defence' }),
-    el(
-      'div',
-      { className: 'order-row' },
-      pointDefenceButtons.missiles,
-      pointDefenceButtons['missiles-then-ship'],
-    ),
-    pointDefenceState,
+    priorityList,
+    radiatorsSection,
   );
+  const weaponsElement = el(
+    'section',
+    { className: 'panel', attrs: { 'aria-label': 'Weapons orders' } },
+    shieldsSection,
+    weaponsSection,
+    antiMissileSection,
+    pointDefenceSection,
+  );
+  const messagesElement = el('div', {}, withdrawState, refusal);
+  const element = el('div', {}, messagesElement, navigationElement, powerElement, weaponsElement);
 
   return {
     element,
+    navigationElement,
+    powerElement,
+    weaponsElement,
+    messagesElement,
+    withdrawButton: withdraw,
     /** Shows why the battle refused the latest order. */
     refused(reason: string) {
       refusal.textContent = reason;
     },
     update(observation: SideObservation) {
       const ship = observation.ownShip;
+      const poweredWeapons = hasPoweredWeapons(ship);
+      const antiShipMissiles = missilesIn(ship.weapons, 'anti-ship').designs.length > 0;
+      radiatorsSection.hidden = !hasEquipment(ship, 'radiator');
+      shieldsSection.hidden = ship.shields.shields.length === 0;
+      missilesSection.hidden = !antiShipMissiles || ship.weapons.launchers.length === 0;
+      antiMissileSection.hidden =
+        missilesIn(ship.weapons, 'anti-missile').designs.length === 0 ||
+        ship.weapons.launchers.length === 0;
+      pointDefenceSection.hidden = ship.weapons.pointDefence.length === 0;
+      weaponsSection.hidden =
+        !poweredWeapons && !hasEquipment(ship, 'point-defence') && !antiShipMissiles;
       const { attitude, manoeuvre } = ship;
       attitudeState.textContent = manoeuvre
         ? 'Set by the manoeuvre'
@@ -661,7 +707,7 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
         : '';
       // Pressed once the withdrawal is ordered, not while a first click waits for confirmation;
       // it cannot be taken back, so the button is then disabled.
-      withdraw.disabled = ship.withdrawing;
+      withdraw.disabled = ship.withdrawing || observation.outcome !== null;
       setPressed(withdraw, ship.withdrawing);
       const enemyWithdrawing = observation.contacts.some((c) => c.withdrawing);
       withdrawState.textContent = ship.withdrawing
@@ -674,10 +720,24 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
 
       priorities = ship.power.priorities;
       labelPriorityRows();
-      priorities.forEach((system, rank) => {
+      priorityRows.forEach((row) => {
+        const { system } = row;
+        row.element.hidden =
+          system === 'shields'
+            ? ship.shields.shields.length === 0
+            : system === 'weapons'
+              ? !poweredWeapons
+              : system === 'capacitors'
+                ? !hasEquipment(ship, 'capacitor')
+                : false;
         const { demand, supplied } = ship.power.systems[system];
-        const row = priorityRows[rank];
-        if (row) row.share.textContent = `${formatMW(supplied)} of ${formatMW(demand)}`;
+        row.share.textContent =
+          demand > 0
+            ? `${formatMW(supplied)} / ${formatMW(demand)} · ${formatPercent(supplied / demand)} supplied`
+            : 'No demand';
+        row.supply.value = demand > 0 ? Math.min(1, supplied / demand) : 0;
+        row.supply.setAttribute('aria-valuetext', row.share.textContent);
+        row.element.classList.toggle('power-shortfall', supplied < demand);
       });
       const deploying = ship.heat.radiatorDeploymentRemaining > 0;
       setPressed(deployRadiators, ship.heat.radiatorsDeployed || deploying);

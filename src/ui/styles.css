@@ -75,6 +75,12 @@ button {
   gap: 0.6rem;
 }
 
+.battle-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
 .battle-clock {
   font-variant-numeric: tabular-nums;
   font-size: 1.2rem;
@@ -232,7 +238,56 @@ button {
   padding: 1rem;
   background: var(--panel);
   border-left: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.battle-summary {
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 0.6rem;
+}
+
+.battle-tabs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.battle-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.6rem 0;
+}
+
+.battle-tab-list button {
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+}
+
+.battle-tab-list [aria-selected='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.battle-tab-panel {
   overflow-y: auto;
+  min-height: 0;
+  padding: 0.6rem 0.4rem 1rem 0;
+}
+
+.battle-tab-panel .status-list {
+  margin-bottom: 1rem;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .panel + .panel {
@@ -634,16 +689,34 @@ h3 {
   list-style: none;
 }
 
-.priority-rank {
-  min-width: 1.4em;
-  color: var(--muted);
+.priority-list li {
+  padding: 0.8rem;
+  margin-bottom: 0.6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.4rem;
 }
 
-.priority-list li {
+.priority-heading {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+
+.priority-heading select {
+  font: inherit;
+  padding: 0.3rem;
+}
+
+.priority-list progress {
+  display: block;
+  width: 100%;
+  height: 0.8rem;
+  accent-color: var(--accent);
+}
+
+.power-shortfall progress {
+  accent-color: #ffb454;
 }
 
 .priority-name {
@@ -655,15 +728,6 @@ h3 {
   color: var(--muted);
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
-}
-
-.priority-button {
-  padding: 0.1rem 0.6rem;
-}
-
-.priority-button:disabled {
-  opacity: 0.35;
-  cursor: default;
 }
 
 .damage-section h3 {

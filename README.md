@@ -49,6 +49,40 @@ safety limits.
 
 ## Playing
 
+The battle sidebar keeps separation, closing speed, delta-v (including reserve warnings),
+temperature and incoming missiles visible. **Navigation** opens first; switch to **Weapons**
+for targeting, missiles, shields and point defence, **Power** for priorities and radiators,
+**Status** for detailed motion and ship figures, or **Damage** for component integrity and the
+battle log. Test mode adds **Enemy** and **Log** tabs. Only the selected panel scrolls; entered
+values and each panel's scroll position survive switching. Focus a tab and use Left/Right,
+Home or End to switch with the keyboard. Withdrawal and refused-order messages stay visible.
+
+For a manual check, run this command in PowerShell 7 from `C:/docs/git/spaceBattle`:
+
+```powershell
+npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }
+```
+
+Open the game in Firefox at 1920×1080 or larger and start a free battle as **Rime**. Pause,
+enter a range in **Navigation**, switch through the tabs and scroll **Weapons**: essential
+status, the tabs and the top-bar actions should stay visible. Return to **Navigation** and
+check the range is retained. In **Power**, change a priority, order a burn in **Navigation**
+and resume; the supply bars should update. Check **Weapons** for working shield controls,
+then start as **Lance** and check those controls are absent.
+
+Battle power controls show a supply bar for each system and a priority selector (1 is first).
+Equipment absent from the design has no controls, status row or power row. Fitted equipment
+remains visible when damaged, destroyed or depleted, so its loss can still be understood.
+Incoming munition readouts remain available on every design. To check, start with **Lance**:
+there should be no shields, missile launch or point defence controls. Start another battle
+with **Rime** to see shields, **Bulwark** for anti-missile missiles or **Rampart** for point defence.
+Selecting a priority moves that system and shifts the others. Systems before **Capacitors** can
+use stored energy; systems after it rely on reactor power. Bars show the previous simulation
+step's supply against demand, with exact power and percentage or **No demand** alongside them.
+To check, launch using the manual withdrawal command below, pause a free battle, move **Drive**
+to first and **Capacitors** to second, then order a burn and resume. Priorities stay selected;
+the drive's bar and power figures update as the battle advances.
+
 With **Fire freely** and a target in range, lasers charge from allocated weapons power, then
 fire short shots. At full supply they charge for 15 seconds and fire for one second at
 16 times their listed average beam power; charging continues during the shot. Individual weapon
@@ -114,7 +148,12 @@ in the legend. Zoom and rotate, comparing heading with motion: the circle and di
 remain identifiable independently of the arrow tips.
 The [map position review](docs/research/map-positions.png) shows both symbols and their motion arrows.
 
-Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** (click twice to confirm) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost.
+Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** in the top bar beside **End battle** (click twice to confirm; moving focus away cancels confirmation) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost.
+
+To check withdrawal manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }`
+from `C:/docs/git/spaceBattle` in PowerShell 7. Start a free battle in Firefox. Click **Withdraw**
+in the top bar once, move focus to another control and check that confirmation cancels. Click
+**Withdraw** twice to order withdrawal; the button disables and the ship leaves when safe.
 
 In battle, the captain of a player side hears only what reaches their own hull, since there is no sound in vacuum: the drive's rumble while it burns, the ship's own guns, beams and launches, hits on the hull, and alarms for damage, overheating, an incoming missile and delta-v near the reserve. Enemy fire that misses makes no sound, and a battle between computer sides is silent. **Mute** (or M) and the volume slider in the top bar keep their settings for the browser session.
 

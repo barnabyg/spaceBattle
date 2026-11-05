@@ -1,30 +1,26 @@
 import { expect, test } from '@playwright/test';
 import { startFreeBattle } from './freeBattle';
 
-test('Lance makes unavailable defence controls visibly disabled and explains why', async ({
-  page,
-}) => {
+test('Lance hides unfitted equipment and keeps incoming munition readouts', async ({ page }) => {
   await startFreeBattle(page);
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
-  for (const [name, reason] of [
-    ['Shields up', 'No shields installed'],
-    ['Shields down', 'No shields installed'],
-    ['Automatic', 'No anti-missile missiles installed'],
-    ['By order only', 'No anti-missile missiles installed'],
-    ['Launch at nearest missile', 'No anti-missile missiles installed'],
-    ['Missiles only', 'No point defence installed'],
-    ['Missiles, then ship', 'No point defence installed'],
+  for (const name of [
+    'Shields up',
+    'Shields down',
+    'Automatic',
+    'By order only',
+    'Launch at nearest missile',
+    'Missiles only',
+    'Missiles, then ship',
+    'Launch',
   ]) {
-    const button = page.getByRole('button', { name, exact: true });
-    await expect(button).toBeDisabled();
-    await expect(button).toHaveAccessibleDescription(reason ?? '');
-    await button.hover({ force: true });
-    expect(await button.evaluate((b) => getComputedStyle(b).cursor)).toBe('not-allowed');
-    expect(await button.evaluate((b) => getComputedStyle(b).borderTopStyle)).toBe('dashed');
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
   }
-  await expect(page.getByLabel('Shields state')).toContainText('none installed');
-  await expect(page.getByLabel('Anti-missile state')).toContainText('No anti-missile missiles');
-  await expect(page.getByLabel('Point defence state')).toHaveText('No point defence installed');
+  for (const label of ['Shields', 'Shields priority', 'Point defence', 'Ammunition']) {
+    await expect(page.getByLabel(label, { exact: true })).toBeHidden();
+  }
+  await expect(page.getByLabel('Missiles in flight', { exact: true })).toBeVisible();
 });
 
 for (const { design, first, second } of [
@@ -36,6 +32,7 @@ for (const { design, first, second } of [
     page,
   }, testInfo) => {
     await startFreeBattle(page, { blue: { design } });
+    await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     const target = page.getByRole('button', { name: 'Target enemy', exact: true });
     await target.click();

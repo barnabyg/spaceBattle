@@ -66,7 +66,16 @@ test('the player withdraws and sees the result', async ({ page }) => {
   await startFreeBattle(page);
   // The contact shows only what Blue's sensor makes out of it.
   await expect(page.getByRole('region', { name: 'Tactical map' })).toContainText(/Red · .* · /);
-  const withdraw = page.getByRole('button', { name: 'Withdraw', exact: true });
+  const header = page.locator('.top-bar');
+  const withdraw = header.getByRole('button', { name: 'Withdraw', exact: true });
+  await expect(withdraw).toBeInViewport();
+  await expect(header.locator('.battle-actions').getByRole('button')).toHaveText([
+    'Withdraw',
+    'End battle',
+  ]);
+  await withdraw.click();
+  await header.getByRole('button', { name: 'Pause', exact: true }).focus();
+  await expect(withdraw).toHaveText('Withdraw');
   await expect(withdraw).toHaveAttribute('aria-pressed', 'false');
   await withdraw.click();
   // Waiting for confirmation is not yet the order.
@@ -78,4 +87,5 @@ test('the player withdraws and sees the result', async ({ page }) => {
   await expect(result).toBeVisible({ timeout: SIMULATION_EXPECT_TIMEOUT });
   await expect(result.getByRole('heading')).toHaveText('Red wins');
   await expect(result).toContainText('Blue withdrew');
+  await expect(withdraw).toBeDisabled();
 });

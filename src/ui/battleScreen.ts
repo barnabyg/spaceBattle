@@ -1,6 +1,7 @@
 import type { BattleRunner } from '../game/battleRunner';
 import type { SideSetup } from '../sim/battle';
 import { el } from './el';
+import { createBattleTabs } from './battleTabs';
 import { createDamagePanel } from './damagePanel';
 import { designSummary } from './designSummary';
 import { createEndBattle } from './endBattle';
@@ -96,6 +97,29 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     test?.onReplay,
   );
 
+  const player = viewer.commander === 'player';
+  const tabs = createBattleTabs([
+    ...(player
+      ? [
+          { name: 'Navigation', content: orders.navigationElement },
+          { name: 'Weapons', content: el('div', {}, status.weaponsElement, orders.weaponsElement) },
+          { name: 'Power', content: el('div', {}, status.powerElement, orders.powerElement) },
+        ]
+      : []),
+    {
+      name: 'Status',
+      content: el(
+        'div',
+        {},
+        status.element,
+        ...(!player ? [status.weaponsElement, status.powerElement] : []),
+      ),
+    },
+    { name: 'Damage', content: damage.element },
+    ...(enemyPanel ? [{ name: 'Enemy', content: enemyPanel.element }] : []),
+    ...(testLog ? [{ name: 'Log', content: testLog.element }] : []),
+  ]);
+
   const element = el(
     'div',
     { className: 'battle-screen' },
@@ -114,24 +138,27 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
           ]
         : []),
       ...(sound ? [sound.element] : []),
-      endBattle.button,
+      el(
+        'div',
+        { className: 'battle-actions' },
+        ...(viewer.commander === 'player' ? [orders.withdrawButton] : []),
+        endBattle.button,
+      ),
     ),
     map.element,
     instruments.element,
     el(
       'aside',
       { className: 'side-panel' },
-      status.element,
-      damage.element,
+      status.summaryElement,
       // Only a player side takes orders from the screen; a computer side's captain gives its own.
       viewer.commander === 'player'
-        ? orders.element
+        ? orders.messagesElement
         : el('p', {
             className: 'order-state',
             text: `${viewer.name} is commanded by the computer.`,
           }),
-      ...(enemyPanel ? [enemyPanel.element] : []),
-      ...(testLog ? [testLog.element] : []),
+      tabs,
     ),
     endBattle.dialog,
     result.element,
