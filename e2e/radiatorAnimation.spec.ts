@@ -13,6 +13,7 @@ test('radiators visibly extend during deployment, freeze paused and fold on canc
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await page.clock.runFor(32);
   const own = page.getByLabel('Own ship', { exact: true });
+  await page.getByRole('tab', { name: 'Power', exact: true }).click();
   const status = page.getByLabel('Radiators', { exact: true });
   const capture = async (name: string) => {
     const path = testInfo.outputPath(`${name}.png`);

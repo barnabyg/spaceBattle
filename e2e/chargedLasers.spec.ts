@@ -17,6 +17,7 @@ test('lasers show charging progress, bursts and hold fire through the battle con
     blue: { design: 'Burst review', commander: 'Player' },
     red: { commander: 'Computer' },
   });
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   const laser = page.getByRole('list', { name: 'Weapon ranges' }).getByRole('listitem');
   await expect(laser).toContainText('Charge 0%');
   await page.getByRole('button', { name: 'Fire freely', exact: true }).click();

@@ -23,6 +23,7 @@ test('own weapons show independent ranges while holding fire, without enemy disc
     red: { commander: 'Computer' },
   });
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   const ranges = page.getByRole('list', { name: 'Weapon ranges' });
   await expect(ranges.getByRole('listitem')).toHaveCount(2);
   await expect(page.getByLabel('Weapon target separation')).toHaveText('No target selected');

@@ -238,7 +238,56 @@ button {
   padding: 1rem;
   background: var(--panel);
   border-left: 1px solid var(--panel-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.battle-summary {
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 0.6rem;
+}
+
+.battle-tabs {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.battle-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0.6rem 0;
+}
+
+.battle-tab-list button {
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  cursor: pointer;
+}
+
+.battle-tab-list [aria-selected='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.battle-tab-panel {
   overflow-y: auto;
+  min-height: 0;
+  padding: 0.6rem 0.4rem 1rem 0;
+}
+
+.battle-tab-panel .status-list {
+  margin-bottom: 1rem;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .panel + .panel {

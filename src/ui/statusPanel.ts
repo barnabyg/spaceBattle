@@ -108,6 +108,13 @@ const describeClosing = (closingSpeed: number): string => {
 /** Each readout: its label and how to show it from the captain's observation. */
 const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] = [
   [
+    'Incoming missiles',
+    (o) =>
+      count(
+        o.munitions.filter((m) => m.kind === 'missile' && m.target === o.ownShip.sideId).length,
+      ),
+  ],
+  [
     'Separation',
     (o) => {
       const contact = followedContact(o);
@@ -214,20 +221,57 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
 export const createStatusPanel = () => {
   const values = READOUTS.map(([label]) => el('dd', { attrs: { 'aria-label': label } }));
   const labels = READOUTS.map(([label]) => el('dt', { text: label }));
-  const list = el(
-    'dl',
-    { className: 'status-list' },
-    ...READOUTS.flatMap((_, i) => [labels[i] ?? el('dt'), values[i] ?? el('dd')]),
+  const summaryLabels = [
+    'Separation',
+    'Closing speed',
+    'Delta-v',
+    'Temperature',
+    'Incoming missiles',
+  ];
+  const powerLabels = [
+    'Power generated',
+    'Power demand',
+    'Stored energy',
+    'Heat generated',
+    'Heat radiated',
+    'Radiators',
+  ];
+  const weaponsLabels = [
+    'Shields',
+    'Beam power',
+    'Ammunition',
+    'Slugs in flight',
+    'Missiles in flight',
+    'Anti-missile missiles in flight',
+    'Point defence',
+  ];
+  const makeList = (included: (label: string) => boolean) =>
+    el(
+      'dl',
+      { className: 'status-list' },
+      ...READOUTS.flatMap(([label], i) =>
+        included(label) ? [labels[i] ?? el('dt'), values[i] ?? el('dd')] : [],
+      ),
+    );
+  const summaryElement = el(
+    'section',
+    { className: 'battle-summary', attrs: { 'aria-label': 'Essential status' } },
+    makeList((label) => summaryLabels.includes(label)),
   );
+  const powerElement = makeList((label) => powerLabels.includes(label));
+  const weaponsElement = makeList((label) => weaponsLabels.includes(label));
   const element = el(
     'section',
     { className: 'panel', attrs: { 'aria-label': 'Ship status' } },
     el('h2', { text: 'Status' }),
-    list,
+    makeList((label) => ![...summaryLabels, ...powerLabels, ...weaponsLabels].includes(label)),
   );
 
   return {
     element,
+    summaryElement,
+    powerElement,
+    weaponsElement,
     update(observation: SideObservation) {
       READOUTS.forEach(([label, show], i) => {
         const value = values[i];

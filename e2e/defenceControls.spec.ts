@@ -3,6 +3,7 @@ import { startFreeBattle } from './freeBattle';
 
 test('Lance hides unfitted equipment and keeps incoming munition readouts', async ({ page }) => {
   await startFreeBattle(page);
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   for (const name of [
     'Shields up',
@@ -31,6 +32,7 @@ for (const { design, first, second } of [
     page,
   }, testInfo) => {
     await startFreeBattle(page, { blue: { design } });
+    await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     const target = page.getByRole('button', { name: 'Target enemy', exact: true });
     await target.click();

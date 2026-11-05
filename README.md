@@ -49,6 +49,27 @@ safety limits.
 
 ## Playing
 
+The battle sidebar keeps separation, closing speed, delta-v (including reserve warnings),
+temperature and incoming missiles visible. **Navigation** opens first; switch to **Weapons**
+for targeting, missiles, shields and point defence, **Power** for priorities and radiators,
+**Status** for detailed motion and ship figures, or **Damage** for component integrity and the
+battle log. Test mode adds **Enemy** and **Log** tabs. Only the selected panel scrolls; entered
+values and each panel's scroll position survive switching. Focus a tab and use Left/Right,
+Home or End to switch with the keyboard. Withdrawal and refused-order messages stay visible.
+
+For a manual check, run this command in PowerShell 7 from `C:/docs/git/spaceBattle`:
+
+```powershell
+npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }
+```
+
+Open the game in Firefox at 1920×1080 or larger and start a free battle as **Rime**. Pause,
+enter a range in **Navigation**, switch through the tabs and scroll **Weapons**: essential
+status, the tabs and the top-bar actions should stay visible. Return to **Navigation** and
+check the range is retained. In **Power**, change a priority, order a burn in **Navigation**
+and resume; the supply bars should update. Check **Weapons** for working shield controls,
+then start as **Lance** and check those controls are absent.
+
 Battle power controls show a supply bar for each system and a priority selector (1 is first).
 Equipment absent from the design has no controls, status row or power row. Fitted equipment
 remains visible when damaged, destroyed or depleted, so its loss can still be understood.

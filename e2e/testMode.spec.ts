@@ -27,7 +27,7 @@ test('no test mode feature is reachable with test mode off', async ({ page }) =>
   await startFreeBattle(page);
   // Setup offered no seed, time limit or batch run; the battle shows no test mode extras.
   await expect(page.getByLabel('Test mode')).toHaveCount(0);
-  await expect(page.getByRole('region', { name: 'Test log' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Test log', includeHidden: true })).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Enemy design' })).toHaveCount(0);
   await expect(timeCompressionButtons(page)).toHaveText(['1×', '10×', '100×', '500×', '1000×']);
   await fastest(page);
@@ -62,10 +62,12 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
   await expect(page.getByLabel('Test mode')).toHaveText(
     'Test mode · Seed 42 · Time limit 30 min 0 s',
   );
+  await page.getByRole('tab', { name: 'Enemy', exact: true }).click();
   const enemy = page.getByRole('region', { name: 'Enemy design' });
   await expect(enemy).toContainText('Red · Bastion');
   await expect(enemy).toContainText('Hull size');
   await expect(enemy.getByLabel('Middle section')).toContainText('armour');
+  await page.getByRole('tab', { name: 'Power', exact: true }).click();
   const radiators = page.getByLabel('Radiators', { exact: true });
   await expect(radiators).toContainText('Retracted');
   await page.getByRole('button', { name: 'Deploy radiators' }).click();
@@ -95,7 +97,7 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
     timeout: SIMULATION_EXPECT_TIMEOUT,
   });
   await expect(result).toContainText('T+00:30:00');
-  await expect(page.getByRole('region', { name: 'Test log' })).toContainText(
+  await expect(page.getByRole('region', { name: 'Test log', includeHidden: true })).toContainText(
     'T+00:30:00 Battle over: No result',
   );
 
@@ -125,6 +127,7 @@ test('a nuclear warhead going off near the enemy strips the mounts facing it', a
   await page.getByRole('button', { name: 'Start battle' }).click();
   await page.keyboard.press(' ');
   await expect(page.getByLabel('Ammunition')).toHaveText('8 of 8 missiles');
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByLabel('Missiles', { exact: true }).fill('1');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await page.getByRole('button', { name: 'Resume' }).click();
@@ -136,14 +139,14 @@ test('a nuclear warhead going off near the enemy strips the mounts facing it', a
   // A near miss: the warhead goes off by its proximity fuse 1 km from the Lance, and its X-rays
   // wreck the laser facing the burst while the armour holds. The computer captain pulled the
   // Lance's radiators in against the hull as the missile closed, and they come through.
-  const testLog = page.getByRole('region', { name: 'Test log' });
+  const testLog = page.getByRole('region', { name: 'Test log', includeHidden: true });
   await expect(testLog).toContainText(/Blue missile \d+ detonated 10 kt 1\.00 km from Red/, {
     timeout: SIMULATION_EXPECT_TIMEOUT,
   });
   await expect(testLog).toContainText('Red laser lost (middle mount');
   await expect(testLog).not.toContainText('Red radiator lost');
   await expect(testLog).not.toContainText('armour breached');
-  await expect(page.getByRole('list', { name: 'Battle log' })).toContainText(
+  await expect(page.getByRole('list', { name: 'Battle log', includeHidden: true })).toContainText(
     'Nuclear warhead hit enemy · 10 kt at 1.0 km',
   );
   // With its only weapon gone, the Lance is disabled.
@@ -159,6 +162,7 @@ test('anti-missile missiles intercept a salvo', async ({ page }) => {
   await chooseSide(page, 'Red', { design: 'Bulwark' });
   await page.getByRole('button', { name: 'Start battle' }).click();
   await page.keyboard.press(' ');
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByLabel('Missiles', { exact: true }).fill('2');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await page.getByRole('button', { name: 'Resume' }).click();
@@ -167,7 +171,7 @@ test('anti-missile missiles intercept a salvo', async ({ page }) => {
   );
 
   // The Bulwark's automatic defence meets each missile with an anti-missile missile.
-  const testLog = page.getByRole('region', { name: 'Test log' });
+  const testLog = page.getByRole('region', { name: 'Test log', includeHidden: true });
   await expect(testLog).toContainText(/Red launched anti-missile missile \d+ at missile 1 /);
   await expect(testLog).toContainText(/Red launched anti-missile missile \d+ at missile 2 /);
   await expect(page.getByLabel('Anti-missile missiles in flight')).toHaveText(
@@ -177,7 +181,7 @@ test('anti-missile missiles intercept a salvo', async ({ page }) => {
   await expect(testLog).toContainText(/Red anti-missile missile \d+ (shot down|missed) Blue/, {
     timeout: SIMULATION_EXPECT_TIMEOUT,
   });
-  const battleLog = page.getByRole('list', { name: 'Battle log' });
+  const battleLog = page.getByRole('list', { name: 'Battle log', includeHidden: true });
   await expect(battleLog).toContainText(/Our missile shot down by anti-missile missile|missed/);
 });
 

@@ -607,7 +607,7 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     weaponsState,
     missilesSection,
   );
-  const element = el(
+  const navigationElement = el(
     'section',
     { className: 'panel', attrs: { 'aria-label': 'Orders' } },
     el('h2', { text: 'Orders' }),
@@ -632,9 +632,10 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     ),
     manoeuvreState,
     planState,
-    el('h3', { text: 'Withdrawal' }),
-    withdrawState,
-    refusal,
+  );
+  const powerElement = el(
+    'section',
+    { className: 'panel', attrs: { 'aria-label': 'Power orders' } },
     el('h3', { text: 'Power' }),
     el('p', {
       className: 'order-state',
@@ -642,14 +643,24 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     }),
     priorityList,
     radiatorsSection,
+  );
+  const weaponsElement = el(
+    'section',
+    { className: 'panel', attrs: { 'aria-label': 'Weapons orders' } },
     shieldsSection,
     weaponsSection,
     antiMissileSection,
     pointDefenceSection,
   );
+  const messagesElement = el('div', {}, withdrawState, refusal);
+  const element = el('div', {}, messagesElement, navigationElement, powerElement, weaponsElement);
 
   return {
     element,
+    navigationElement,
+    powerElement,
+    weaponsElement,
+    messagesElement,
     withdrawButton: withdraw,
     /** Shows why the battle refused the latest order. */
     refused(reason: string) {

@@ -12,9 +12,12 @@ const credits = async (page: Page): Promise<number> =>
  * time compression back to 1×, so it is raised again until the result shows.
  */
 const fightToTheEnd = async (page: Page) => {
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByRole('button', { name: 'Fire freely' }).click();
+  await page.getByRole('tab', { name: 'Navigation', exact: true }).click();
   await page.getByLabel('Range km').fill('2000');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByLabel('Missiles', { exact: true }).fill('12');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   const result = page.getByRole('dialog', { name: 'Battle result' });
@@ -72,6 +75,7 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
   );
   await page.getByRole('button', { name: 'Fight', exact: true }).click();
   await expect(page.getByLabel('Own ship', { exact: true })).toContainText('Ship 1 · Quiver');
+  await page.getByRole('tab', { name: 'Enemy', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Enemy design' })).toContainText('Corsair class');
   const result = await fightToTheEnd(page);
   await expect(result.getByRole('heading')).toHaveText('Ship 1 wins');
