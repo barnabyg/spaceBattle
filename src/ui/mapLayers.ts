@@ -22,15 +22,25 @@ export type MapLayer = (typeof MAP_LAYERS)[number];
 /** Whether each layer is shown. */
 export type MapLayers = Readonly<Record<MapLayer, boolean>>;
 
-export const DEFAULT_MAP_LAYERS: MapLayers = Object.fromEntries(
-  MAP_LAYERS.map((layer) => [layer, true]),
-) as Record<MapLayer, boolean>;
+export const DEFAULT_MAP_LAYERS: MapLayers = {
+  velocity: true,
+  'relative-velocity': true,
+  heading: true,
+  trail: false,
+  'drop-lines': false,
+  'projected-path': false,
+  'planned-burns': false,
+  'range-rings': true,
+  beams: true,
+  munitions: true,
+  flashes: true,
+};
 
 const KEY = 'space-battle.map-layers';
 
 /**
  * The layers kept shown or hidden for this session; a layer with no valid setting kept, or every
- * layer where storage is blocked, is shown.
+ * layer where storage is blocked, uses its default.
  */
 export const loadMapLayers = (storage: SettingsStorage | null = sessionStore()): MapLayers => {
   try {

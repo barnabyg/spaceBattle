@@ -23,21 +23,26 @@ const blockedStorage: Pick<Storage, 'getItem' | 'setItem'> = {
 };
 
 describe('map layers', () => {
-  it('start with every layer shown', () => {
+  it('start with auxiliary motion layers hidden', () => {
     expect(loadMapLayers(memoryStorage())).toEqual(DEFAULT_MAP_LAYERS);
-    expect(MAP_LAYERS.every((layer) => DEFAULT_MAP_LAYERS[layer])).toBe(true);
+    expect(MAP_LAYERS.filter((layer) => !DEFAULT_MAP_LAYERS[layer])).toEqual([
+      'trail',
+      'drop-lines',
+      'projected-path',
+      'planned-burns',
+    ]);
   });
 
   it('keep each layer shown or hidden for the session, apart from the others', () => {
     const storage = memoryStorage();
-    saveMapLayers({ ...DEFAULT_MAP_LAYERS, trail: false, beams: false }, storage);
+    saveMapLayers({ ...DEFAULT_MAP_LAYERS, trail: true, beams: false }, storage);
     const kept = loadMapLayers(storage);
-    expect(kept.trail).toBe(false);
+    expect(kept.trail).toBe(true);
     expect(kept.beams).toBe(false);
-    expect(MAP_LAYERS.filter((layer) => !kept[layer])).toEqual(['trail', 'beams']);
+    expect(kept).toEqual({ ...DEFAULT_MAP_LAYERS, trail: true, beams: false });
   });
 
-  it('fall back to every layer shown when storage is blocked', () => {
+  it('fall back to defaults when storage is blocked', () => {
     expect(loadMapLayers(blockedStorage)).toEqual(DEFAULT_MAP_LAYERS);
     expect(() => {
       saveMapLayers({ ...DEFAULT_MAP_LAYERS, velocity: false }, blockedStorage);
@@ -45,7 +50,7 @@ describe('map layers', () => {
     expect(loadMapLayers(null)).toEqual(DEFAULT_MAP_LAYERS);
   });
 
-  it('show any layer whose kept setting is missing or nonsense', () => {
+  it('use defaults for any layer whose kept setting is missing or nonsense', () => {
     const storage = memoryStorage();
     storage.setItem('space-battle.map-layers', '{"trail":false,"heading":"no","beams":0}');
     expect(loadMapLayers(storage)).toEqual({ ...DEFAULT_MAP_LAYERS, trail: false });

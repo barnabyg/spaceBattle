@@ -157,7 +157,22 @@ In battle, the time controls in the top bar pause the battle (or Space) and set 
 
 You know the enemy only as a contact: its position and motion always, the rest only as far as your sensors make it out at the range. The tactical map labels the contact with what is made out (position only, silhouette, sections, mounts), and **Aim at** in the weapons orders offers each section and mount once it is made out; until then the weapons aim at the whole ship.
 
-The tactical map's **Legend** shows how each layer is drawn and what it means, such as velocity, relative velocity, heading, trails and planned burns, with a switch to hide or show each one; the choices are kept for the browser session.
+The tactical map's **Legend** shows how each layer is drawn and what it means, such as velocity, relative velocity, heading, trails and planned burns, with a switch to hide or show each one; the choices are kept for the browser session. **Trail**, **Drop lines**, **Projected path** and **Planned burns** start off by default; saved session choices take precedence.
+
+To check the defaults manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }`
+from `C:/docs/git/spaceBattle` in PowerShell 7. Open a fresh Firefox browser session, start a
+free battle and open **Legend**. Those four layers should be unchecked and the others checked.
+Enable **Trail** and **Planned burns**, pause and order **Hold** at 150,000 km: planned burn
+labels should appear. Disable **Planned burns** to hide them. Reload and start another battle;
+the changed layer choices should be retained.
+
+Beam arrows show the direction of fire without source-to-target text above them. Accessible
+descriptions still name the firing ship, beam kind and target. To check, launch with
+`npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from `C:/docs/git/spaceBattle` in
+PowerShell 7. Start a free battle, target the enemy, select **Fire freely** and **Close**.
+Once the ships exchange laser fire, check the tactical map: arrows should point from each
+firing ship towards its target without a “Blue → Red” label. Toggle **Beams** in **Legend**
+to hide and restore the beams and arrows together.
 
 The map's **Separation** readout names the followed contact (the weapons target, or the first
 contact otherwise) and shows its full three-dimensional distance in km. It stays readable while
@@ -207,5 +222,10 @@ Ship models in the shipyard and instrument view share a faceted prow, armour hou
 To check time compression manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }`
 from `C:/docs/git/spaceBattle` in PowerShell 7. Start a free battle, select Fire freely and a higher
 time multiplier. Routine fire should preserve it. A major damage event should select 1× and show
-“Slowed to 1×” with the affected ship and cause. Damage hidden from your sensors shows the
-generic cause “Combat damage”. Choosing a speed should clear that message.
+“Slowed to 1×” with the affected ship and cause. Enemy damage hidden from your sensors shows
+“Enemy combat damage (details unavailable)”; your own **Damage** panel can remain undamaged
+because this event affected the enemy. Choosing a speed should clear that message.
+To check that case, let your lasers damage the enemy before it reaches its own weapon range:
+the enemy damage message should appear without implying damage to your own ship. The panel
+should still show your ship's actual armour and integrity. An incoming major hit should name
+your ship and the affected part instead.

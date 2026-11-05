@@ -25,6 +25,7 @@ test('beam arrows identify both firing sides and clear with fire or the beam lay
           if (!(chevrons instanceof HTMLElement)) throw new Error('Missing beam arrow');
           return {
             label: mark.getAttribute('aria-label'),
+            text: mark.textContent,
             angle: chevrons.style.getPropertyValue('--angle'),
             size: getComputedStyle(chevrons).width,
           };
@@ -70,11 +71,13 @@ test('beam arrows identify both firing sides and clear with fire or the beam lay
     'Red laser fire toward Blue',
   ]);
   expect(readings.firing.every((mark) => mark.angle.endsWith('rad'))).toBe(true);
+  expect(readings.firing.map((mark) => mark.text)).toEqual(['', '']);
   expect(readings.firing[0]?.angle).not.toBe(readings.firing[1]?.angle);
   expect(readings.moving.map((mark) => mark.label)).toEqual(
     readings.firing.map((mark) => mark.label),
   );
   expect(readings.moving.map((mark) => mark.size)).toEqual(['20px', '20px']);
+  expect(readings.moving.map((mark) => mark.text)).toEqual(['', '']);
   expect(readings.hidden).toEqual([]);
   expect(readings.incoming.map((mark) => mark.label)).toEqual(['Red laser fire toward Blue']);
   expect(readings.stopped).toEqual([]);

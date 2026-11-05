@@ -82,15 +82,19 @@ test('the map legend explains each layer and switches it off and on, kept for th
   await expect(layers).toBeVisible();
   const toggles = layers.getByRole('checkbox');
   await expect(toggles).toHaveCount(11);
-  for (const toggle of await toggles.all()) await expect(toggle).toBeChecked();
+  const hiddenByDefault = ['Trail', 'Drop lines', 'Projected path', 'Planned burns'];
+  for (const name of hiddenByDefault) {
+    await expect(layers.getByRole('checkbox', { name, exact: true })).not.toBeChecked();
+  }
+  await expect(layers.getByRole('checkbox', { checked: true })).toHaveCount(7);
 
-  // Hiding the range rings hides their labels too, and leaves every other layer shown.
+  // Hiding the range rings hides their labels too, without changing other layers.
   const rings = layers.getByRole('checkbox', { name: 'Range rings' });
   const ringLabels = map.locator('.range-label');
   await expect(ringLabels.first()).toBeVisible();
   await rings.uncheck();
   await expect(ringLabels.filter({ visible: true })).toHaveCount(0);
-  await expect(layers.getByRole('checkbox', { checked: false })).toHaveCount(1);
+  await expect(layers.getByRole('checkbox', { checked: false })).toHaveCount(5);
   await rings.check();
   await expect(ringLabels.first()).toBeVisible();
 
@@ -99,7 +103,7 @@ test('the map legend explains each layer and switches it off and on, kept for th
     layers.getByRole('checkbox', { name: 'Velocity', exact: true }),
   ).toHaveAccessibleDescription(/fixed frame/);
 
-  await layers.getByRole('checkbox', { name: 'Trail' }).uncheck();
+  await layers.getByRole('checkbox', { name: 'Trail' }).check();
   await open.click();
   await expect(layers).toBeHidden();
 
@@ -107,7 +111,7 @@ test('the map legend explains each layer and switches it off and on, kept for th
   await page.reload();
   await startFreeBattle(page);
   await map.getByRole('button', { name: 'Legend' }).click();
-  await expect(layers.getByRole('checkbox', { name: 'Trail' })).not.toBeChecked();
+  await expect(layers.getByRole('checkbox', { name: 'Trail' })).toBeChecked();
   await expect(layers.getByRole('checkbox', { name: 'Range rings' })).toBeChecked();
 });
 
@@ -118,9 +122,11 @@ test('hiding planned burns hides their labels', async ({ page }) => {
   await page.getByRole('button', { name: 'Hold', exact: true }).click();
   const map = page.getByRole('region', { name: 'Tactical map' });
   const burns = map.locator('.planned-burn');
-  await expect(burns.first()).toBeVisible();
+  await expect(burns.filter({ visible: true })).toHaveCount(0);
   await map.getByRole('button', { name: 'Legend' }).click();
   const toggle = map.getByRole('checkbox', { name: 'Planned burns' });
+  await toggle.check();
+  await expect(burns.first()).toBeVisible();
   await toggle.uncheck();
   await expect(burns.filter({ visible: true })).toHaveCount(0);
   await toggle.check();
