@@ -6,6 +6,7 @@ import { createDamagePanel } from './damagePanel';
 import { designSummary } from './designSummary';
 import { createEndBattle } from './endBattle';
 import { createInstrumentView } from './instrumentView';
+import { createHitIndicator } from './hitIndicator';
 import { createOrdersPanel } from './ordersPanel';
 import { createResultScreen } from './resultScreen';
 import { createShipSound } from './shipSound';
@@ -67,6 +68,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   const map = createTacticalMap(ordered, colours);
   const instruments = createInstrumentView(ordered, colours);
   const status = createStatusPanel();
+  const hits = createHitIndicator();
   const damage = createDamagePanel(viewer.id);
   const orders = createOrdersPanel((order) => {
     // The battle refuses orders the rules forbid, such as pursuing a withdrawing enemy.
@@ -151,6 +153,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
       'aside',
       { className: 'side-panel' },
       status.summaryElement,
+      hits.element,
       // Only a player side takes orders from the screen; a computer side's captain gives its own.
       viewer.commander === 'player'
         ? orders.messagesElement
@@ -173,6 +176,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     const observation = battle.observe(viewer.id);
     timeControls.update();
     status.update(observation);
+    hits.update(observation, events, now / 1000);
     damage.update(observation);
     if (enemy) enemyPanel?.update(battle.observe(enemy.id));
     orders.update(observation);
