@@ -311,7 +311,6 @@ export const createTacticalMap = (
         className: 'beam-direction__chevrons',
         attrs: { 'aria-hidden': 'true' },
       });
-      const text = el('span', { className: 'beam-direction__text' });
       const label = new CSS2DObject(
         el(
           'span',
@@ -320,12 +319,11 @@ export const createTacticalMap = (
             attrs: { role: 'img', style: `--beam-colour: ${colour}` },
           },
           chevrons,
-          text,
         ),
       );
       label.visible = false;
       scene.add(onLayer(line, 'beams'), onLayer(label, 'beams'));
-      return { source: side.id, kind, line, label, chevrons, text, direction: new THREE.Vector3() };
+      return { source: side.id, kind, line, label, chevrons, direction: new THREE.Vector3() };
     }),
   );
 
@@ -622,7 +620,6 @@ export const createTacticalMap = (
           'aria-label',
           `${sideName(source)} ${kind} fire toward ${sideName(destination.sideId)}`,
         );
-        beam.text.textContent = `${sideName(source)} → ${sideName(destination.sideId)}`;
       }
       showMunitions(observation);
       showBurst(observation);

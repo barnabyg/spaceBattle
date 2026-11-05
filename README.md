@@ -166,6 +166,14 @@ Enable **Trail** and **Planned burns**, pause and order **Hold** at 150,000 km: 
 labels should appear. Disable **Planned burns** to hide them. Reload and start another battle;
 the changed layer choices should be retained.
 
+Beam arrows show the direction of fire without source-to-target text above them. Accessible
+descriptions still name the firing ship, beam kind and target. To check, launch with
+`npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from `C:/docs/git/spaceBattle` in
+PowerShell 7. Start a free battle, target the enemy, select **Fire freely** and **Close**.
+Once the ships exchange laser fire, check the tactical map: arrows should point from each
+firing ship towards its target without a “Blue → Red” label. Toggle **Beams** in **Legend**
+to hide and restore the beams and arrows together.
+
 The map's **Separation** readout names the followed contact (the weapons target, or the first
 contact otherwise) and shows its full three-dimensional distance in km. It stays readable while
 zooming and rotating, holds steady while paused, and reads **No contact** if none is observed.
