@@ -57,6 +57,24 @@ battle log. Test mode adds **Enemy** and **Log** tabs. Only the selected panel s
 values and each panel's scroll position survive switching. Focus a tab and use Left/Right,
 Home or End to switch with the keyboard. Withdrawal and refused-order messages stay visible.
 
+The right sidebar's **Incoming hits** schematic stays visible above every tab. Its forward,
+middle and engine sections turn red and show **Hit** for 1.5 real seconds when struck,
+including hits on their mounts and sections exposed to nuclear bursts. Repeated hits renew
+the indication. This works even when sensors cannot resolve the enemy weapon or time
+compression skips past the shot's animation. It shows recent strikes, rather than remaining
+armour or integrity; the **Damage** tab provides those details. Pulses fade while paused too.
+
+To check manually, run this command in PowerShell 7 from `C:/docs/git/spaceBattle`:
+
+```powershell
+npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }
+```
+
+Start a free battle against the computer, close to weapon range and let it fire on you.
+Watch the schematic while switching between **Navigation**, **Weapons** and **Damage**.
+The struck section should turn red briefly and show **Hit**, matching the incoming hit's
+section in the battle log. At high time compression the pulse should still be readable.
+
 For a manual check, run this command in PowerShell 7 from `C:/docs/git/spaceBattle`:
 
 ```powershell

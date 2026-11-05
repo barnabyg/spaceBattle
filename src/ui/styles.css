@@ -256,6 +256,60 @@ button {
   flex: 1;
 }
 
+.hit-indicator {
+  flex-shrink: 0;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.hit-indicator h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.hit-indicator__ship {
+  display: grid;
+  grid-template-columns: 1fr 1.25fr 1fr;
+  gap: 4px;
+  padding: 0 0.25rem;
+}
+
+.hit-indicator__section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  border: 1px solid #63758b;
+  background: #172737;
+  color: #d4dfef;
+  font-size: 0.75rem;
+  transition: background-color 0.25s;
+}
+
+.hit-indicator__section--forward {
+  border-radius: 65% 0 0 65%;
+  padding-left: 0.3rem;
+}
+
+.hit-indicator__section--engine {
+  border-radius: 0 0.4rem 0.4rem 0;
+  border-right: 5px double #8b9db3;
+}
+
+.hit-indicator__section.is-hit {
+  background: #a62131;
+  border-color: #ff8790;
+  color: #fff;
+}
+
+.hit-indicator__state {
+  font-size: 0.65rem;
+  font-weight: 700;
+  min-height: 1em;
+}
+
 .battle-tab-list {
   display: flex;
   flex-wrap: wrap;
