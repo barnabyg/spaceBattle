@@ -319,6 +319,10 @@ export const createSetupScreen = (
       text: 'Choose a design for each side and who commands it. You command at most one side and see the battle from it, or from Blue if the computer commands both.',
     }),
     scenario.element,
+    el('p', {
+      className: 'menu-note',
+      text: 'Short-range ships must close under fire. Firing competes with drive power, making it harder to keep an enemy at a distance. Kinetic slugs can be dodged at long range, so computer captains save them for close shots. More thrust, armour, shields or missiles can change a matchup; early withdrawal may be necessary, and a withdrawing ship can still be hit.',
+    }),
     el('div', { className: 'setup-sides' }, blue.element, red.element),
     ...(test ? [test.element] : []),
     el('div', { className: 'setup-actions' }, back, start),

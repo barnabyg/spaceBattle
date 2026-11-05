@@ -117,6 +117,14 @@ const FIGHTING_FRACTION = 1.05;
  * left: more than the autopilot's own, as the opening ranges are long and battles otherwise drag.
  */
 const APPROACH_FRACTION = 0.2;
+/** An order-of-magnitude disadvantage calls for an attack run rather than a settled approach. */
+const ATTACK_RUN_RATIO = 10;
+/** Target closing speed: half the expendable delta-v, leaving room for braking and the reserve. */
+const ATTACK_RUN_FRACTION = 0.5;
+/** Keep the last half of a section's armour for withdrawal from an exposed attack run. */
+const ATTACK_RUN_ARMOUR = 0.5;
+/** Do not burn across the intended course while turning towards it. */
+const ATTACK_RUN_ALIGNMENT = Math.cos((3 * Math.PI) / 180);
 /** Radiators deploy above this temperature, K... */
 const DEPLOY_TEMPERATURE = BASE_TEMPERATURE + 0.5 * (OVERHEAT_TEMPERATURE - BASE_TEMPERATURE);
 /** ...and once out, stay out until the ship cools below this, K. */
@@ -417,12 +425,17 @@ const jink = (
  * Range: if it outranges the enemy it holds just inside its own reach, out of the enemy's;
  * otherwise it closes to where its weapons bite hard. It heads there at a fifth of its delta-v,
  * as the opening ranges are long. If neither side fires and the range stops shrinking for a
- * while, it gives up on standing off and closes in for good. Near the range it wants, a highly
+ * while, it gives up on standing off and closes in for good. Medium and high captains make an
+ * attack run across a very large range disadvantage, trading a settled arrival for speed and
+ * targeting half their expendable delta-v as closing speed. Gunboats also start this way against
+ * unresolved arms when far beyond their own reach. Near the range it wants, a highly
  * skilled captain turns its best-armoured section to the enemy, unless enemy missiles are on
  * their way. It never pursues a withdrawing enemy.
  *
  * Withdrawal: it withdraws once an armed ship has nothing left to fight with, or at its reserve
- * (a highly skilled one, out of the fight, with half the reserve again to spare). A ship built
+ * (a highly skilled one, out of the fight, with half the reserve again to spare). An attack run
+ * is abandoned outside its own reach once any armoured section has half its armour left;
+ * withdrawal can still fail under enemy fire. A ship built
  * without weapons stays.
  *
  * Weapons: it targets the enemy and fires its beams freely. It holds its kinetic guns' fire
@@ -430,6 +443,9 @@ const jink = (
  * to throw its slugs away. It launches a salvo of anti-ship missiles, one from each working
  * launcher, whenever the enemy is within their reach, none of them is still in flight and no
  * enemy missile is on its way to it.
+ *
+ * Power: the drive comes first until its own weapons can engage; incoming missiles still give
+ * weapons priority for defence. Firing and keeping distance compete for the same power.
  *
  * Defence: it keeps its point defence on missiles, ignoring the enemy ship, unless point defence
  * is the only weapon it has left, when it turns it on the ship too and fights at its short reach.
@@ -467,6 +483,48 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
   /** When the battle last got somewhere, s, and the range to measure progress from, m. */
   let progress: { time: number; range: number } | null = null;
   let pressing = false;
+  /** Closing speed chosen on committing to an attack run, m/s; fixed as propellant is spent. */
+  let attackSpeed: number | null = null;
+
+  /**
+   * A heavily outranged ship must cross the enemy's firing zone quickly. Unlike a settled
+   * approach, this accepts a fast pass through its own weapon range instead of braking early.
+   * Cancel transverse relative velocity as well as building closing speed, using contact
+   * motion alone. The normal manoeuvre takes over in range; the reserve still ends the attack.
+   */
+  const attackRun = (
+    ship: OwnShipObservation,
+    enemy: ContactObservation,
+    range: number,
+    reach: number,
+    enemyReach: number,
+  ): [AttitudeOrder, BurnOrder] | null => {
+    const distant = range > ATTACK_RUN_RATIO * reach;
+    const outmatched = enemyReach > ATTACK_RUN_RATIO * reach;
+    // Gunboats need a short approach regardless of unseen enemy arms. Other designs wait for
+    // evidence of a large range disadvantage rather than rushing into unresolved weapons.
+    const unknown = enemyReach === 0 && !enemy.fullyResolved;
+    const gunboat = reach === gunReach(ship);
+    if (
+      !profile.predicts ||
+      reach === 0 ||
+      range <= reach ||
+      !(outmatched || (unknown && ((distant && gunboat) || attackSpeed !== null)))
+    ) {
+      attackSpeed = null;
+      return null;
+    }
+    attackSpeed ??= ATTACK_RUN_FRACTION * Math.max(0, ship.deltaV - ship.reserve);
+    const sight = normalize(sub(enemy.position, ship.position));
+    const wanted = sub(scale(sight, attackSpeed), sub(ship.velocity, enemy.velocity));
+    const error = Math.hypot(wanted.x, wanted.y, wanted.z);
+    // Below 1 m/s of error, coast; otherwise burn only once aligned with the correction.
+    const throttle = error > 1 && dot(ship.nose, normalize(wanted)) >= ATTACK_RUN_ALIGNMENT ? 1 : 0;
+    return [
+      { type: 'attitude', mode: 'direction', direction: error > 1 ? wanted : ship.nose },
+      { type: 'burn', throttle, duration: 2 * profile.reconsider },
+    ];
+  };
 
   /** Notes fire either way or a shrinking range; a long spell of neither sends it in. */
   const notice = (observation: SideObservation, range: number) => {
@@ -594,6 +652,7 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       const lastResort = ownReach(ship) === 0 && pointDefenceReach(ship) > 0;
       const reach = lastResort ? pointDefenceReach(ship) : ownReach(ship);
       const fighting = range <= FIGHTING_FRACTION * Math.max(reach, enemyReach);
+      const canAttack = range <= FIGHTING_FRACTION * reach;
       const hot =
         ship.heat.temperature >
         (ship.heat.radiatorsDeployed ? RETRACT_TEMPERATURE : DEPLOY_TEMPERATURE);
@@ -613,7 +672,7 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       };
       const power: PowerOrder = {
         type: 'power',
-        priorities: fighting || threats.length > 0 ? COMBAT_PRIORITIES : MANOEUVRE_PRIORITIES,
+        priorities: canAttack || threats.length > 0 ? COMBAT_PRIORITIES : MANOEUVRE_PRIORITIES,
       };
       const pointDefence: PointDefenceOrder = {
         type: 'point-defence',
@@ -624,15 +683,29 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       // some of the reserve to spare while out of the fight.
       const reserve =
         profile.withdrawsEarly && !fighting ? EARLY_WITHDRAWAL * ship.reserve : ship.reserve;
-      const leaving = ship.withdrawing || (armed && reach === 0) || ship.deltaV <= reserve;
+      const underFire = observation.events.some(
+        (event) => (event.type === 'hit' || event.type === 'impact') && event.target === side,
+      );
+      const exposed =
+        range > reach &&
+        attackSpeed !== null &&
+        (enemyReach > reach || underFire) &&
+        ship.sections.some(
+          (section) =>
+            section.armour.thickness > 0 &&
+            section.armour.remaining <= ATTACK_RUN_ARMOUR * section.armour.thickness,
+        );
+      const leaving =
+        ship.withdrawing || exposed || (armed && reach === 0) || ship.deltaV <= reserve;
       // A withdrawing ship takes no other course, and the rules forbid pursuing one.
       const moving = !leaving && !enemy.withdrawing;
       const dodge = moving && profile.predicts ? jink(observation, side, enemy) : null;
+      const attack = moving ? attackRun(ship, enemy, range, reach, enemyReach) : null;
       const goal = moving ? manoeuvre(ship, reach, enemyReach) : null;
       // A ship that stops steering is easy for missiles, so it turns its armour only when none is
       // on its way.
       const turning = profile.turnsArmour && threats.length === 0;
-      const course = dodge ?? (goal && turning ? armourTowards(ship, enemy, goal) : goal);
+      const course = dodge ?? attack ?? (goal && turning ? armourTowards(ship, enemy, goal) : goal);
       const orders: Order[] = [
         ...(leaving ? [{ type: 'withdraw' } as const] : []),
         weapons,
