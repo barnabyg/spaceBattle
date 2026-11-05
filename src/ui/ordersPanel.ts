@@ -587,7 +587,6 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     manoeuvreState,
     planState,
     el('h3', { text: 'Withdrawal' }),
-    el('div', { className: 'order-row' }, withdraw),
     withdrawState,
     refusal,
     el('h3', { text: 'Power' }),
@@ -627,6 +626,7 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
 
   return {
     element,
+    withdrawButton: withdraw,
     /** Shows why the battle refused the latest order. */
     refused(reason: string) {
       refusal.textContent = reason;
@@ -661,7 +661,7 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
         : '';
       // Pressed once the withdrawal is ordered, not while a first click waits for confirmation;
       // it cannot be taken back, so the button is then disabled.
-      withdraw.disabled = ship.withdrawing;
+      withdraw.disabled = ship.withdrawing || observation.outcome !== null;
       setPressed(withdraw, ship.withdrawing);
       const enemyWithdrawing = observation.contacts.some((c) => c.withdrawing);
       withdrawState.textContent = ship.withdrawing

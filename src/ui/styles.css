@@ -75,6 +75,12 @@ button {
   gap: 0.6rem;
 }
 
+.battle-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
 .battle-clock {
   font-variant-numeric: tabular-nums;
   font-size: 1.2rem;

@@ -114,7 +114,12 @@ in the legend. Zoom and rotate, comparing heading with motion: the circle and di
 remain identifiable independently of the arrow tips.
 The [map position review](docs/research/map-positions.png) shows both symbols and their motion arrows.
 
-Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** (click twice to confirm) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost.
+Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** in the top bar beside **End battle** (click twice to confirm; moving focus away cancels confirmation) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost.
+
+To check withdrawal manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }`
+from `C:/docs/git/spaceBattle` in PowerShell 7. Start a free battle in Firefox. Click **Withdraw**
+in the top bar once, move focus to another control and check that confirmation cancels. Click
+**Withdraw** twice to order withdrawal; the button disables and the ship leaves when safe.
 
 In battle, the captain of a player side hears only what reaches their own hull, since there is no sound in vacuum: the drive's rumble while it burns, the ship's own guns, beams and launches, hits on the hull, and alarms for damage, overheating, an incoming missile and delta-v near the reserve. Enemy fire that misses makes no sound, and a battle between computer sides is silent. **Mute** (or M) and the volume slider in the top bar keep their settings for the browser session.
 

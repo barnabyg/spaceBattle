@@ -81,6 +81,7 @@ test('a computer-vs-computer battle is watched, takes no orders and ends with no
 }) => {
   await startFreeBattle(page, { blue: { commander: 'Computer' } });
   await expect(page.getByRole('region', { name: 'Orders' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Withdraw', exact: true })).toHaveCount(0);
   await expect(page.getByText('Blue is commanded by the computer.')).toBeVisible();
 
   await page.getByRole('button', { name: 'End battle' }).click();

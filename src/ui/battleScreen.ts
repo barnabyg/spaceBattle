@@ -114,7 +114,12 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
           ]
         : []),
       ...(sound ? [sound.element] : []),
-      endBattle.button,
+      el(
+        'div',
+        { className: 'battle-actions' },
+        ...(viewer.commander === 'player' ? [orders.withdrawButton] : []),
+        endBattle.button,
+      ),
     ),
     map.element,
     instruments.element,
