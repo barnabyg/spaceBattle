@@ -15,7 +15,7 @@ const slowdownReason = (
   viewer: SideId,
 ): string => {
   // Damage to enemy internals is absent from this captain's observation.
-  if (!involves(event, viewer)) return 'Combat damage';
+  if (!involves(event, viewer)) return 'Enemy combat damage (details unavailable)';
   const name = (id: string) => sides.find((side) => side.id === id)?.name ?? id;
   switch (event.type) {
     case 'detonation':

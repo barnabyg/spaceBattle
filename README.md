@@ -222,5 +222,10 @@ Ship models in the shipyard and instrument view share a faceted prow, armour hou
 To check time compression manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }`
 from `C:/docs/git/spaceBattle` in PowerShell 7. Start a free battle, select Fire freely and a higher
 time multiplier. Routine fire should preserve it. A major damage event should select 1× and show
-“Slowed to 1×” with the affected ship and cause. Damage hidden from your sensors shows the
-generic cause “Combat damage”. Choosing a speed should clear that message.
+“Slowed to 1×” with the affected ship and cause. Enemy damage hidden from your sensors shows
+“Enemy combat damage (details unavailable)”; your own **Damage** panel can remain undamaged
+because this event affected the enemy. Choosing a speed should clear that message.
+To check that case, let your lasers damage the enemy before it reaches its own weapon range:
+the enemy damage message should appear without implying damage to your own ship. The panel
+should still show your ship's actual armour and integrity. An incoming major hit should name
+your ship and the affected part instead.
