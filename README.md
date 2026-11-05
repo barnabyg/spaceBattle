@@ -144,6 +144,15 @@ The game opens on the main menu. Choose **Free battle**, pick a **Scenario** for
 
 A low-skill computer captain reconsiders its plan only every 20 seconds, does not dodge, leaves power and heat alone and always closes in; a medium one manages power and heat and keeps out of reach of an enemy it outranges; a high one also turns its best armour to the enemy and withdraws with some reserve to spare. Every computer captain knows the enemy only through its sensors, and withdraws once it has nothing left to fight with or reaches its reserve.
 
+Medium and high captains prioritise the drive until their own weapons can engage.
+Across a very large range disadvantage they attempt a fast pass rather than braking
+early to settle at their preferred range; gunboats can start this approach before
+the enemy's weapons resolve. They abandon an exposed approach with half a section's
+armour left. Firing competes with drive power for a ship trying to keep its distance.
+Sling remains vulnerable to Lance from a long starting range, and a ship can still
+be disabled during withdrawal. See the [range-balance evaluation](docs/research/range-balance.md)
+for the policy, matchup results and manual checks.
+
 In battle, the time controls in the top bar pause the battle (or Space) and set its time compression with one button per speed, 1×, 10×, 100×, 500× and 1000× (or keys 1–5, and + / − to step between them); the chosen speed stays selected while paused. Routine hits, impacts, launches, interceptions and misses preserve the selected speed. Nuclear detonations, magazine explosions, armour breaches, component loss, structural failure, withdrawal and battle end drop time compression back to 1×. The time controls show the cause of an automatic slowdown until you choose a speed again.
 
 You know the enemy only as a contact: its position and motion always, the rest only as far as your sensors make it out at the range. The tactical map labels the contact with what is made out (position only, silhouette, sections, mounts), and **Aim at** in the weapons orders offers each section and mount once it is made out; until then the weapons aim at the whole ship.
