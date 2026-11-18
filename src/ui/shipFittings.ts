@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { SectionKind } from '../sim/design';
-import { sectionGeometry } from './shipDetail';
+import { mapHullFaces, sectionGeometry } from './shipDetail';
 import type { HullIdentity } from '../sim/exterior';
 
 /** Four octagonal stations form a substantial armour shell with tapered ends and flat facets. */
@@ -23,11 +23,9 @@ const armourShell = (size: THREE.Vector3, front: number, aft: number): THREE.Buf
     [0.5, front],
   ];
   const positions: number[] = [];
-  const uv: number[] = [];
   for (const [x = 0, scale = 1] of stations) {
     for (const [y = 0, z = 0] of outline) {
       positions.push(x * size.x, y * size.y * scale, z * size.z * scale);
-      uv.push(x + 0.5, z + 0.5);
     }
   }
   const indices: number[] = [];
@@ -44,11 +42,12 @@ const armourShell = (size: THREE.Vector3, front: number, aft: number): THREE.Buf
   }
   const indexed = new THREE.BufferGeometry();
   indexed.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  indexed.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   indexed.setIndex(indices);
   const geometry = indexed.toNonIndexed();
   indexed.dispose();
   geometry.computeVertexNormals();
+  geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(indices.length * 2), 2));
+  mapHullFaces(geometry, size);
   return geometry;
 };
 
@@ -262,7 +261,28 @@ export const hullFittings = (
         [length * 0.52, 0, sz * width * 0.25],
       );
     }
-  } else if (section === 'engine') {
+  } else if (section === 'middle') {
+    // Short framed bays leave space for side-mounted equipment. Alternating
+    // diagonal stays tie the longitudinal service trunk to the upper rail.
+    for (const side of [-1, 1]) {
+      for (let bay = 0; bay < 4; bay++) {
+        const x = length * (bay - 1.5) * 0.22;
+        const z = side * width;
+        assembly(() => {
+          block(2, [length * 0.21, height * 0.49, width * 0.14], [x, 0, z * 0.5]);
+          const run = length * 0.14;
+          const rise = height * 0.38;
+          add(
+            new THREE.BoxGeometry(Math.hypot(run, rise), unit * 0.048, width * 0.06),
+            0,
+            new THREE.Vector3(x, 0, z * 0.576),
+            new THREE.Euler(0, 0, (bay % 2 ? 1 : -1) * Math.atan2(rise, run)),
+          );
+          pipe(unit * 0.035, length * 0.21, [x, -height * 0.18, z * 0.57]);
+        });
+      }
+    }
+  } else {
     // Heavy aft shoulders contrast with the quieter waist; dark beds show below the armour.
     for (const sz of [-1, 1]) {
       assembly(() => {
