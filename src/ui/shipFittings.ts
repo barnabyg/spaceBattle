@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { SectionKind } from '../sim/design';
-import { sectionGeometry } from './shipDetail';
+import { mapHullFaces, sectionGeometry } from './shipDetail';
 import type { HullIdentity } from '../sim/exterior';
+import { buildShipProfile } from './shipProfile';
 
 /** Four octagonal stations form a substantial armour shell with tapered ends and flat facets. */
 const armourShell = (size: THREE.Vector3, front: number, aft: number): THREE.BufferGeometry => {
@@ -23,11 +24,9 @@ const armourShell = (size: THREE.Vector3, front: number, aft: number): THREE.Buf
     [0.5, front],
   ];
   const positions: number[] = [];
-  const uv: number[] = [];
   for (const [x = 0, scale = 1] of stations) {
     for (const [y = 0, z = 0] of outline) {
       positions.push(x * size.x, y * size.y * scale, z * size.z * scale);
-      uv.push(x + 0.5, z + 0.5);
     }
   }
   const indices: number[] = [];
@@ -44,11 +43,12 @@ const armourShell = (size: THREE.Vector3, front: number, aft: number): THREE.Buf
   }
   const indexed = new THREE.BufferGeometry();
   indexed.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  indexed.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   indexed.setIndex(indices);
   const geometry = indexed.toNonIndexed();
   indexed.dispose();
   geometry.computeVertexNormals();
+  geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(indices.length * 2), 2));
+  mapHullFaces(geometry, size);
   return geometry;
 };
 
@@ -67,6 +67,17 @@ export const hullFittings = (
   const unit = Math.min(height, width);
   const clearance = { rejections: 0 };
 
+  const attach = (geometry: THREE.BufferGeometry, material: number) => {
+    geometry.computeBoundingBox();
+    if (mounts.some((mount) => geometry.boundingBox?.intersectsBox(mount))) {
+      clearance.rejections++;
+      geometry.dispose();
+      return;
+    }
+    const flat = geometry.index ? geometry.toNonIndexed() : geometry;
+    if (flat !== geometry) geometry.dispose();
+    batches[material]?.push(flat);
+  };
   const add = (
     geometry: THREE.BufferGeometry,
     material: number,
@@ -95,16 +106,7 @@ export const hullFittings = (
       );
     }
     geometry.computeVertexNormals();
-    geometry.computeBoundingBox();
-    // Leave installed weapons, sensors and both radiator positions unobstructed.
-    if (mounts.some((mount) => geometry.boundingBox?.intersectsBox(mount))) {
-      clearance.rejections++;
-      geometry.dispose();
-      return;
-    }
-    const flat = geometry.index ? geometry.toNonIndexed() : geometry;
-    if (flat !== geometry) geometry.dispose();
-    batches[material]?.push(flat);
+    attach(geometry, material);
   };
   const block = (
     material: number,
@@ -192,34 +194,29 @@ export const hullFittings = (
   }
 
   if (section === 'forward') {
-    // Broad shoulders and a split armoured prow establish the primary silhouette.
-    for (const sz of [-1, 1]) {
-      assembly(() => {
-        shell(
-          2,
-          [length * 0.98, height * 0.65, width * 0.48],
-          [length * 0.02, -height * 0.03, sz * width * 0.55],
-        );
-        shell(
-          0,
-          [length * 1.04, height * 0.74, width * 0.6],
-          [length * 0.05, -height * 0.03, sz * width * 0.68],
-          identity.taper,
-          0.85,
-        );
-        block(
-          3,
-          [length * 0.06, height * 0.28, width * 0.012],
-          [-length * 0.1, -height * 0.03, sz * width * 0.985],
-        );
-      });
-      shell(
-        0,
-        [length * 0.7, height * 0.28, width * 0.42],
-        [length * 0.52, height * 0.44, sz * width * 0.28],
-        0.12,
-        0.8,
-      );
+    // The short conventional bow leaves the silhouette to a specialised stern.
+    if (identity.profile === 'plain') {
+      for (const sz of [-1, 1]) {
+        assembly(() => {
+          shell(
+            2,
+            [length * 0.98, height * 0.65, width * 0.48],
+            [length * 0.02, -height * 0.03, sz * width * 0.55],
+          );
+          shell(
+            0,
+            [length * 1.04, height * 0.74, width * 0.6],
+            [length * 0.05, -height * 0.03, sz * width * 0.68],
+            identity.taper,
+            0.85,
+          );
+          block(
+            3,
+            [length * 0.06, height * 0.28, width * 0.012],
+            [-length * 0.1, -height * 0.03, sz * width * 0.985],
+          );
+        });
+      }
     }
     shell(
       1,
@@ -262,7 +259,28 @@ export const hullFittings = (
         [length * 0.52, 0, sz * width * 0.25],
       );
     }
-  } else if (section === 'engine') {
+  } else if (section === 'middle') {
+    // Short framed bays leave space for side-mounted equipment. Alternating
+    // diagonal stays tie the longitudinal service trunk to the upper rail.
+    for (const side of [-1, 1]) {
+      for (let bay = 0; bay < 4; bay++) {
+        const x = length * (bay - 1.5) * 0.22;
+        const z = side * width;
+        assembly(() => {
+          block(2, [length * 0.21, height * 0.49, width * 0.14], [x, 0, z * 0.5]);
+          const run = length * 0.14;
+          const rise = height * 0.38;
+          add(
+            new THREE.BoxGeometry(Math.hypot(run, rise), unit * 0.048, width * 0.06),
+            0,
+            new THREE.Vector3(x, 0, z * 0.576),
+            new THREE.Euler(0, 0, (bay % 2 ? 1 : -1) * Math.atan2(rise, run)),
+          );
+          pipe(unit * 0.035, length * 0.21, [x, -height * 0.18, z * 0.57]);
+        });
+      }
+    }
+  } else {
     // Heavy aft shoulders contrast with the quieter waist; dark beds show below the armour.
     for (const sz of [-1, 1]) {
       assembly(() => {
@@ -317,6 +335,10 @@ export const hullFittings = (
       }
     }
   }
+
+  assembly(() => {
+    buildShipProfile(identity.profile, size, attach);
+  });
 
   // Merge static fittings by material: detail costs four draw calls per section, not one per bolt.
   batches.forEach((geometries, index) => {

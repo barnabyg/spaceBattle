@@ -16,6 +16,11 @@ Run from the repository root after `npm ci` (and `npx playwright install firefox
 | `npm run e2e`       | End-to-end tests in Firefox (Playwright).                                              |
 | `npm run typecheck` | Type checks the app, and the headless core without DOM types.                          |
 
+`npm run audit` checks production dependencies first, then the full dependency tree. Both checks
+fail on high or critical advisories. The full-tree check has one development-tooling exception for
+picomatch, which expires on 18 December 2026 at 00:00 UTC. Remove it when a patched release is
+available. [Exception configuration](audit-ci.json) · [GitHub advisory](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
+
 ## Test timeouts
 
 Timeouts detect hangs; they are not runtime targets or performance assertions. Leave at least

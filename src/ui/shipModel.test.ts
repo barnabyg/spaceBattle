@@ -227,6 +227,7 @@ describe('ship model', () => {
     expect(silhouette('needle', 'forward').x).toBeGreaterThan(silhouette('lance', 'forward').x);
     expect(silhouette('sling', 'forward').z).toBeGreaterThan(silhouette('lance', 'forward').z);
     expect(silhouette('torch', 'engine').y).toBeGreaterThan(silhouette('lance', 'engine').y);
+    expect(silhouette('torch', 'engine').y).toBeGreaterThan(silhouette('torch', 'middle').y * 1.5);
   });
 
   it.each(['lance', 'bastion'])('gives one mesh per section and per mount for %s', (id) => {
@@ -235,6 +236,16 @@ describe('ship model', () => {
     expect(meshesOf(model, 'section')).toHaveLength(design.sections.length);
     expect(meshesOf(model, 'mount')).toHaveLength(mountCount(design));
     expect(meshesOf(model, 'nozzle')).toHaveLength(1);
+  });
+
+  it.each(['bastion', 'torch'])('fits the deep prow of %s ahead of its folded radiators', (id) => {
+    const model = createShipModel(handMadeDesign(id));
+    const bow = meshesOf(model, 'section').find((mesh) => mesh.userData.section === 'forward');
+    if (!bow) throw new Error('Missing forward section');
+    model.updateMatrixWorld(true);
+    const coreHeight = coreBounds(bow).getSize(new THREE.Vector3()).y;
+    expect(new THREE.Box3().setFromObject(bow).min.y).toBeLessThan(-coreHeight);
+    disposeShipModel(model);
   });
 
   it('keeps the core hit envelopes with radiators folded or deployed, independently of decoration', () => {
@@ -314,7 +325,6 @@ describe('ship model', () => {
               shapes.some(
                 (part) =>
                   part.mount !== null &&
-                  part.section === section.userData.section &&
                   point.x > part.min.x &&
                   point.x < part.max.x &&
                   point.y > part.min.y &&

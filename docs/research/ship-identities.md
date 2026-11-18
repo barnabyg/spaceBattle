@@ -1,23 +1,22 @@
 # Ship design identities (#69)
 
-The direction is a family of industrial warships: a quiet structural waist, split armoured prow,
-recessed machinery and exposed drive hardware. Equipment changes the major forms rather than
-just paint or surface detail. Stock and shipyard designs use the same rules, scaled to their
-hull size. Names and IDs have no effect on appearance.
+The ships share an industrial hull with recessed machinery and exposed drive hardware.
+Their equipment determines the shape of the prow, the shoulders and the stern. The same
+loadout produces the same outline on stock, imported and shipyard designs.
 
-| Design  | Intended identity                                                     |
-| ------- | --------------------------------------------------------------------- |
-| Lance   | Narrow laser frigate with extended split prow                         |
-| Bastion | Larger cruiser with longer twin-laser prow and stronger aft shoulders |
-| Sling   | Broad, blunt forward armour around paired kinetic guns                |
-| Quiver  | Wide missile-carrier shoulders and narrow machinery waist             |
-| Pyre    | Deeper, broader forward magazine housings for nuclear missiles        |
-| Torch   | Tall aft machinery housing and raised centre for the charged beam     |
-| Needle  | Long, fine forward spars for its neutral particle beam                |
-| Rampart | Raised centre and deeper prow, with exposed point defence             |
-| Ward    | Prominent dorsal/ventral central housings around the magnetic shield  |
-| Rime    | Broad coolant-service shoulders and waist, with its extra radiator    |
-| Bulwark | Wide missile shoulders combined with a projecting laser prow          |
+| Design  | Intended identity                                             |
+| ------- | ------------------------------------------------------------- |
+| Lance   | Two slender prongs diverge at the nose                        |
+| Bastion | A deep chisel bow and broad shoulders aft of the laser mounts |
+| Sling   | A blunt hammerhead crosses the forward hull                   |
+| Quiver  | Parallel side booms frame two long openings beside the nose   |
+| Pyre    | Three banded drums cluster around the lower prow              |
+| Torch   | A swept dorsal sail balances a deep forward keel              |
+| Needle  | A single long, narrow spindle projects from the bow           |
+| Rampart | A stepped aft tower rises above a short conventional bow      |
+| Ward    | An open polygonal collar surrounds the drive section          |
+| Rime    | Two swept vanes spread out behind the radiator banks          |
+| Bulwark | A single broad arrowhead tapers to a point ahead of the hull  |
 
 ## Representative renders
 
@@ -27,6 +26,10 @@ preview's height; the cruiser is scaled to fit its card. These are shared-model 
 not concept art. The deployed-panel example is pulled back to include its panels.
 
 ![All eleven stock designs](stock-identities.png)
+
+Look along Lance's waist for the diagonal braces around its laser mount. Rime's folded
+radiators show rows of framed cooling fins in the same area. On the prow, heavy armour
+has broad plates with recessed vents, while ablative armour has smaller replaceable tiles.
 
 These examples are built through the shipyard specification interface on the same frigate hull:
 a laser design and a kinetic design with a slug magazine. They also show deployed, hot radiators
@@ -48,8 +51,10 @@ contacts retain their existing disclosure rules.
 
 Model tests cover distinct stock proportions, equipment-derived player silhouettes, rename
 stability, unchanged core and mount envelopes, clearance, damage visibility and disposal.
-Firefox tests render every review image, reject blank images and browser exceptions, and attach
-fresh screenshots to their results.
+Firefox tests render every review image and compare all 55 stock pairs as silhouettes at
+a common thumbnail length. At least 12% of the pixels covered by either silhouette must
+differ in the gallery view. The tests also check for blank images and browser exceptions
+and attach fresh screenshots.
 
 From `C:/docs/git/spaceBattle`, with Node.js 24+ and desktop Firefox, prepare and launch with
 this single PowerShell 7 command:

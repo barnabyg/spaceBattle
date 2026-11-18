@@ -173,8 +173,8 @@ export const createResolvedShipModel = (
 
   const armourMaterial = {
     heavy: new THREE.MeshStandardMaterial({
-      color: '#8b929c',
-      metalness: 0.6,
+      color: '#afb8bf',
+      metalness: 0.38,
       roughness: 0.45,
       map: shipSurface('armour'),
     }),
@@ -197,7 +197,7 @@ export const createResolvedShipModel = (
     roughness: 0.5,
   });
   const radiator = new THREE.MeshStandardMaterial({
-    color: '#42464e',
+    color: '#84909a',
     map: shipSurface('radiator'),
     metalness: 0.3,
     roughness: 0.7,
@@ -210,8 +210,8 @@ export const createResolvedShipModel = (
     side: THREE.DoubleSide,
   });
   const optic = new THREE.MeshStandardMaterial({
-    color: '#163e53',
-    metalness: 0.8,
+    color: '#2f667e',
+    metalness: 0.4,
     roughness: 0.18,
   });
   const structure = new THREE.MeshStandardMaterial({
@@ -251,7 +251,7 @@ export const createResolvedShipModel = (
         ),
       );
       const mountClearance = exterior.clearance
-        .filter((candidate) => candidate.section === part.section && candidate.mount !== null)
+        .filter((candidate) => candidate.mount !== null)
         .map((candidate) =>
           new THREE.Box3(
             new THREE.Vector3(candidate.min.x, candidate.min.y, candidate.min.z).sub(mesh.position),
@@ -268,7 +268,7 @@ export const createResolvedShipModel = (
           part.section,
           mountClearance,
           [material, structure, recess, marking],
-          section?.style ?? { length: 1, height: 1, width: 1, taper: 0.5 },
+          section?.style ?? { profile: 'plain', length: 1, height: 1, width: 1, taper: 0.5 },
         ),
       );
       hull.add(mesh);
@@ -312,11 +312,23 @@ export const createResolvedShipModel = (
   const tail = engine?.min.x ?? 0;
   const nozzleRadius = exterior.nozzleRadius;
   const nozzleLength = NOZZLE_LENGTH * nozzleRadius;
+  // Revolve the throat, flared skirt and rolled lip as one continuous surface.
+  const bellProfile = [
+    new THREE.Vector2(0.35, -0.5),
+    new THREE.Vector2(0.31, -0.34),
+    new THREE.Vector2(0.44, -0.18),
+    new THREE.Vector2(0.78, 0.18),
+    new THREE.Vector2(1, 0.46),
+    new THREE.Vector2(0.98, 0.5),
+    new THREE.Vector2(0.92, 0.47),
+    new THREE.Vector2(0.7, 0.18),
+    new THREE.Vector2(0.27, -0.32),
+  ];
   const nozzle = new THREE.Mesh(
-    new THREE.CylinderGeometry(nozzleRadius, nozzleRadius * 0.35, nozzleLength, 32, 1, true),
+    new THREE.LatheGeometry(bellProfile, 32).scale(nozzleRadius, nozzleLength, nozzleRadius),
     new THREE.MeshStandardMaterial({
-      color: '#6b5f55',
-      metalness: 0.8,
+      color: '#967b65',
+      metalness: 0.55,
       roughness: 0.35,
       side: THREE.DoubleSide,
     }),
@@ -326,11 +338,13 @@ export const createResolvedShipModel = (
   nozzle.position.x = tail - nozzleLength / 2;
   nozzle.userData = { kind: 'nozzle' } satisfies ShipModelPartData;
   // Reinforcement rings follow the bell and disappear with the engine section.
-  for (const fraction of [0.15, 0.5, 0.85]) {
-    const radius = nozzleRadius * (1 - 0.65 * fraction);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, nozzleRadius * 0.035, 6, 24), trim);
+  for (const station of bellProfile.slice(1, 5)) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(station.x * nozzleRadius, nozzleRadius * 0.025, 6, 32),
+      trim,
+    );
     ring.rotation.x = Math.PI / 2;
-    ring.position.y = nozzleLength * (0.5 - fraction);
+    ring.position.y = nozzleLength * station.y;
     nozzle.add(ring);
   }
   hull.add(nozzle);

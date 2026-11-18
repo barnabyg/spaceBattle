@@ -10,32 +10,69 @@ export const shipSurface = (surface: Surface): THREE.DataTexture => {
   if (existing) return existing;
   const size = 256;
   const pixels = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const row = Math.floor(y / 64);
-      const panelX = x % 128;
-      const panelY = y % 64;
-      const seam = surface === 'radiator' ? x % 8 < 2 || panelY < 2 : panelX < 1 || panelY < 1;
-      const fastener = (panelX === 5 || panelX === 122) && (panelY === 5 || panelY === 58);
-      const hatch =
-        panelX > 48 &&
-        panelX < 80 &&
-        panelY > 18 &&
-        panelY < 46 &&
-        (panelX < 50 || panelX > 77 || panelY < 20 || panelY > 43);
-      const shade = seam
-        ? 120
-        : fastener || hatch
-          ? 165
-          : 226 + ((row * 7 + Math.floor(x / 128) * 11) % 18);
-      const value = surface === 'ablative' && !seam ? shade - 18 : shade;
-      pixels.set([value, value, value, 255], (y * size + x) * 4);
+  const rect = (x: number, y: number, width: number, height: number, rgb: number) => {
+    for (let row = y; row < y + height; row++) {
+      for (let col = x; col < x + width; col++) {
+        const i = (row * size + col) * 4;
+        pixels[i] = rgb >> 16;
+        pixels[i + 1] = (rgb >> 8) & 255;
+        pixels[i + 2] = rgb & 255;
+        pixels[i + 3] = 255;
+      }
+    }
+  };
+  if (surface === 'radiator') {
+    // Framed banks of fins, with a copper header linking each row of cells.
+    rect(0, 0, size, size, 0xb6c2c9);
+    for (let y = 0; y < size; y += 64) {
+      rect(4, y + 4, 248, 4, 0xc89d77);
+      for (let x = 0; x < size; x += 64) {
+        rect(x + 4, y + 10, 56, 50, 0x323f51);
+        for (let fin = 0; fin < 8; fin++) {
+          rect(x + 7, y + 12 + fin * 6, 50, 4, 0x65788b);
+          rect(x + 7, y + 12 + fin * 6, 50, 1, 0x8f9eac);
+        }
+      }
+    }
+  } else {
+    // Offset the joints between courses. Larger armour plates carry inspection
+    // covers, while the replaceable ablative tiles have paired retaining clips.
+    rect(0, 0, size, size, 0x5e6976);
+    const plateWidth = surface === 'ablative' ? 64 : 128;
+    const paints = [0xede9de, 0xc9cfd0, 0xe1e4e1, 0xf5f1e5, 0xd5d7d3];
+    for (let row = 0; row < 4; row++) {
+      const y = row * 64;
+      const offset = (row % 2) * (plateWidth / 2);
+      // Paint one complete course in local coordinates, wrapping across the edge.
+      for (let col = 0; col < size / plateWidth; col++) {
+        const origin = col * plateWidth + offset;
+        const plate = (x: number, dy: number, width: number, height: number, rgb: number) => {
+          const start = (origin + x) % size;
+          const span = Math.min(width, size - start);
+          rect(start, y + dy, span, height, rgb);
+          if (span < width) rect(0, y + dy, width - span, height, rgb);
+        };
+        plate(2, 2, plateWidth - 3, 61, 0xf8f7ed);
+        plate(4, 4, plateWidth - 5, 59, paints[(col + row * 2) % paints.length] ?? 0xe1e4e1);
+        for (const x of [6, plateWidth - 11]) {
+          plate(x, 8, 5, 3, 0x75808a);
+          plate(x, 53, 5, 3, 0x75808a);
+        }
+        if ((row + col) % 3 === 0) {
+          plate(15, 19, 32, 27, 0x7c868b);
+          plate(17, 21, 28, 23, 0xb7bfc1);
+          plate(35, 29, 7, 5, 0x56616e);
+        } else if (surface === 'armour') {
+          for (let slot = 0; slot < 5; slot++) plate(22 + slot * 7, 14, 4, 18, 0x929b9c);
+        }
+      }
     }
   }
   const texture = new THREE.DataTexture(pixels, size, size);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.magFilter = THREE.LinearFilter;
   texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.anisotropy = 4;
   texture.generateMipmaps = true;
   texture.needsUpdate = true;
   textures.set(surface, texture);
@@ -62,7 +99,12 @@ export const sectionGeometry = (size: THREE.Vector3): THREE.BufferGeometry => {
     steps: 1,
   });
   geometry.translate(0, 0, -size.z / 2 + bevel);
-  // Project each face independently: plating keeps its proportions on the long hull sides.
+  mapHullFaces(geometry, size);
+  return geometry;
+};
+
+/** Give each flat face usable UVs, including shell flanks and end caps. */
+export const mapHullFaces = (geometry: THREE.BufferGeometry, size: THREE.Vector3): void => {
   const positions = geometry.getAttribute('position');
   const normals = geometry.getAttribute('normal');
   const uv = geometry.getAttribute('uv');
@@ -70,11 +112,11 @@ export const sectionGeometry = (size: THREE.Vector3): THREE.BufferGeometry => {
     const nx = Math.abs(normals.getX(i));
     const ny = Math.abs(normals.getY(i));
     const nz = Math.abs(normals.getZ(i));
-    const u = nx > ny && nx > nz ? positions.getZ(i) / size.z : positions.getX(i) / size.x;
-    const v = ny > nz ? positions.getZ(i) / size.z : positions.getY(i) / size.y;
+    const end = nx >= ny && nx >= nz;
+    const u = end ? positions.getZ(i) / size.z : positions.getX(i) / size.x;
+    const v = !end && ny > nz ? positions.getZ(i) / size.z : positions.getY(i) / size.y;
     uv.setXY(i, u + 0.5, v + 0.5);
   }
-  return geometry;
 };
 
 /**
@@ -108,14 +150,17 @@ export const mountDetail = (
   switch (type) {
     case 'laser':
     case 'sensor': {
-      cylinder(0.39, 0.5, 0, -0.09);
-      const rim = cylinder(0.48, 0.22, 0, 0.39);
-      // A recessed optical surface inside the metal rim, facing away from the hull.
-      rim.geometry.dispose();
-      rim.geometry = new THREE.CylinderGeometry(0.48, 0.38, 0.22, 24, 1, true);
+      cylinder(0.35, 0.64, 0, -0.02, body);
+      cylinder(0.41, 0.08, 0, -0.22);
+      add(new THREE.CylinderGeometry(0.48, 0.36, 0.22, 24, 1, true), trim, 0, 0.39);
       const mirror = add(new THREE.CircleGeometry(0.4, 24), optic, 0, 0.35);
       mirror.rotation.x = -Math.PI / 2;
-      if (type === 'sensor') box(0.05, 0.12, 0.85, 0, 0.43);
+      if (type === 'sensor') {
+        box(0.05, 0.12, 0.85, 0, 0.43);
+        cylinder(0.09, 0.08, 0, 0.46, body);
+      } else {
+        for (const z of [-0.33, 0.33]) box(0.27, 0.41, 0.13, 0, 0.01, z);
+      }
       break;
     }
     case 'kinetic-gun':
@@ -123,9 +168,17 @@ export const mountDetail = (
       box(0.4, 0.65, 0.85, -0.3, -0.015);
       const barrels = type === 'point-defence' ? [-0.22, 0.22] : [0];
       for (const z of barrels) {
-        const barrel = add(new THREE.CylinderGeometry(0.095, 0.13, 0.8, 12), trim, 0.1, 0.22, z);
+        const barrel = add(
+          new THREE.CylinderGeometry(0.095, 0.13, 0.8, 12, 1, true),
+          trim,
+          0.1,
+          0.22,
+          z,
+        );
         barrel.rotation.z = -Math.PI / 2;
-        const bore = add(new THREE.CircleGeometry(0.075, 12), optic, 0.5, 0.22, z);
+        const jacket = add(new THREE.CylinderGeometry(0.14, 0.16, 0.29, 12), body, 0.14, 0.22, z);
+        jacket.rotation.z = -Math.PI / 2;
+        const bore = add(new THREE.CircleGeometry(0.095, 12), body, 0.47, 0.22, z);
         bore.rotation.y = Math.PI / 2;
       }
       box(0.22, 0.12, 0.35, -0.2, 0.44);
@@ -135,14 +188,25 @@ export const mountDetail = (
       for (const z of [-0.37, 0.37]) box(1, 0.65, 0.16, 0, -0.015, z);
       box(0.25, 0.3, 0.65, -0.375, 0.35);
       box(0.9, 0.1, 0.12, 0.05, 0.05);
+      for (const x of [-0.18, 0.06, 0.3]) {
+        add(new THREE.BoxGeometry(0.065, 0.07, 0.78), trim, x, -0.07);
+      }
       break;
     case 'charged-particle-beam':
     case 'neutral-particle-beam': {
       box(1, 0.5, 0.65, 0, -0.09);
-      for (const x of [-0.35, -0.1, 0.15]) box(0.1, 0.7, 0.85, x, 0.15);
-      const emitter = add(new THREE.CylinderGeometry(0.24, 0.24, 0.22, 16), trim, 0.39, 0.14);
+      for (const x of [-0.35, -0.1, 0.15]) {
+        box(0.1, 0.65, 0.85, x, 0.125);
+        add(new THREE.BoxGeometry(0.065, 0.05, 0.77), trim, x, 0.475);
+      }
+      const emitter = add(
+        new THREE.CylinderGeometry(0.24, 0.24, 0.22, 16, 1, true),
+        trim,
+        0.39,
+        0.14,
+      );
       emitter.rotation.z = -Math.PI / 2;
-      const aperture = add(new THREE.CircleGeometry(0.18, 16), optic, 0.5, 0.14);
+      const aperture = add(new THREE.CircleGeometry(0.23, 16), optic, 0.47, 0.14);
       aperture.rotation.y = Math.PI / 2;
       break;
     }
