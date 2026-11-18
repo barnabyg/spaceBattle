@@ -1,0 +1,15 @@
+{
+  "high": true,
+  "extra-args": ["--include=dev"],
+  "report-type": "summary",
+  "show-found": false,
+  "allowlist": [
+    {
+      "GHSA-fc5q-39xc-vjpf": {
+        "active": true,
+        "expiry": "2026-12-18T00:00:00Z",
+        "notes": "picomatch 4.0.7 is used by development tooling with repository-controlled glob patterns. The production audit runs independently. Remove this exception when a patched release is available."
+      }
+    }
+  ]
+}
