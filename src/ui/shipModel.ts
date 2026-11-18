@@ -251,7 +251,7 @@ export const createResolvedShipModel = (
         ),
       );
       const mountClearance = exterior.clearance
-        .filter((candidate) => candidate.section === part.section && candidate.mount !== null)
+        .filter((candidate) => candidate.mount !== null)
         .map((candidate) =>
           new THREE.Box3(
             new THREE.Vector3(candidate.min.x, candidate.min.y, candidate.min.z).sub(mesh.position),
@@ -268,7 +268,7 @@ export const createResolvedShipModel = (
           part.section,
           mountClearance,
           [material, structure, recess, marking],
-          section?.style ?? { length: 1, height: 1, width: 1, taper: 0.5 },
+          section?.style ?? { profile: 'plain', length: 1, height: 1, width: 1, taper: 0.5 },
         ),
       );
       hull.add(mesh);

@@ -70,11 +70,29 @@ export const resolvedShipAppearance = (
 
 /** Render-only proportions outside the unchanged structural hull and mount envelopes. */
 export interface HullIdentity {
+  readonly profile: HullProfile;
   readonly length: number;
   readonly height: number;
   readonly width: number;
   readonly taper: number;
 }
+
+/** Visible structural forms, expressed without design names or equipment identifiers. */
+export type HullProfile =
+  | 'plain'
+  | 'fork'
+  | 'ram'
+  | 'hammerhead'
+  | 'booms'
+  | 'lobes'
+  | 'keel'
+  | 'spindle'
+  | 'wedge'
+  | 'tower'
+  | 'collar'
+  | 'mantle'
+  | 'shoulders'
+  | 'sail';
 
 /**
  * Equipment gives stock and player designs the same visual grammar. No IDs, names, random
@@ -100,9 +118,27 @@ export const hullIdentity = (design: Design, section: SectionKind): HullIdentity
   const lasers = count('laser');
   const cap = (value: number) => Math.min(2.4, value);
 
+  const bow = (): HullProfile => {
+    if (launchers && lasers) return 'wedge';
+    if (launchers) return nuclear ? 'lobes' : 'booms';
+    if (neutral) return 'spindle';
+    if (charged) return 'keel';
+    if (kinetic) return 'hammerhead';
+    if (defence || magnetic || coolant) return 'plain';
+    if (lasers > 1) return 'ram';
+    return lasers ? 'fork' : 'plain';
+  };
+  const stern = (): HullProfile => {
+    if (magnetic) return 'collar';
+    if (coolant) return 'mantle';
+    if (defence) return 'tower';
+    return charged ? 'sail' : 'plain';
+  };
+
   switch (section) {
     case 'forward':
       return {
+        profile: bow(),
         length: cap(1 + 0.85 * neutral + 0.22 * lasers + 0.12 * charged),
         height: cap(0.75 + 0.3 * kinetic + 0.45 * nuclear + 0.3 * defence),
         width: cap(0.65 + 0.3 * kinetic + 0.35 * launchers + 0.35 * nuclear + 0.3 * coolant),
@@ -110,6 +146,7 @@ export const hullIdentity = (design: Design, section: SectionKind): HullIdentity
       };
     case 'middle':
       return {
+        profile: lasers > 1 ? 'shoulders' : 'plain',
         length: 1,
         height: cap(0.8 + 1.3 * magnetic + 0.4 * charged + 0.35 * defence),
         width: cap(0.7 + 0.3 * launchers + 0.65 * coolant + 0.12 * lasers),
@@ -117,6 +154,7 @@ export const hullIdentity = (design: Design, section: SectionKind): HullIdentity
       };
     case 'engine':
       return {
+        profile: stern(),
         length: 1,
         height: cap(0.8 + 0.95 * charged + 0.22 * lasers + 0.15 * magnetic),
         width: cap(0.75 + 0.25 * kinetic + 0.2 * launchers + 0.55 * coolant),
