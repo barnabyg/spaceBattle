@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
-import { OPENING_PASS, STARTING_SCENARIOS } from '../data/scenarios';
+import { OPENING_PASS, STARTING_SCENARIOS, type StartingScenario } from '../data/scenarios';
 import { createBattle, type Battle, type BattleEvent, type CaptainSkill } from './battle';
 import { withComputerCaptains } from './command';
 import { duelSetup, testDesign, withComponent, withSection } from './testing';
@@ -9,24 +9,116 @@ import { distance, dot, normalize, sub } from './vector';
 const KM = 1_000;
 const HOUR = 3_600;
 
+// The original loadouts isolate changes to tactics from the stock weapon rebalance.
+const legacyLance = withComponent(handMadeDesign('lance'), 'laser', { aperture: 4 });
+const legacyBastion = withComponent(handMadeDesign('bastion'), 'laser', {
+  aperture: 4,
+  beamPower: 400e6,
+  efficiency: 0.4,
+  mass: 40e3,
+});
+
 const fire = (battle: Battle) => {
   battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
   battle.giveOrder('blue', { type: 'radiators', deployed: true });
 };
 
-const reproduction = (skill: CaptainSkill = 'medium') => {
-  const setup = duelSetup(handMadeDesign('lance'), handMadeDesign('sling'), 100_000 * KM);
+const lanceAttack = (
+  setup: ReturnType<typeof duelSetup>,
+  scenario: StartingScenario,
+  seed: number,
+) => {
   const battle = withComputerCaptains(
-    createBattle({
-      ...setup,
-      seed: 1,
-      scenario: OPENING_PASS,
-      sides: setup.sides.map((side) => (side.id === 'red' ? { ...side, skill } : side)),
-    }),
+    createBattle({ ...setup, scenario, seed, timeLimit: 12 * HOUR }),
   );
   fire(battle);
   battle.giveOrder('blue', { type: 'manoeuvre', goal: 'close', range: 100_000 * KM });
   return battle;
+};
+
+describe('responding to standoff fire', () => {
+  it('gets the outranged Bastion into range to land a hit before losing fire control', () => {
+    const setup = duelSetup(legacyLance, legacyBastion, OPENING_PASS.separation);
+    const battle = lanceAttack(setup, OPENING_PASS, 1);
+    let response: BattleEvent | undefined;
+    while (!battle.outcome && !response) {
+      response = battle
+        .advance(10)
+        .find(
+          (event) =>
+            (event.type === 'hit' && event.attacker === 'red') ||
+            (event.type === 'component-lost' &&
+              event.side === 'red' &&
+              event.component === 'sensor'),
+        );
+    }
+    expect(response).toMatchObject({ type: 'hit', attacker: 'red' });
+  }, 60_000);
+
+  it('withdraws when a slow Bastion is losing its sensor too fast to return fire', () => {
+    const bastion = withComponent(legacyBastion, 'drive', { thrust: 100_000 });
+    const battle = withComputerCaptains(
+      createBattle(duelSetup(legacyLance, bastion, 155_000 * KM)),
+    );
+    fire(battle);
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      mode: 'fire-freely',
+      target: 'red',
+      aim: { section: 'forward', mount: 0 },
+    });
+    while (!battle.outcome && !battle.observe('red').ownShip.withdrawing && battle.time < 1_800)
+      battle.advance(1);
+    const own = battle.observe('red').ownShip;
+    const sensor = own.sections
+      .flatMap((section) => section.mounts)
+      .find((m) => m.type === 'sensor');
+    expect(own.withdrawing).toBe(true);
+    expect(own.energyLedger.beamEmitted).toBe(0);
+    expect(sensor?.integrity).toBeGreaterThan(0);
+    expect(sensor?.integrity).toBeLessThan(1);
+    expect(own.deltaV).toBeGreaterThan(own.reserve);
+  }, 30_000);
+
+  describe.each(STARTING_SCENARIOS)('$name', (scenario) => {
+    it('gives the cruiser first effective fire against a starter laser', () => {
+      const setup = duelSetup(
+        handMadeDesign('lance'),
+        handMadeDesign('bastion'),
+        scenario.separation,
+      );
+      const battle = lanceAttack(setup, scenario, 1);
+      let firstHit: BattleEvent | undefined;
+      while (!battle.outcome && !firstHit) {
+        firstHit = battle.advance(10).find((event) => event.type === 'hit');
+      }
+      expect(firstHit).toMatchObject({ type: 'hit', attacker: 'red' });
+    }, 60_000);
+
+    it('lets the gunboat recognise the threat and complete withdrawal outside beam range', () => {
+      const setup = duelSetup(
+        handMadeDesign('lance'),
+        handMadeDesign('sling'),
+        scenario.separation,
+      );
+      const battle = lanceAttack(setup, scenario, 1);
+      while (!battle.outcome) battle.advance(10);
+      expect(battle.outcome.sides[1]).toMatchObject({
+        loss: { result: 'withdrawn' },
+        shipLost: false,
+      });
+      expect(battle.observe('blue').ownShip.energyLedger.beamEmitted).toBe(0);
+    }, 60_000);
+  });
+});
+
+const reproduction = (skill: CaptainSkill = 'medium') => {
+  const setup = duelSetup(legacyLance, handMadeDesign('sling'), OPENING_PASS.separation);
+  return lanceAttack(
+    { ...setup, sides: setup.sides.map((side) => (side.id === 'red' ? { ...side, skill } : side)) },
+    OPENING_PASS,
+    1,
+  );
 };
 
 describe('massive weapon-range mismatches', () => {

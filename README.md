@@ -121,8 +121,8 @@ To check the cycle manually, run the following from the repository root (the dir
 npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev -- --port 5277 --strictPort }
 ```
 
-Open [the game](http://localhost:5277) in Firefox. Start a free battle with Blue's Lance controlled
-by the player and Red's Bastion controlled by the computer. Target the enemy, select **Fire freely**
+Open [the game](http://localhost:5277) in Firefox. Start a free battle with Blue's Bastion controlled
+by the player and Red's Lance controlled by the computer. Target the enemy, select **Fire freely**
 and **Close**. Use time compression until the laser is in range, then choose **1×**. Watch charge
 rise over 15 simulated seconds, followed by a one-second beam and firing sound. The next shot
 requires another 15 seconds of charging. Select **Hold fire**:
@@ -149,14 +149,20 @@ The game opens on the main menu. Choose **Free battle**, pick a **Scenario** for
 
 A low-skill computer captain reconsiders its plan only every 20 seconds, does not dodge, leaves power and heat alone and always closes in; a medium one manages power and heat and keeps out of reach of an enemy it outranges; a high one also turns its best armour to the enemy and withdraws with some reserve to spare. Every computer captain knows the enemy only through its sensors, and withdraws once it has nothing left to fight with or reaches its reserve.
 
-Medium and high captains prioritise the drive until their own weapons can engage.
-Across a very large range disadvantage they attempt a fast pass rather than braking
-early to settle at their preferred range; gunboats can start this approach before
-the enemy's weapons resolve. They abandon an exposed approach with half a section's
-armour left. Firing competes with drive power for a ship trying to keep its distance.
-Sling remains vulnerable to Lance from a long starting range, and a ship can still
-be disabled during withdrawal. See the [range-balance evaluation](docs/research/range-balance.md)
-for the policy, matchup results and manual checks.
+Medium and high captains prioritise the drive on approach. When they identify a
+beam that outranges them, they can build speed for a fast pass before entering its
+reach. They withdraw if a severely outranged approach would leave them exposed
+for too long while they can still escape, or if a damaged sensor or drive is
+likely to fail before they can return fire. Gunboats can start a fast approach
+before identifying enemy weapons. Firing competes with drive power for a ship
+trying to keep its distance, and a ship can still be disabled during withdrawal.
+
+Standard frigate lasers reach about 92,000–103,000 km. Needle's neutral particle
+beam reaches about 116,000 km. The shipyard's 500 MW long-range laser reaches
+about 165,000 km, needs a cruiser or battleship hull, and takes more power to
+charge than the standard 500 MW laser. See the
+[range-balance evaluation](docs/research/range-balance.md) for matchup results and
+manual checks.
 
 In battle, the time controls in the top bar pause the battle (or Space) and set its time compression with one button per speed, 1×, 10×, 100×, 500× and 1000× (or keys 1–5, and + / − to step between them); the chosen speed stays selected while paused. Routine hits, impacts, launches, interceptions and misses preserve the selected speed. Nuclear detonations, magazine explosions, armour breaches, component loss, structural failure, withdrawal and battle end drop time compression back to 1×. The time controls show the cause of an automatic slowdown until you choose a speed again.
 

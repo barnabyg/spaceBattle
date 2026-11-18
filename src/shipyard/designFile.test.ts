@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { catalogueComponent } from '../data/components';
-import lance from '../data/designs/lance.json';
 import { handMadeDesign } from '../data/designs';
 import type { Design, MountedComponentDesign } from '../sim/design';
+import { withComponent } from '../sim/testing';
 import { exportDesign, importDesign } from './designFile';
 import { buildDesign } from './shipyard';
 
@@ -36,10 +36,20 @@ describe('design files', () => {
   });
 
   it('import a design in the first format, a bare design as the hand-made design files hold', () => {
-    const imported = importDesign(JSON.stringify(lance));
+    const legacyLance = withComponent(handMadeDesign('lance'), 'laser', { aperture: 4 });
+    const imported = importDesign(JSON.stringify(legacyLance));
     expect(imported.name).toBe('Lance class');
-    expect(imported.sections).toEqual(handMadeDesign('lance').sections);
+    expect(imported.sections).toEqual(legacyLance.sections);
     expect(imported.propellantMass).toBe(400e3);
+  });
+
+  it('keeps the cruiser mount requirement on export and import', () => {
+    const bastion = handMadeDesign('bastion');
+    expect(importDesign(exportDesign(bastion)).sections).toEqual(bastion.sections);
+    const frigate = withComponent(handMadeDesign('lance'), 'laser', { minimumHullSize: 'cruiser' });
+    expect(() => importDesign(exportDesign(frigate))).toThrow(
+      /laser needs a cruiser hull or larger/,
+    );
   });
 
   it('refuse files that are not designs, or come from a newer version of the game', () => {

@@ -70,3 +70,20 @@ test('a design exported, deleted and imported again is the same design', async (
   });
   await expect(page.getByRole('status')).toHaveText('This is not a design file.');
 });
+
+test('the long-range laser needs a cruiser hull or larger', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Shipyard' }).click();
+  await page.getByLabel('Class name').fill('Lookout');
+  await page.getByLabel('Component', { exact: true }).selectOption('laser-long-range');
+  await page.getByRole('button', { name: 'Add component' }).click();
+  await expect(page.getByRole('list', { name: 'Problems' })).toContainText(
+    'this laser needs a cruiser hull or larger',
+  );
+  const save = page.getByRole('button', { name: 'Save design' });
+  await expect(save).toBeDisabled();
+
+  await page.getByLabel('Hull size').selectOption('cruiser');
+  await save.click();
+  await expect(page.getByRole('status')).toHaveText('Saved Lookout class.');
+});

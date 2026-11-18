@@ -72,6 +72,8 @@ export interface RadiatorDesign {
 /** A weapon firing light; its beam spreads by diffraction, so it weakens with range. */
 export interface LaserDesign {
   readonly type: 'laser';
+  /** Smallest hull that can fit this laser's mount. */
+  readonly minimumHullSize?: HullSize;
   /** kg */
   readonly mass: number;
   /** Sustained average beam power at full supply, W; shots peak at sixteen times this. */
@@ -606,6 +608,9 @@ const parseComponent = (data: unknown, where: string): ComponentDesign => {
       return {
         type,
         mass,
+        ...(data.minimumHullSize === undefined
+          ? {}
+          : { minimumHullSize: requireOneOf(data, 'minimumHullSize', HULL_SIZES, where) }),
         beamPower: requireNumber(data, 'beamPower', where),
         efficiency: requireFraction(data, 'efficiency', where),
         aperture: requireNumber(data, 'aperture', where),
@@ -817,6 +822,11 @@ export const parseDesign = (data: unknown): Design => {
     throw new Error(`${where}: needs exactly the sections ${SECTION_KINDS.join(', ')}, in order`);
   }
   const design: Design = { id, name, hullSize, sections, propellantMass, reserve };
+  for (const { minimumHullSize } of designComponentsOfType(design, 'laser')) {
+    if (minimumHullSize && HULL_SIZES.indexOf(hullSize) < HULL_SIZES.indexOf(minimumHullSize)) {
+      throw new Error(`${where}: this laser needs a ${minimumHullSize} hull or larger`);
+    }
+  }
   for (const type of ['drive', 'thrusters', 'reactor'] as const) {
     const count = designComponentsOfType(design, type).length;
     if (count !== 1) throw new Error(`${where}: needs exactly one ${type}, has ${count}`);

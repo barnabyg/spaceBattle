@@ -1,9 +1,68 @@
 # Closing through a weapon-range disadvantage
 
-Issue: [#95](https://github.com/barnabyg/spaceBattle/issues/95). Baseline:
-`76793441b161bcd7275fc7140389d10d309a3ed8`.
+## Lance and Bastion follow-up
 
-## Approach
+Medium and high captains build closing speed before entering a known beam's
+reach. At a severe disadvantage of over ten times their own useful reach, they
+withdraw outside the enemy's known reach if crossing the beam's firing zone
+would take over 30 simulated minutes. Under beam fire, they estimate whether a
+sensor or drive at half integrity or less will fail before they can close. The
+estimate smooths observed damage over roughly 60 seconds and gives the ship the
+benefit of full available thrust along the line of sight against a coasting
+target. The armour threshold still applies during a severely outranged run.
+
+Standard 400 MW and 500 MW lasers now use 2.5 m mirrors and reach about 92,000 km
+and 103,000 km respectively. Needle's neutral beam reaches about 116,000 km.
+Bastion's two 500 MW long-range lasers use 4 m mirrors and reach about 165,000 km.
+Each weighs 60 t and draws about 1.67 GW during charging and firing at full power.
+The new model needs a cruiser or battleship hull. Tier 3 Paladin and Trident each
+carry one and fit their existing budgets. Design and campaign files store fitted
+weapons directly, so an existing frigate with the original laser keeps its range.
+
+The player-controlled Lance set **Fire freely**, deployed radiators and ordered
+**Close** to 100,000 km. The computer used medium skill. Each row covers Opening
+Pass, Head-on, Crossing and Pursuit, with seeds 1 and 7 for each.
+
+| Computer | Original tactics and weapons      | Revised tactics, original weapons                | Revised tactics and weapons                    |
+| -------- | --------------------------------- | ------------------------------------------------ | ---------------------------------------------- |
+| Bastion  | Landed hits in 2 of 8, lost all 8 | Landed hits with its sensor intact and won all 8 | Landed the first hit and won all 8             |
+| Sling    | Disabled in all 8                 | Disabled in all 8                                | Withdrew safely before the first shot in all 8 |
+
+In Opening Pass with the original weapons, Bastion's closing speed at the first
+incoming hit increased from about 11.9 to 14.3 km/s. In a separate duel starting
+inside Lance's reach, a Bastion with a weakened drive withdrew before losing its sensor.
+With the revised weapons, Needle returned effective fire in all eight sampled
+Lance fights and both ships landed hits. Lance still disabled Torch and Quiver
+before they could score damage in the sampled fights. These scripted runs measure
+particular tactics and starting setups.
+
+The regression tests use the original optics and cover both decisions with
+Bastion. The stock tests cover Bastion's first hit and Sling's safe withdrawal
+in each starting scenario. Run them from the repository root with
+`npm.cmd test -- src/sim/rangeBalance.test.ts -t 'responding to standoff fire'`.
+
+For a manual check, run this command from `C:/docs/git/spaceBattle` in PowerShell 7.
+
+```powershell
+npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev -- --port 5279 --strictPort }
+```
+
+Open [the game](http://localhost:5279) in desktop Firefox at 1920×1080 or larger.
+Enable **Test mode**. In **Opening pass**, use seed 1, Blue Lance (**Player**)
+and Red Bastion (**Computer**, **Medium**). Target Red, select **Fire freely**,
+deploy radiators and order **Close** to 100,000 km. Increase time compression.
+Bastion should hit first, while Lance's laser is out of range. Repeat with Red
+Sling and check the log for a withdrawal before either ship fires. In **Shipyard**,
+add the 500 MW long-range laser to a named frigate. Saving should be unavailable
+until you select a cruiser or battleship hull.
+
+## Original attack-run evaluation
+
+Issue [#95](https://github.com/barnabyg/spaceBattle/issues/95) compared the
+original attack-run change at `ac5304b` with baseline `7679344`. The following
+results and reproduction steps describe those versions.
+
+### Approach
 
 The shorter-ranged captain should cross the firing zone quickly; the longer-ranged
 captain should keep distance while paying for its weapons and drive from the same
@@ -47,7 +106,7 @@ provides a useful closing-speed budget without deliberately consuming the reserv
 half armour is a legible damage-based decision point. These are captain policies,
 not changes to thrust, inertia, weapon propagation or damage physics.
 
-## Kinetic fire and loadouts
+### Kinetic fire and loadouts
 
 The 20 s kinetic flight-time policy remains conservative. Increasing it alone
 cannot fix the reported engagement: even the 1,000 s hard fire-control limit puts
@@ -63,7 +122,7 @@ the desired direction. Free-battle setup now explains these trade-offs. Starting
 scenarios and campaign opponent selection remain unchanged; neither guarantees a
 contestable matchup. The damage indicator is independent of this change.
 
-## Evaluation
+### Evaluation
 
 All comparisons use `createBattle`, ordinary observations and captain orders.
 Both sides are medium computer captains, each of the four starting scenarios is
@@ -107,7 +166,7 @@ increased from two to five. Restricting that speculative approach to gunboats
 restored the charged-beam control results above. No stock numbers were changed to
 force a better outcome.
 
-## Acceptance and reproduction
+### Acceptance and reproduction
 
 Regression coverage is in `src/sim/rangeBalance.test.ts`, at the agreed
 `createBattle` observation boundary:

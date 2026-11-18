@@ -66,17 +66,19 @@
         },
         {
           "type": "laser",
-          "mass": 40000,
-          "beamPower": 400000000,
-          "efficiency": 0.4,
+          "minimumHullSize": "cruiser",
+          "mass": 60000,
+          "beamPower": 500000000,
+          "efficiency": 0.3,
           "aperture": 4,
           "wavelength": 2.5e-7
         },
         {
           "type": "laser",
-          "mass": 40000,
-          "beamPower": 400000000,
-          "efficiency": 0.4,
+          "minimumHullSize": "cruiser",
+          "mass": 60000,
+          "beamPower": 500000000,
+          "efficiency": 0.3,
           "aperture": 4,
           "wavelength": 2.5e-7
         }
