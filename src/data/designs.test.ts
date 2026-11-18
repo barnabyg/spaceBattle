@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { KILOTON, missileRole, parseDesign } from '../sim/design';
-import { HAND_MADE_DESIGNS } from './designs';
+import { effectiveRange } from '../sim/beams';
+import { designComponentsOfType, KILOTON, missileRole, parseDesign } from '../sim/design';
+import { designBeamWeapons } from '../sim/weapons';
+import { handMadeDesign, HAND_MADE_DESIGNS } from './designs';
 
 describe('hand-made designs', () => {
   it('are valid designs with unique ids', () => {
@@ -61,6 +63,20 @@ describe('hand-made designs', () => {
     );
     const components = defended?.sections.flatMap((s) => s.components) ?? [];
     expect(components.some((c) => c.type === 'magazine' && c.rounds > 0)).toBe(true);
+  });
+
+  it('gives the cruiser battery longer reach than the stock frigate beams', () => {
+    const frigateReach = Math.max(
+      ...HAND_MADE_DESIGNS.filter((design) => design.hullSize === 'frigate')
+        .flatMap(designBeamWeapons)
+        .map(effectiveRange),
+    );
+    const battery = designComponentsOfType(handMadeDesign('bastion'), 'laser');
+    expect(battery).toHaveLength(2);
+    for (const laser of battery) {
+      expect(laser.minimumHullSize).toBe('cruiser');
+      expect(effectiveRange(laser)).toBeGreaterThan(frigateReach);
+    }
   });
 
   it('include one carrying anti-missile missiles beside anti-ship missiles', () => {

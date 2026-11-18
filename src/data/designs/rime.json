@@ -82,7 +82,7 @@
           "mass": 30000,
           "beamPower": 500000000,
           "efficiency": 0.4,
-          "aperture": 4,
+          "aperture": 2.5,
           "wavelength": 2.5e-7
         }
       ]

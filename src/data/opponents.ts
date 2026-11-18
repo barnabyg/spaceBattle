@@ -174,7 +174,7 @@ export const OPPONENTS: readonly Opponent[] = [
     specify(
       'Paladin',
       'cruiser',
-      [...CRUISER, 'radiator-heavy', 'radiator-heavy', 'laser-500', 'laser-500'],
+      [...CRUISER, 'radiator-heavy', 'radiator-heavy', 'laser-long-range', 'laser-500'],
       [
         ['heavy', 0.008],
         ['ablative', 0.015],
@@ -196,8 +196,7 @@ export const OPPONENTS: readonly Opponent[] = [
         'launcher-fast',
         'launcher-fast',
         'magazine-spike-12',
-        'laser-500',
-        'laser-500',
+        'laser-long-range',
       ],
       [
         ['heavy', 0.008],

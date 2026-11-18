@@ -70,7 +70,7 @@
           "beamPower": 300000000,
           "efficiency": 0.5,
           "aperture": 1,
-          "divergence": 5e-8
+          "divergence": 8e-8
         }
       ]
     },

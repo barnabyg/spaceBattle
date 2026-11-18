@@ -8,6 +8,7 @@ import type {
 } from './battle';
 import { effectiveRange } from './beams';
 import {
+  designComponent,
   designComponents,
   designComponentsOfType,
   missileRole,
@@ -123,6 +124,12 @@ const ATTACK_RUN_RATIO = 10;
 const ATTACK_RUN_FRACTION = 0.5;
 /** Keep the last half of a section's armour for withdrawal from an exposed attack run. */
 const ATTACK_RUN_ARMOUR = 0.5;
+/** Maximum time a severely outranged ship will knowingly spend crossing beam fire. */
+const MAX_BEAM_EXPOSURE = 1_800;
+/** Allow several laser bursts to inform the estimate of damage per second. */
+const DAMAGE_RATE_WINDOW = 60;
+/** A badly damaged sensor or drive can make an approach untenable. */
+const CRITICAL_INTEGRITY = 0.5;
 /** Do not burn across the intended course while turning towards it. */
 const ATTACK_RUN_ALIGNMENT = Math.cos((3 * Math.PI) / 180);
 /** Radiators deploy above this temperature, K... */
@@ -285,16 +292,19 @@ const enemyArsenal = () => {
    * been seen to launch reach, or else `presumedMissileReach`. A missile seen in flight shows a
    * launcher, made out or not, until every launcher made out is gone.
    */
-  const reach = (presumedMissileReach: number): number => {
+  const reach = (presumedMissileReach: number) => {
     const known = [...mounts.values()].map(({ component }) => component);
     const launcher = known.some((c) => c.type === 'launcher');
-    return Math.max(
-      0,
-      ...beamWeapons().map(effectiveRange),
-      ...known.map((c) => (c.type === 'kinetic-gun' ? sureRange(c.muzzleVelocity) : 0)),
-      launcher || !launcherSeen ? missileReachSeen : 0,
-      launcher && missileReachSeen === 0 ? presumedMissileReach : 0,
-    );
+    const beam = Math.max(0, ...beamWeapons().map(effectiveRange));
+    return {
+      beam,
+      longest: Math.max(
+        beam,
+        ...known.map((c) => (c.type === 'kinetic-gun' ? sureRange(c.muzzleVelocity) : 0)),
+        launcher || !launcherSeen ? missileReachSeen : 0,
+        launcher && missileReachSeen === 0 ? presumedMissileReach : 0,
+      ),
+    };
   };
 
   /** How far the enemy's known beam weapons of the kinds in `kinds` reach, m; zero if none. */
@@ -463,6 +473,7 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
   const profile = SKILLS[setup.skill ?? 'medium'];
   const arsenal = enemyArsenal();
   const countered = counteredBy(setup.design);
+  const driveThrust = designComponent(setup.design, 'drive').thrust;
   // Whether it was built to harm a ship: point defence counts, anti-missile missiles do not.
   const armed =
     designReach(setup.design) > 0 ||
@@ -485,6 +496,63 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
   let pressing = false;
   /** Closing speed chosen on committing to an attack run, m/s; fixed as propellant is spent. */
   let attackSpeed: number | null = null;
+  let damage: {
+    time: number;
+    sensor: number;
+    drive: number;
+    sensorRate: number;
+    driveRate: number;
+  } | null = null;
+
+  /** Optimistic time to close a gap with available thrust against a coasting target. */
+  const timeToClose = (
+    ship: OwnShipObservation,
+    enemy: ContactObservation,
+    gap: number,
+  ): number => {
+    const sight = normalize(sub(enemy.position, ship.position));
+    const closing = dot(sub(ship.velocity, enemy.velocity), sight);
+    const acceleration = (driveThrust * ship.power.driveLimit) / ship.mass;
+    const speed = closing + Math.sqrt(closing ** 2 + 2 * acceleration * gap);
+    return speed > 0 ? (2 * gap) / speed : Infinity;
+  };
+
+  /** Estimate whether drive or fire control will fail before the ship can return fire. */
+  const approachFails = (
+    time: number,
+    ship: OwnShipObservation,
+    enemy: ContactObservation,
+    gap: number,
+  ): boolean => {
+    const sensor = Math.max(
+      0,
+      ...ship.sections.flatMap((section) =>
+        section.mounts.filter((mount) => mount.type === 'sensor').map((mount) => mount.integrity),
+      ),
+    );
+    const drive = Math.max(
+      0,
+      ...ship.sections.flatMap((section) =>
+        section.components.filter((part) => part.type === 'drive').map((part) => part.integrity),
+      ),
+    );
+    const previous = damage;
+    const window = previous
+      ? Math.max(DAMAGE_RATE_WINDOW, time - previous.time)
+      : DAMAGE_RATE_WINDOW;
+    const decay = previous ? 1 - (time - previous.time) / window : 0;
+    const sensorRate = previous
+      ? previous.sensorRate * decay + (previous.sensor - sensor) / window
+      : 0;
+    const driveRate = previous ? previous.driveRate * decay + (previous.drive - drive) / window : 0;
+    damage = { time, sensor, drive, sensorRate, driveRate };
+
+    const untilInRange = timeToClose(ship, enemy, gap);
+    return (
+      (sensor <= CRITICAL_INTEGRITY && sensorRate > 0 && sensor / sensorRate < untilInRange) ||
+      (drive <= CRITICAL_INTEGRITY && driveRate > 0 && drive / driveRate < untilInRange)
+    );
+  };
 
   /**
    * A heavily outranged ship must cross the enemy's firing zone quickly. Unlike a settled
@@ -498,9 +566,18 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
     range: number,
     reach: number,
     enemyReach: number,
+    enemyBeamReach: number,
   ): [AttitudeOrder, BurnOrder] | null => {
     const distant = range > ATTACK_RUN_RATIO * reach;
     const outmatched = enemyReach > ATTACK_RUN_RATIO * reach;
+    const sight = normalize(sub(enemy.position, ship.position));
+    const relative = sub(ship.velocity, enemy.velocity);
+    // Once on an approach to an outranging beam, build speed before entering its reach.
+    const approachingBeamFire =
+      enemyBeamReach > reach &&
+      (range <= enemyBeamReach ||
+        attackSpeed !== null ||
+        dot(relative, sight) >= (APPROACH_FRACTION * ship.deltaV) / 2);
     // Gunboats need a short approach regardless of unseen enemy arms. Other designs wait for
     // evidence of a large range disadvantage rather than rushing into unresolved weapons.
     const unknown = enemyReach === 0 && !enemy.fullyResolved;
@@ -509,14 +586,17 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       !profile.predicts ||
       reach === 0 ||
       range <= reach ||
-      !(outmatched || (unknown && ((distant && gunboat) || attackSpeed !== null)))
+      !(
+        outmatched ||
+        approachingBeamFire ||
+        (unknown && ((distant && gunboat) || attackSpeed !== null))
+      )
     ) {
       attackSpeed = null;
       return null;
     }
     attackSpeed ??= ATTACK_RUN_FRACTION * Math.max(0, ship.deltaV - ship.reserve);
-    const sight = normalize(sub(enemy.position, ship.position));
-    const wanted = sub(scale(sight, attackSpeed), sub(ship.velocity, enemy.velocity));
+    const wanted = sub(scale(sight, attackSpeed), relative);
     const error = Math.hypot(wanted.x, wanted.y, wanted.z);
     // Below 1 m/s of error, coast; otherwise burn only once aligned with the correction.
     const throttle = error > 1 && dot(ship.nose, normalize(wanted)) >= ATTACK_RUN_ALIGNMENT ? 1 : 0;
@@ -646,7 +726,7 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       const range = distance(ship.position, enemy.position);
       notice(observation, range);
       // An enemy launcher whose missiles it has not seen yet it takes to reach as far as its own.
-      const enemyReach = arsenal.reach(designMissileReach);
+      const { longest: enemyReach, beam: enemyBeamReach } = arsenal.reach(designMissileReach);
       const threats = missileThreats(observation, side);
       // With nothing else left to fight with, point defence turns on the ship.
       const lastResort = ownReach(ship) === 0 && pointDefenceReach(ship) > 0;
@@ -686,21 +766,39 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       const underFire = observation.events.some(
         (event) => (event.type === 'hit' || event.type === 'impact') && event.target === side,
       );
+      const crossingBeamFire = profile.predicts && range > reach && range <= enemyBeamReach;
+      if (!crossingBeamFire) damage = null;
+      const failingApproach =
+        crossingBeamFire && approachFails(observation.time, ship, enemy, range - reach);
+      const untenable =
+        profile.predicts &&
+        reach > 0 &&
+        !enemy.withdrawing &&
+        range > enemyReach &&
+        enemyBeamReach > ATTACK_RUN_RATIO * reach &&
+        timeToClose(ship, enemy, enemyBeamReach - reach) > MAX_BEAM_EXPOSURE;
       const exposed =
         range > reach &&
         attackSpeed !== null &&
-        (enemyReach > reach || underFire) &&
+        (enemyReach > ATTACK_RUN_RATIO * reach || (enemyReach === 0 && underFire)) &&
         ship.sections.some(
           (section) =>
             section.armour.thickness > 0 &&
             section.armour.remaining <= ATTACK_RUN_ARMOUR * section.armour.thickness,
         );
       const leaving =
-        ship.withdrawing || exposed || (armed && reach === 0) || ship.deltaV <= reserve;
+        ship.withdrawing ||
+        untenable ||
+        failingApproach ||
+        exposed ||
+        (armed && reach === 0) ||
+        ship.deltaV <= reserve;
       // A withdrawing ship takes no other course, and the rules forbid pursuing one.
       const moving = !leaving && !enemy.withdrawing;
       const dodge = moving && profile.predicts ? jink(observation, side, enemy) : null;
-      const attack = moving ? attackRun(ship, enemy, range, reach, enemyReach) : null;
+      const attack = moving
+        ? attackRun(ship, enemy, range, reach, enemyReach, enemyBeamReach)
+        : null;
       const goal = moving ? manoeuvre(ship, reach, enemyReach) : null;
       // A ship that stops steering is easy for missiles, so it turns its armour only when none is
       // on its way.

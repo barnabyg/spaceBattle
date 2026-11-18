@@ -123,35 +123,35 @@ describe('computer captain', () => {
 
   it('outranging its enemy, holds just inside its own reach and wears the enemy down', () => {
     const battle = againstIdlePlayer(
-      handMadeDesign('bastion'),
       handMadeDesign('lance'),
+      handMadeDesign('bastion'),
       200_000 * KM,
     );
     battle.advance(10);
     const order = battle.observe('red').ownShip.manoeuvre;
     expect(order?.goal).toBe('hold');
-    expect(order?.range).toBeGreaterThan(BASTION_REACH);
-    expect(order?.range).toBeLessThan(LANCE_REACH);
+    expect(order?.range).toBeGreaterThan(LANCE_REACH);
+    expect(order?.range).toBeLessThan(BASTION_REACH);
 
     const events = fightToTheEnd(battle, 12 * HOUR);
     expect(battle.outcome?.winner).toBe('red');
     const hits = events.filter((e) => e.type === 'hit' && e.attacker === 'red');
     expect(hits.length).toBeGreaterThan(0);
     // Every hit landed from beyond the reach of the enemy's lasers.
-    for (const hit of hits) expect(hit.type === 'hit' && hit.range).toBeGreaterThan(BASTION_REACH);
+    for (const hit of hits) expect(hit.type === 'hit' && hit.range).toBeGreaterThan(LANCE_REACH);
   }, 20_000); // Simulates hours of battle; takes a few seconds.
 
   it('outranged, closes in to fight, with the drive first on the way and the weapons first there', () => {
     const battle = againstIdlePlayer(
-      handMadeDesign('lance'),
       handMadeDesign('bastion'),
+      withComponent(handMadeDesign('lance'), 'sensor', { aperture: 6 }),
       200_000 * KM,
     );
     battle.advance(10);
     let red = battle.observe('red').ownShip;
-    // Its sensor makes out the Lance's laser even this far off, so it knows it is outranged.
+    // Its sensor makes out Bastion's laser even this far off, so it knows it is outranged.
     expect(red.manoeuvre?.goal).toBe('close');
-    expect(red.manoeuvre?.range).toBeLessThan(BASTION_REACH);
+    expect(red.manoeuvre?.range).toBeLessThan(LANCE_REACH);
     expect(red.power.priorities[0]).toBe('drive');
     expect(red.heat.radiatorsDeployed).toBe(false);
 
@@ -165,7 +165,7 @@ describe('computer captain', () => {
 
     fightToTheEnd(battle, 12 * HOUR);
     expect(battle.outcome?.winner).toBe('red');
-    expect(range(battle.observe('red'))).toBeLessThan(BASTION_REACH);
+    expect(range(battle.observe('red'))).toBeLessThan(LANCE_REACH);
   }, 20_000); // Simulates hours of battle; takes a few seconds.
 
   it('holds its kinetic guns until the enemy is too close to dodge their slugs, then hits', () => {
@@ -536,7 +536,7 @@ describe('computer captain', () => {
   });
 
   it('closes in when nothing has happened for a while', () => {
-    // With a drive of a newton neither ship gets anywhere, so the Lance cannot reach its standoff
+    // With a drive of a newton neither ship gets anywhere, so Bastion cannot reach its standoff
     // range.
     const stuck = (id: string): Design => withComponent(handMadeDesign(id), 'drive', { thrust: 1 });
     const setup = duelSetup(stuck('lance'), stuck('bastion'), 250_000 * KM);
@@ -544,11 +544,11 @@ describe('computer captain', () => {
       { ...setup, sides: setup.sides.map((side) => ({ ...side, commander: 'computer' })) },
       { maxTime: 60 },
     );
-    expect(battle.observe('blue').ownShip.manoeuvre?.goal).toBe('hold');
+    expect(battle.observe('red').ownShip.manoeuvre?.goal).toBe('hold');
     battle.advance(HOUR);
-    const order = battle.observe('blue').ownShip.manoeuvre;
+    const order = battle.observe('red').ownShip.manoeuvre;
     expect(order?.goal).toBe('close');
-    expect(order?.range).toBeLessThan(BASTION_REACH);
+    expect(order?.range).toBeLessThan(LANCE_REACH);
   });
 });
 
