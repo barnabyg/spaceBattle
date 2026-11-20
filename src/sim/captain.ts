@@ -12,6 +12,7 @@ import {
   designComponents,
   designComponentsOfType,
   missileRole,
+  type ComponentType,
   type Design,
   type MountedComponentDesign,
   type ShieldType,
@@ -19,10 +20,12 @@ import {
 import { ARMOUR } from './armour';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE, radiativeLimit } from './heat';
 import { missileReach, reachOfDeltaV } from './missile';
+import { REPAIR_CAP } from './repair';
 import type {
   AntiMissileOrder,
   AttitudeOrder,
   BurnOrder,
+  ComponentAddress,
   LaunchOrder,
   ManoeuvreOrder,
   Order,
@@ -266,6 +269,43 @@ const biteReach = (ship: OwnShipObservation, enemy: ContactObservation): number 
   return Math.max(missileReachOf(ship), gunReach(ship), scale * beamReach(ship));
 };
 
+/** Which damaged parts a captain has repaired first: moving, seeing, turning, then fighting. */
+const REPAIR_PRIORITY: Partial<Readonly<Record<ComponentType, number>>> = {
+  drive: 0,
+  sensor: 1,
+  thrusters: 2,
+  laser: 3,
+  'charged-particle-beam': 3,
+  'neutral-particle-beam': 3,
+  'kinetic-gun': 3,
+  launcher: 3,
+  'point-defence': 4,
+  reactor: 5,
+  radiator: 6,
+};
+
+/**
+ * The damaged part most worth the crew's repair: one still working but below what a field repair
+ * restores (see `REPAIR_CAP`), first by `REPAIR_PRIORITY`, then the most damaged. Null if none.
+ */
+const repairWorth = (ship: OwnShipObservation): ComponentAddress | null => {
+  const candidates = ship.sections.flatMap((section) =>
+    [
+      ...section.components.map((part, index) => ({ part, mounted: false, index })),
+      ...section.mounts.map((part, index) => ({ part, mounted: true, index })),
+    ].flatMap(({ part, mounted, index }) =>
+      part.integrity > 0 && part.integrity < REPAIR_CAP
+        ? [{ section: section.kind, mounted, index, part }]
+        : [],
+    ),
+  );
+  const rank = (c: (typeof candidates)[number]) => REPAIR_PRIORITY[c.part.type] ?? 7;
+  const best = candidates.sort(
+    (a, b) => rank(a) - rank(b) || a.part.integrity - b.part.integrity,
+  )[0];
+  return best ? { section: best.section, mounted: best.mounted, index: best.index } : null;
+};
+
 /** How far the ship's point defence reaches while it has a working gun and rounds left, m. */
 const pointDefenceReach = ({ weapons }: OwnShipObservation): number =>
   weapons.ammunition.rounds > 0 ? reachOf(weapons.pointDefence, (gun) => gun.effectiveRange) : 0;
@@ -364,6 +404,13 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
       return ship.weapons.target === order.target && ship.weapons.mode === order.mode;
     case 'roll':
       return ship.rolling === order.rolling;
+    case 'repair':
+      return order.target === null
+        ? ship.repair === null
+        : ship.repair !== null &&
+            ship.repair.section === order.target.section &&
+            ship.repair.mounted === order.target.mounted &&
+            ship.repair.index === order.target.index;
     case 'radiators':
       return (
         (ship.heat.radiatorsDeployed || ship.heat.radiatorDeploymentRemaining > 0) ===
@@ -940,6 +987,11 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
           ship.appearance.beamsLanding.length > 0,
       };
       orders.push(roll);
+      // Medium and high captains set the crew to repair what matters most, one part at a time.
+      if (profile.managesPower && ship.repair === null) {
+        const fix = repairWorth(ship);
+        if (fix) orders.push({ type: 'repair', target: fix });
+      }
       const launch = missiles(observation, enemy, range, threats);
       if (launch) orders.push(launch);
       return orders.filter((order) => !inForce(ship, order));

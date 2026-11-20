@@ -59,6 +59,8 @@ export interface SectionState {
   readonly struck: number | null;
   /** How hot the armour's struck surface glows, K; the ship's base temperature when unlit. */
   readonly surfaceTemperature: number;
+  /** When it or one of its mounts was last hit, s; −∞ before any hit. */
+  readonly lastHit: number;
 }
 
 /** A single built ship and its changing state. */
@@ -92,6 +94,8 @@ export interface ShipState {
   radiatorsDeployed: boolean;
   /** Whether it is rolling about its long axis (see `RollOrder`). */
   rolling: boolean;
+  /** The component slot its crew is repairing (see `RepairOrder`), or null. */
+  repairing: number | null;
   /** Simulated seconds left to deploy; zero when idle. Retraction cancels deployment. */
   radiatorDeploymentRemaining: number;
   /** Whether the captain has the shields raised, so they draw power and work. */
@@ -376,7 +380,12 @@ export const createShip = (
     sections: Object.fromEntries(
       SECTION_KINDS.map((kind) => [
         kind,
-        { ...condition.sections[kind], struck: null, surfaceTemperature: BASE_TEMPERATURE },
+        {
+          ...condition.sections[kind],
+          struck: null,
+          surfaceTemperature: BASE_TEMPERATURE,
+          lastHit: -Infinity,
+        },
       ]),
     ) as Record<SectionKind, SectionState>,
     ammunition: ship.ammunition.map((full, i) => ({ ...full, ...condition.magazines[i] })),
@@ -409,6 +418,7 @@ const createFreshShip = (
   heat: thermalProperties(design).heatCapacity * BASE_TEMPERATURE,
   radiatorsDeployed: false,
   rolling: false,
+  repairing: null,
   radiatorDeploymentRemaining: 0,
   shieldsRaised: true,
   coolantLoad: NO_COOLANT_LOAD,
@@ -424,6 +434,7 @@ const createFreshShip = (
         structure: 1,
         struck: null,
         surfaceTemperature: BASE_TEMPERATURE,
+        lastHit: -Infinity,
       },
     ]),
   ) as Record<SectionKind, SectionState>,

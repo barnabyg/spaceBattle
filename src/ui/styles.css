@@ -1330,3 +1330,14 @@ h3 {
 .intelligence-report {
   width: 50rem;
 }
+
+.damage-repair {
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  font-size: 0.75rem;
+}
+
+.damage-repair[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}

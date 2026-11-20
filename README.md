@@ -65,6 +65,14 @@ battle log. Test mode adds **Enemy** and **Log** tabs. Only the selected panel s
 values and each panel's scroll position survive switching. Focus a tab and use Left/Right,
 Home or End to switch with the keyboard. Withdrawal and refused-order messages stay visible.
 
+**Damage control**: in the **Damage** tab, each damaged component that a field repair can help has a
+**Repair** button. The crew then restore it at 0.2% integrity a second up to 75%, one component at a
+time; the row shows "repairing", or "repair paused under fire" for 30 seconds after its section is
+hit, and **Stop** calls them off. Wrecked components cannot be repaired in battle, and repairs between
+campaign battles are unchanged. Medium and high computer captains repair the drive first, then the
+sensor, thrusters, weapons, reactor and radiators. To check, start a free battle, let the enemy damage
+your ship, then press **Repair** beside a damaged component and watch its integrity climb.
+
 The right sidebar's **Incoming hits** schematic stays visible above every tab. Its forward,
 middle and engine sections turn red and show **Hit** for 1.5 real seconds when struck,
 including hits on their mounts and sections exposed to nuclear bursts. Repeated hits renew

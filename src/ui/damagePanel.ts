@@ -2,6 +2,8 @@ import type { BattleEvent, SectionObservation, SideId, SideObservation } from '.
 import type { ComponentType, SectionKind } from '../sim/design';
 import type { BeamKind, HitEvent, ImpactKind, InterceptWeapon } from '../sim/events';
 import { targetsMissile } from '../sim/missile';
+import type { ComponentAddress } from '../sim/orders';
+import { REPAIR_CAP } from '../sim/repair';
 import { el } from './el';
 import { formatBattleTime, formatGJ, formatKilotons, formatKm, formatMm, formatMW } from './format';
 
@@ -150,6 +152,11 @@ export interface DamagePanelOptions {
   readonly intro?: HTMLElement;
   /** Whether to show the side's latest events; true by default. */
   readonly log?: boolean;
+  /**
+   * Sets the crew to repair a component, or stops them (null); when given, each component a
+   * field repair can help has a Repair button (see `RepairOrder`).
+   */
+  readonly onRepair?: (target: ComponentAddress | null) => void;
 }
 
 /**
@@ -158,7 +165,7 @@ export interface DamagePanelOptions {
  */
 export const createDamagePanel = (
   viewer: SideId,
-  { title = 'Damage', intro, log: showLog = true }: DamagePanelOptions = {},
+  { title = 'Damage', intro, log: showLog = true, onRepair }: DamagePanelOptions = {},
 ) => {
   const body = el('div', { className: 'damage-sections' });
   const log = el('ol', { className: 'battle-log', attrs: { 'aria-label': 'Battle log' } });
@@ -175,7 +182,12 @@ export const createDamagePanel = (
   let rows:
     | {
         readonly summary: HTMLElement;
-        readonly parts: readonly { readonly value: HTMLElement; readonly item: HTMLElement }[];
+        readonly parts: readonly {
+          readonly value: HTMLElement;
+          readonly item: HTMLElement;
+          readonly repair: HTMLButtonElement | null;
+          readonly address: ComponentAddress;
+        }[];
       }[]
     | undefined;
 
@@ -186,17 +198,32 @@ export const createDamagePanel = (
         attrs: { 'aria-label': `${SECTION_TEXT[section.kind]} section` },
       });
       const parts = [
-        ...section.components.map((c) => ({ type: c.type, mounted: false })),
-        ...section.mounts.map((c) => ({ type: c.type, mounted: true })),
-      ].map(({ type, mounted }) => {
+        ...section.components.map((c, index) => ({ type: c.type, mounted: false, index })),
+        ...section.mounts.map((c, index) => ({ type: c.type, mounted: true, index })),
+      ].map(({ type, mounted, index }) => {
         const value = el('span', { className: 'damage-integrity' });
+        const address: ComponentAddress = { section: section.kind, mounted, index };
+        const repair = onRepair
+          ? el('button', {
+              className: 'damage-repair',
+              text: 'Repair',
+              attrs: {
+                type: 'button',
+                'aria-label': `Repair ${COMPONENT_TEXT[type]}${mounted ? ' (mount)' : ''}, ${SECTION_TEXT[section.kind]}`,
+              },
+            })
+          : null;
+        repair?.addEventListener('click', () => {
+          onRepair?.(repair.getAttribute('aria-pressed') === 'true' ? null : address);
+        });
         const item = el(
           'li',
           {},
           el('span', { text: `${COMPONENT_TEXT[type]}${mounted ? ' (mount)' : ''}` }),
           value,
+          ...(repair ? [repair] : []),
         );
-        return { value, item };
+        return { value, item, repair, address };
       });
       body.append(
         el(
@@ -222,7 +249,21 @@ export const createDamagePanel = (
         [...section.components, ...section.mounts].forEach((component, j) => {
           const part = row.parts[j];
           if (!part) return;
-          part.value.textContent = formatIntegrity(component.integrity);
+          const { repair } = observation.ownShip;
+          const repairing =
+            repair !== null &&
+            repair.section === part.address.section &&
+            repair.mounted === part.address.mounted &&
+            repair.index === part.address.index;
+          part.value.textContent = repairing
+            ? `${formatIntegrity(component.integrity)} · ${repair.state === 'working' ? 'repairing' : 'repair paused under fire'}`
+            : formatIntegrity(component.integrity);
+          if (part.repair) {
+            part.repair.hidden =
+              !repairing && !(component.integrity > 0 && component.integrity < REPAIR_CAP);
+            part.repair.textContent = repairing ? 'Stop' : 'Repair';
+            part.repair.setAttribute('aria-pressed', String(repairing));
+          }
           part.item.classList.toggle('damaged', component.integrity < 1);
           part.item.classList.toggle('lost', component.integrity <= 0);
         });

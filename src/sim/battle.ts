@@ -1,6 +1,7 @@
 import { incomingMissiles } from './antiMissile';
 import { componentSlots } from './components';
 import { coolArmour, overheat, strike, type DamageContext } from './damage';
+import { repairRefused, repairStep, slotAt } from './repair';
 import type { CaptainSkill } from './captain';
 import {
   missileRole,
@@ -288,6 +289,17 @@ const checkOrder = (order: Order): Order => {
         (mount !== null && !(Number.isInteger(mount) && mount >= 0))
       ) {
         throw new Error('An aim point needs a section and a mount number or null');
+      }
+      return order;
+    }
+    case 'repair': {
+      const { target } = order;
+      if (
+        target !== null &&
+        (!SECTION_KINDS.includes(target.section) ||
+          !(Number.isInteger(target.index) && target.index >= 0))
+      ) {
+        throw new Error('A repair needs a section and a component number, or null to stop');
       }
       return order;
     }
@@ -637,6 +649,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
     coolArmour(ship, TIME_STEP);
     // Without working thrusters a ship stops rolling.
     if (ship.rolling && !(thrusterTorque(ship) > 0)) ship.rolling = false;
+    // Its crew work at their repair.
+    repairStep(ship, steps * TIME_STEP, TIME_STEP);
   };
 
   /**
@@ -887,6 +901,16 @@ export const createBattle = (setup: BattleSetup): Battle => {
         case 'shields':
           ship.shieldsRaised = checked.raised;
           break;
+        case 'repair': {
+          if (checked.target === null) {
+            ship.repairing = null;
+            break;
+          }
+          const why = repairRefused(ship, checked.target);
+          if (why) throw new Error(why);
+          ship.repairing = slotAt(ship.design, checked.target);
+          break;
+        }
         case 'roll':
           if (checked.rolling && !(thrusterTorque(ship) > 0)) {
             throw new Error('The thrusters are wrecked: the ship cannot roll');
@@ -954,6 +978,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
           contactOf(own),
           antiMissileEngagements(sideId, missiles),
           targetOf(own)?.ship ?? null,
+          steps * TIME_STEP,
         ),
         contacts: combatants.filter((c) => c !== own).map((c) => observeContact(own.ship, c)),
         munitions: observeMunitions(slugs, missiles),

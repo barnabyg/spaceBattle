@@ -3,6 +3,7 @@ import { resolvedShipAppearance, type ResolvedShipAppearance } from './exterior'
 import { effectiveRange } from './beams';
 import { componentSlots } from './components';
 import { intactShape } from './damage';
+import { repairState } from './repair';
 import {
   designComponentsOfType,
   missileRole,
@@ -438,6 +439,14 @@ export interface OwnShipObservation {
   readonly thrust: number;
   /** Thruster torque applied in the last step (body frame), N·m. */
   readonly torque: Vec3;
+  /** The component its crew is repairing (see `RepairOrder`), and whether work is paused. */
+  readonly repair: {
+    readonly section: SectionKind;
+    readonly mounted: boolean;
+    readonly index: number;
+    readonly type: ComponentType;
+    readonly state: 'working' | 'paused';
+  } | null;
   /** Whether it is rolling about its long axis (see `RollOrder`). */
   readonly rolling: boolean;
   readonly attitude: AttitudeOrder | null;
@@ -842,6 +851,21 @@ export const antiMissileEngagements = (
       : [],
   );
 
+/** The component under repair and how the work stands, or null (see `RepairOrder`). */
+const observeRepair = (ship: ShipState, time: number): OwnShipObservation['repair'] => {
+  const state = repairState(ship, time);
+  const slot = ship.repairing === null ? undefined : componentSlots(ship.design)[ship.repairing];
+  return state && slot
+    ? {
+        section: slot.section,
+        mounted: slot.mounted,
+        index: slot.index,
+        type: slot.component.type,
+        state,
+      }
+    : null;
+};
+
 /**
  * A side's own ship in full. `contact` is what its autopilot knows of the enemy, and
  * `engagements` its anti-missile missiles in flight (see `antiMissileEngagements`). `target` is
@@ -852,6 +876,7 @@ export const observeOwnShip = (
   contact: ContactMotion | null,
   engagements: readonly AntiMissileEngagement[],
   target: Motion | null,
+  time: number,
 ): OwnShipObservation => {
   const { ship } = own;
   return {
@@ -872,6 +897,7 @@ export const observeOwnShip = (
     thrust: ship.thrust,
     torque: ship.torque,
     rolling: ship.rolling,
+    repair: observeRepair(ship, time),
     attitude: ship.attitude,
     burn: ship.burn,
     manoeuvre: ship.manoeuvre ? observeManoeuvre(ship, ship.manoeuvre, contact) : null,
