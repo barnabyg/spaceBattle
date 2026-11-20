@@ -106,29 +106,30 @@ To check, launch using the manual withdrawal command below, pause a free battle,
 to first and **Capacitors** to second, then order a burn and resume. Priorities stay selected;
 the drive's bar and power figures update as the battle advances.
 
-With **Fire freely** and a target in range, lasers charge from allocated weapons power, then
-fire short shots. At full supply they charge for 15 seconds and fire for one second at
-16 times their listed average beam power; charging continues during the shot. Individual weapon
-statuses show **Charging**, **Firing** and **Charge %**. Low power slows charging; heat and damage
-limit output. **Hold fire**, no target or leaving range interrupts emission and retains at most
-one local buffer of charge. Changing targets uses that same bounded charge. Particle beams
-remain continuous. See the [laser balance notes](docs/research/charged-lasers.md).
+With **Fire freely** and a target in range, lasers fire a continuous beam at their listed beam
+power, drawing their electrical input for as long as they fire; low power, heat and damage limit
+output, and **Hold fire**, no target or leaving range stop it on the next step. Particle beams fire
+continuously too.
 
-To check the cycle manually, run the following from the repository root (the directory containing
-`package.json`) using PowerShell 7:
+Armour sheds a beam by glowing. Struck armour heats until it radiates away what lands on it, up to
+its glow temperature: about 3,000 K for ablative armour, which sheds up to 4.1 MW/m², and 1,700 K
+for heavy armour, which sheds only 0.38 MW/m². A laser below that only heats the struck section,
+which glows and cools again over about 20 seconds once the beam is off, and a quarter of what it
+sheds soaks into the ship's heat for its radiators; mounts, outside the armour, still take the whole
+beam. Above it, only the excess burns the armour away. A beam lands at about 1 MW/m² at the edge
+of its reach and four times that at half reach, so against ablative armour it only heats the ship
+and strips its mounts from beyond about half its reach, and burns through closer in. Particle beams
+heat armour through its depth, but it still sheds them by radiating from its surface. Computer
+captains that cannot outrange the enemy close to 0.3 of their reach to burn through. See the
+[armour glow notes](docs/research/armour-glow.md).
 
-```powershell
-npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev -- --port 5277 --strictPort }
-```
-
-Open [the game](http://localhost:5277) in Firefox. Start a free battle with Blue's Bastion controlled
-by the player and Red's Lance controlled by the computer. Target the enemy, select **Fire freely**
-and **Close**. Use time compression until the laser is in range, then choose **1×**. Watch charge
-rise over 15 simulated seconds, followed by a one-second beam and firing sound. The next shot
-requires another 15 seconds of charging. Select **Hold fire**:
-emission stops on the next simulation step and charge stays fixed. Select **Fire freely** again:
-charging resumes, followed by bounded bursts. The instrument view's impact glow follows arrival
-at the target, so it is delayed by light travel time. Pause to inspect either phase.
+To check manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from
+`C:/docs/git/spaceBattle` in PowerShell 7. Switch on **Test mode**, then start a free battle with
+Blue's Bastion as the player and Red's Lance as the computer in **Head-on**. Target the enemy,
+select **Fire freely** and raise time compression. Once your long-range laser is in range it should
+show **Firing in last step** continuously, and the **Enemy** tab should show the Lance's armour
+unworn while the **Test log** records your hits. As the Lance closes inside about 80,000 km, its
+forward armour should start wearing away.
 
 Radiators take five simulated seconds to deploy (five seconds at 1×). Their status shows the
 remaining time and the instrument view animates the panels extending. Cooling and exposure

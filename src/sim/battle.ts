@@ -1,6 +1,6 @@
 import { incomingMissiles } from './antiMissile';
 import { componentSlots } from './components';
-import { overheat, strike, type DamageContext } from './damage';
+import { coolArmour, overheat, strike, type DamageContext } from './damage';
 import type { CaptainSkill } from './captain';
 import {
   missileRole,
@@ -631,6 +631,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
     }
     ship.acceleration = scale(sub(ship.velocity, coasting), 1 / TIME_STEP);
     settlePowerAndHeat(ship, TIME_STEP);
+    // Struck armour cools before this step's beams land on it again.
+    coolArmour(ship, TIME_STEP);
   };
 
   /**

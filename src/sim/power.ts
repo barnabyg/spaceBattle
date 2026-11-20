@@ -3,7 +3,7 @@ import { designComponent, designComponentsOfType, type Design } from './design';
 import { BASE_TEMPERATURE, radiatedPower, thermalProperties, workingRadiators } from './heat';
 import { NO_COOLANT_LOAD, shieldDemand } from './shields';
 import type { ShipState } from './ship';
-import { laserStoredEnergy, settleBeamWeapons } from './weapons';
+import { settleBeamWeapons } from './weapons';
 
 /**
  * What the captain ranks in a power order. 'capacitors' is the priority of charging them; it
@@ -42,7 +42,7 @@ export interface PowerFlow {
  * Running totals of where a ship's energy has gone since the battle began, J. Electrical energy
  * balances as reactorGenerated + capacitorDischarged = Σ delivered + capacitorCharged; stored
  * energy changes by capacitorCharged − capacitorDischarged − capacitorLost; and heat as
- * heatGenerated + heatAbsorbed − heatRadiated = the change in the ship's heat.
+ * heatGenerated + heatAbsorbed + heatConducted − heatRadiated = the change in the ship's heat.
  */
 export interface EnergyLedger {
   /** Electrical energy the reactor generated. */
@@ -79,6 +79,11 @@ export interface EnergyLedger {
    * instead of burning the armour away.
    */
   readonly heatAbsorbed: number;
+  /**
+   * Energy of enemy lasers that glowing armour shed and that soaked into the ship's heat through
+   * the hull behind it (see `GLOW_CONDUCTED_SHARE`).
+   */
+  readonly heatConducted: number;
   /** Heat from the reactor and from every system's waste. */
   readonly heatGenerated: number;
   readonly heatRadiated: number;
@@ -97,6 +102,7 @@ export const EMPTY_LEDGER: EnergyLedger = {
   hitEnergy: 0,
   beamDeflected: 0,
   heatAbsorbed: 0,
+  heatConducted: 0,
   heatGenerated: 0,
   heatRadiated: 0,
 };
@@ -238,19 +244,16 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
   ship.storedEnergy = Math.min(plant.storageCapacity, unclamped);
   const lost = unclamped - ship.storedEnergy;
 
-  // A reactor of efficiency η gives off (1 − η)/η of its electrical output as heat. Lasers
-  // release their conversion losses on discharge. Storage lost with damaged laser buffers
-  // becomes heat. Shields turn all their power into heat, in their coils and pumps.
+  // A reactor of efficiency η gives off (1 − η)/η of its electrical output as heat. Beam weapons
+  // turn what does not leave in their beams into heat. Shields turn all their power into heat, in
+  // their coils and pumps.
   const reactorHeat =
     (flow.reactorOutput * (1 - plant.reactorEfficiency)) / plant.reactorEfficiency;
   const driveHeat = driveShare.supplied * drive.wasteHeatFraction;
-  const previousLaserEnergy = laserStoredEnergy(ship);
-  settleBeamWeapons(ship, dt);
-  const laserStorage = (laserStoredEnergy(ship) - previousLaserEnergy) / dt;
+  settleBeamWeapons(ship);
   const beam = ship.weapons.beamWeapons.reduce((sum, state) => sum + state.beamPower, 0);
   const slug = weapons.supplied * ship.weapons.slugFraction;
-  const generated =
-    reactorHeat + driveHeat + shields.supplied + weapons.supplied - beam - slug - laserStorage;
+  const generated = reactorHeat + driveHeat + shields.supplied + weapons.supplied - beam - slug;
   const { emittance } = workingRadiators(ship.design, ship.integrity, ship.radiatorsDeployed);
   // The coolant loop bypasses the radiators rather than chill the ship below its base temperature.
   const surplus = ship.heat - thermal.heatCapacity * BASE_TEMPERATURE;
@@ -260,7 +263,7 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
   );
   ship.heat += (generated - radiated) * dt;
   // Coolant shields add the laser heat they carry as beams land later in the step.
-  ship.heatFlow = { generated, radiated, absorbed: 0 };
+  ship.heatFlow = { generated, radiated, absorbed: 0, conducted: 0 };
   ship.coolantLoad = NO_COOLANT_LOAD;
 
   const ledger = ship.ledger;
@@ -281,6 +284,7 @@ export const settlePowerAndHeat = (ship: ShipState, dt: number): void => {
     hitEnergy: ledger.hitEnergy,
     beamDeflected: ledger.beamDeflected,
     heatAbsorbed: ledger.heatAbsorbed,
+    heatConducted: ledger.heatConducted,
     heatGenerated: ledger.heatGenerated + generated * dt,
     heatRadiated: ledger.heatRadiated + radiated * dt,
   };

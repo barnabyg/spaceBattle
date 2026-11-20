@@ -26,11 +26,33 @@ export interface ArmourMaterial {
    * dense, ablative armour puts much less in a slug's way for each metre it is thick.
    */
   readonly penetrationEnergy: number;
+  /**
+   * The hottest its struck surface glows without wearing away, K. Steel-like heavy armour holds
+   * until it nears melting; carbon-phenolic chars to carbon, which glows white-hot before it
+   * sublimes.
+   */
+  readonly glowTemperature: number;
+  /** How well that glowing surface radiates, against a perfect black body (0–1). */
+  readonly emissivity: number;
 }
 
 export const ARMOUR: Readonly<Record<ArmourType, ArmourMaterial>> = {
-  heavy: { density: 7_800, ablationEnergy: 8e6, heatingEnergy: 4e6, penetrationEnergy: 4e6 },
-  ablative: { density: 1_800, ablationEnergy: 30e6, heatingEnergy: 25e6, penetrationEnergy: 3e6 },
+  heavy: {
+    density: 7_800,
+    ablationEnergy: 8e6,
+    heatingEnergy: 4e6,
+    penetrationEnergy: 4e6,
+    glowTemperature: 1_700,
+    emissivity: 0.8,
+  },
+  ablative: {
+    density: 1_800,
+    ablationEnergy: 30e6,
+    heatingEnergy: 25e6,
+    penetrationEnergy: 3e6,
+    glowTemperature: 3_000,
+    emissivity: 0.9,
+  },
 };
 
 /**

@@ -1,5 +1,7 @@
 # Charged laser balance (#77)
 
+> Superseded by [#111](https://github.com/barnabyg/spaceBattle/issues/111): lasers fire continuously again so that armour can shed them by glowing. See the [armour glow notes](armour-glow.md). This note records the burst model as it was.
+
 Lasers keep their existing design data, cost, electrical input, efficiency, focusing and effective
 range. `beamPower` means sustained average output at full supply. A local buffer holds 15 seconds
 of rated electrical input, scaled by mount integrity. It begins empty on every battle, including

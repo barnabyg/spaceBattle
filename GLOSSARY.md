@@ -99,10 +99,14 @@ Passive, unpowered protection in a section that must be worn through before comp
 _Avoid_: Hull points, plating
 
 **Heavy armour**:
-Dense armour that resists every kind of attack moderately well but weighs a lot.
+Dense armour that resists every kind of attack moderately well but weighs a lot. It glows only to about 1,700 K, so it sheds little of a laser.
 
 **Ablative armour**:
-Armour that boils away under heat, so it holds off lasers and particle beams very well but slugs punch through it easily.
+Armour that boils away under heat, so it holds off lasers and particle beams very well but slugs punch through it easily. Its charred surface glows white-hot, shedding a beam too weak to burn it.
+
+**Radiative limit**:
+The beam intensity a kind of armour sheds by glowing at its hottest: below it the struck armour only glows and heats the ship; above it, only the excess burns the armour away.
+_Avoid_: Damage threshold, armour rating
 
 **Shield**:
 A powered component that counters specific kinds of attack using known physics. Each kind of shield works against some attacks and is useless against others.
@@ -140,7 +144,7 @@ _Avoid_: Blip, track, target
 Any component that damages or destroys an enemy ship or munition.
 
 **Laser**:
-A weapon powered by the ship that fires short bursts of light after charging; its light travels at light speed and its beam spreads with distance, so it weakens with range.
+A weapon powered by the ship that fires a continuous beam of light; its light travels at light speed and its beam spreads with distance, so it weakens with range until armour can shed it by glowing.
 
 **Charged particle beam**:
 A weapon firing a beam of charged particles at near light speed; it does heavy damage but spreads quickly, so it is short-ranged, and magnetic shields can bend it away.

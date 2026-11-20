@@ -44,9 +44,6 @@ const ledgerChecker = (battle: Battle, design: Design, side = 'blue') => {
     const { delivered, ...ledger } = now.energyLedger;
     const stored = [now.power.stored, -start.power.stored];
     const heat = [now.heat.heat, -start.heat.heat];
-    const laserStorage =
-      now.weapons.lasers.reduce((sum, laser) => sum + laser.storedEnergy, 0) -
-      start.weapons.lasers.reduce((sum, laser) => sum + laser.storedEnergy, 0);
     // Electrical energy: what the reactor made is now stored, was lost with damaged capacitors,
     // or was delivered to a system.
     expectBalanced(
@@ -73,13 +70,15 @@ const ledgerChecker = (battle: Battle, design: Design, side = 'blue') => {
         -ledger.driveExhaust,
         delivered.shields,
         delivered.weapons,
-        -laserStorage,
         -ledger.beamEmitted,
         -ledger.slugEnergy,
       ],
     );
     // Heat: what came in less what was radiated away is what the ship now holds.
-    expectBalanced([ledger.heatGenerated, ledger.heatAbsorbed, -ledger.heatRadiated], heat);
+    expectBalanced(
+      [ledger.heatGenerated, ledger.heatAbsorbed, ledger.heatConducted, -ledger.heatRadiated],
+      heat,
+    );
     expectBalanced([now.heat.heat], [now.heat.heatCapacity * now.heat.temperature]);
   };
 };

@@ -1,7 +1,6 @@
 import type { SideId, SideSetup } from './battle';
 import { resolvedShipAppearance, type ResolvedShipAppearance } from './exterior';
-import { effectiveRange, LASER_BURST_POWER } from './beams';
-import { laserChargeFraction } from './weapons';
+import { effectiveRange } from './beams';
 import { componentSlots } from './components';
 import { intactShape } from './damage';
 import {
@@ -101,6 +100,8 @@ export interface HeatObservation {
   readonly radiated: number;
   /** Laser heat the coolant shields carried into the ship in the last step, W. */
   readonly absorbed: number;
+  /** Laser heat that soaked into the ship from its glowing armour in the last step, W. */
+  readonly conducted: number;
   readonly radiatorsDeployed: boolean;
   /** Simulated seconds left to deploy; zero when idle. */
   readonly radiatorDeploymentRemaining: number;
@@ -158,6 +159,11 @@ export interface SectionObservation {
   };
   /** Integrity of the section's own structure (0–1); at zero it has failed and is lost. */
   readonly structure: number;
+  /**
+   * How hot its armour's struck surface glows, K: up to the armour's glow temperature while it
+   * sheds a laser, cooling back to the ship's base temperature once the beam is off.
+   */
+  readonly surfaceTemperature: number;
   /** Inside the armour. */
   readonly components: readonly ComponentObservation[];
   readonly mounts: readonly ComponentObservation[];
@@ -180,12 +186,7 @@ export interface BeamWeaponObservation {
 }
 
 /** One laser and what it is doing. */
-export interface LaserObservation extends BeamWeaponObservation {
-  /** Fraction of the local buffer charged (0–1). */
-  readonly charge: number;
-  /** Electrical energy in the local buffer, J, separate from ship capacitors. */
-  readonly storedEnergy: number;
-}
+export type LaserObservation = BeamWeaponObservation;
 
 /** One particle beam, charged or neutral, and what it is doing. */
 export interface ParticleBeamObservation extends BeamWeaponObservation {
@@ -481,6 +482,8 @@ export interface ContactSectionObservation {
   readonly kind: SectionKind;
   /** Its armour as built: its type and thickness show at its edges and surface. */
   readonly armour: ArmourDesign;
+  /** How hot its armour's surface glows, K: a glowing hot spot shows to any sensor. */
+  readonly surfaceTemperature: number;
 }
 
 /** A mount of a contact the side's sensors make out. */
@@ -618,6 +621,7 @@ const observeHeat = (ship: ShipState): HeatObservation => {
     generated: ship.heatFlow.generated,
     radiated: ship.heatFlow.radiated,
     absorbed: ship.heatFlow.absorbed,
+    conducted: ship.heatFlow.conducted,
     radiatorsDeployed: ship.radiatorsDeployed,
     radiatorDeploymentRemaining: ship.radiatorDeploymentRemaining,
     radiatorArea: radiators.area,
@@ -664,6 +668,7 @@ const observeSections = (ship: ShipState): SectionObservation[] => {
       remaining: ship.sections[section.kind].armour,
     },
     structure: ship.sections[section.kind].structure,
+    surfaceTemperature: ship.sections[section.kind].surfaceTemperature,
     components: parts(section.kind, false),
     mounts: parts(section.kind, true),
   }));
@@ -682,7 +687,7 @@ const observeWeapons = (
     integrity: ship.integrity[state.slot] ?? 0,
     firing: state.beamPower > 0,
     beamPower: state.beamPower,
-    fullBeamPower: state.weapon.beamPower * (state.weapon.type === 'laser' ? LASER_BURST_POWER : 1),
+    fullBeamPower: state.weapon.beamPower,
     effectiveRange: effectiveRange(state.weapon),
   });
   return {
@@ -691,13 +696,7 @@ const observeWeapons = (
     target: weapons.target,
     mode: weapons.mode,
     aim: weapons.aim,
-    lasers: weapons.beamWeapons
-      .filter((w) => w.attack === 'laser')
-      .map((state) => ({
-        ...observeBeamWeapon(state),
-        charge: laserChargeFraction(ship, state),
-        storedEnergy: state.charge,
-      })),
+    lasers: weapons.beamWeapons.filter((w) => w.attack === 'laser').map(observeBeamWeapon),
     particleBeams: weapons.beamWeapons.flatMap((state) =>
       state.attack === 'laser' ? [] : [{ ...observeBeamWeapon(state), kind: state.attack }],
     ),
@@ -1003,7 +1002,13 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
     hullSize: silhouette ? ship.design.hullSize : null,
     sections: ship.design.sections.flatMap((section) =>
       seen.parts.some((p) => p.mount === null && p.section === section.kind)
-        ? [{ kind: section.kind, armour: section.armour }]
+        ? [
+            {
+              kind: section.kind,
+              armour: section.armour,
+              surfaceTemperature: ship.sections[section.kind].surfaceTemperature,
+            },
+          ]
         : [],
     ),
     mounts: seen.parts.flatMap((part) => {

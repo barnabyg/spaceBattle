@@ -2,9 +2,17 @@ import { ARMOUR, beamResistance } from './armour';
 import type { SideId } from './battle';
 import { spotRadius } from './beams';
 import { componentSlots } from './components';
-import type { ArmourType, SectionKind } from './design';
+import { SECTION_KINDS, type ArmourType, type SectionKind } from './design';
 import type { BattleEvent } from './events';
-import { DAMAGE_TEMPERATURE, thermalProperties } from './heat';
+import {
+  BASE_TEMPERATURE,
+  DAMAGE_TEMPERATURE,
+  GLOW_CONDUCTED_SHARE,
+  GLOW_COOLING_TIME,
+  glowTemperature,
+  radiativeLimit,
+  thermalProperties,
+} from './heat';
 import { HULLS } from './hull';
 import { holeArea, penetrationDepth, type SlugHit } from './kinetic';
 import { conjugate, rotate } from './quaternion';
@@ -266,6 +274,14 @@ const damageMount = (ship: ShipState, part: ShapePart, energy: number, ctx: Dama
  * beam (see `deflectedShare`), so only the rest lands. Where a laser lands on a section, its
  * coolant shields carry what they can of it into the ship's heat (see `absorbLaser`), and only the
  * rest burns the armour.
+ *
+ * Armour sheds a beam by glowing: while it has armour left, a section's struck surface radiates
+ * up to its armour's `radiativeLimit` of the intensity, heating to `glowTemperature`, and only
+ * the excess wears it away. Of what it sheds, `GLOW_CONDUCTED_SHARE` soaks into the ship's heat.
+ * A beam below the limit, as long-range fire on ablative armour is, only heats the ship; mounts,
+ * outside the armour, take it all. A particle beam heats the armour through its depth rather than
+ * at its surface, but the armour can still only lose that heat by radiating from its surface, so
+ * the same limit holds.
  */
 export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike | null => {
   const direction = normalize(sub(ship.position, beam.origin));
@@ -297,14 +313,51 @@ export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike 
     beamDeflected: ship.ledger.beamDeflected + deflected * TIME_STEP,
   };
   if (hit.part.mount === null) {
-    const depthIn = (armour: ArmourType) =>
-      (intensity * burning * TIME_STEP) / beamResistance(armour, beam.attack);
-    damageSection(ship, section, energy, depthIn, ctx);
+    const armour = ship.design.sections.find((s) => s.kind === section)?.armour.type ?? 'heavy';
+    const lit = intensity * burning;
+    // Armour left glows to shed a beam; once broken through, nothing does.
+    const glowing = ship.sections[section].armour > 0;
+    const shed = glowing ? Math.min(lit, radiativeLimit(armour)) : 0;
+    const ablating = lit > 0 ? (lit - shed) / lit : 0;
+    if (glowing) glowAt(ship, section, glowTemperature(armour, lit), energy * (1 - ablating));
+    const depthIn = (type: ArmourType) =>
+      ((lit - shed) * TIME_STEP) / beamResistance(type, beam.attack);
+    damageSection(ship, section, energy * ablating, depthIn, ctx);
   } else {
     damageMount(ship, hit.part, energy, ctx);
   }
   const point = add(through, scale(body, hit.distance - RAY_START));
   return { part: hit.part, power, deflected, absorbed, intensity, spotRadius: radius, point };
+};
+
+/**
+ * A section's struck armour glowing at `temperature` K as it sheds `energy` J of a beam, of which
+ * `GLOW_CONDUCTED_SHARE` soaks into the ship's heat.
+ */
+const glowAt = (ship: ShipState, kind: SectionKind, temperature: number, energy: number) => {
+  const state = ship.sections[kind];
+  ship.sections[kind] = {
+    ...state,
+    surfaceTemperature: Math.max(state.surfaceTemperature, temperature),
+  };
+  const conducted = energy * GLOW_CONDUCTED_SHARE;
+  if (!(conducted > 0)) return;
+  ship.heat += conducted;
+  ship.heatFlow = { ...ship.heatFlow, conducted: ship.heatFlow.conducted + conducted / TIME_STEP };
+  ship.ledger = { ...ship.ledger, heatConducted: ship.ledger.heatConducted + conducted };
+};
+
+/** Each section's glowing armour cools back towards the ship's base temperature over `dt` s. */
+export const coolArmour = (ship: ShipState, dt: number): void => {
+  const fade = Math.exp(-dt / GLOW_COOLING_TIME);
+  for (const kind of SECTION_KINDS) {
+    const state = ship.sections[kind];
+    if (state.surfaceTemperature <= BASE_TEMPERATURE) continue;
+    ship.sections[kind] = {
+      ...state,
+      surfaceTemperature: BASE_TEMPERATURE + (state.surfaceTemperature - BASE_TEMPERATURE) * fade,
+    };
+  }
 };
 
 /**

@@ -57,6 +57,8 @@ export interface SectionState {
   readonly structure: number;
   /** The component slot a beam through the armour is boring into, if any. */
   readonly struck: number | null;
+  /** How hot the armour's struck surface glows, K; the ship's base temperature when unlit. */
+  readonly surfaceTemperature: number;
 }
 
 /** A single built ship and its changing state. */
@@ -96,11 +98,15 @@ export interface ShipState {
   coolantLoad: CoolantLoad;
   /** How power and heat flowed in the last step. */
   powerFlow: PowerFlow;
-  /** W; `absorbed` is laser heat the coolant shields carried into the ship. */
+  /**
+   * W; `absorbed` is laser heat the coolant shields carried into the ship, `conducted` laser heat
+   * that soaked in from glowing armour.
+   */
   heatFlow: {
     readonly generated: number;
     readonly radiated: number;
     readonly absorbed: number;
+    readonly conducted: number;
   };
   ledger: EnergyLedger;
   /** Each component's integrity (0–1), in the order of `componentSlots`. */
@@ -366,7 +372,10 @@ export const createShip = (
     propellantMass: condition.propellantMass,
     integrity: [...condition.integrity],
     sections: Object.fromEntries(
-      SECTION_KINDS.map((kind) => [kind, { ...condition.sections[kind], struck: null }]),
+      SECTION_KINDS.map((kind) => [
+        kind,
+        { ...condition.sections[kind], struck: null, surfaceTemperature: BASE_TEMPERATURE },
+      ]),
     ) as Record<SectionKind, SectionState>,
     ammunition: ship.ammunition.map((full, i) => ({ ...full, ...condition.magazines[i] })),
     ammunitionSpent: spentFrom(design, condition.magazines),
@@ -401,7 +410,7 @@ const createFreshShip = (
   shieldsRaised: true,
   coolantLoad: NO_COOLANT_LOAD,
   powerFlow: IDLE_FLOW,
-  heatFlow: { generated: 0, radiated: 0, absorbed: 0 },
+  heatFlow: { generated: 0, radiated: 0, absorbed: 0, conducted: 0 },
   ledger: EMPTY_LEDGER,
   integrity: componentSlots(design).map(() => 1),
   sections: Object.fromEntries(
@@ -411,6 +420,7 @@ const createFreshShip = (
         armour: design.sections.find((s) => s.kind === kind)?.armour.thickness ?? 0,
         structure: 1,
         struck: null,
+        surfaceTemperature: BASE_TEMPERATURE,
       },
     ]),
   ) as Record<SectionKind, SectionState>,

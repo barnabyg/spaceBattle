@@ -1,6 +1,6 @@
-import { armourMass } from './armour';
+import { ARMOUR, armourMass } from './armour';
 import { workingTotal } from './components';
-import { designComponents, designComponentsOfType, type Design } from './design';
+import { designComponents, designComponentsOfType, type ArmourType, type Design } from './design';
 import { HULLS } from './hull';
 
 /** Simulated seconds to deploy radiators; cooling and exposure stay folded until ready. */
@@ -85,4 +85,33 @@ export const thermalLimit = (temperature: number): number =>
   Math.min(
     1,
     Math.max(0, (CUTOFF_TEMPERATURE - temperature) / (CUTOFF_TEMPERATURE - OVERHEAT_TEMPERATURE)),
+  );
+
+/**
+ * The beam intensity a kind of armour sheds by glowing at its `glowTemperature`, W/m²: what a
+ * surface that hot radiates, εσT⁴. Below it the struck armour only glows; above it, only the
+ * excess burns it away. About 0.38 MW/m² for heavy armour and 4.1 MW/m² for ablative.
+ */
+export const radiativeLimit = (type: ArmourType): number =>
+  ARMOUR[type].emissivity * STEFAN_BOLTZMANN * ARMOUR[type].glowTemperature ** 4;
+
+/**
+ * The share of the beam energy armour sheds by glowing that soaks back into the ship's heat
+ * through the hull behind the hot spot, for its radiators to shed; the rest the spot radiates
+ * back out into space.
+ */
+export const GLOW_CONDUCTED_SHARE = 0.25;
+
+/** A struck section's glowing surface cools back towards the ship's temperature over this, s. */
+export const GLOW_COOLING_TIME = 20;
+
+/**
+ * The temperature a beam of `intensity` W/m² heats a surface of armour to while it sheds it, K:
+ * where the surface radiates what lands, up to the armour's glow temperature, beyond which it
+ * wears away instead of getting hotter.
+ */
+export const glowTemperature = (type: ArmourType, intensity: number): number =>
+  Math.min(
+    ARMOUR[type].glowTemperature,
+    Math.max(BASE_TEMPERATURE, (intensity / (ARMOUR[type].emissivity * STEFAN_BOLTZMANN)) ** 0.25),
   );

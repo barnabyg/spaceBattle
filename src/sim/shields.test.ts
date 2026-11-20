@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createBattle, type BattleEvent, type OwnShipObservation } from './battle';
-import { PROTON_REST_ENERGY, LASER_CHARGE_TIME, LASER_BURST_POWER } from './beams';
+import { PROTON_REST_ENERGY } from './beams';
+import { radiativeLimit } from './heat';
 import type { Design, MountedComponentDesign, ShieldDesign } from './design';
 import type { Order } from './orders';
 import type { PowerSystem } from './power';
@@ -58,7 +59,7 @@ interface Attack {
 /** Gives red its orders before blue opens fire. */
 type Prepare = (give: (order: Order) => void) => void;
 
-/** Blue attacks for `seconds` (one complete charged shot for lasers), after red's orders. */
+/** Blue attacks for `seconds`, after red's orders. */
 const attack = (
   weapon: MountedComponentDesign,
   design: Design,
@@ -71,7 +72,7 @@ const attack = (
   });
   battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
   const hits = battle
-    .advance(weapon.type === 'laser' ? LASER_CHARGE_TIME + 1 : seconds)
+    .advance(seconds)
     .filter((e) => (e.type === 'hit' || e.type === 'impact') && e.target === 'red');
   const red = battle.observe('red').ownShip;
   const nose = red.sections.find((s) => s.kind === 'forward')?.armour;
@@ -123,7 +124,13 @@ describe('magnetic shields', () => {
     const shielded = attack(TEST_CHARGED_BEAM, target([weak]));
     const hit = firstHit(shielded.hits);
     expect(hit.deflected / (hit.deflected + hit.power)).toBeCloseTo(share, 6);
-    expect(shielded.worn / bare.worn).toBeCloseTo(1 - share, 3);
+    // What lands burns the armour beyond what it sheds by glowing.
+    const intensity = firstHit(bare.hits).intensity;
+    const limit = radiativeLimit(NOSE_ARMOUR.type);
+    expect(shielded.worn / bare.worn).toBeCloseTo(
+      (intensity * (1 - share) - limit) / (intensity - limit),
+      3,
+    );
   });
 
   it.each([TEST_NEUTRAL_BEAM, TEST_LASER, TEST_KINETIC_GUN])(
@@ -153,26 +160,31 @@ describe('coolant shields', () => {
     const { capacity } = TEST_COOLANT_SHIELD;
     // The whole beam lands on the nose; the coolant carries off its capacity of it.
     const hit = firstHit(shielded.hits);
-    expect(hit.power).toBeCloseTo(LASER_BURST_POWER * TEST_LASER.beamPower, -3);
+    expect(hit.power).toBeCloseTo(TEST_LASER.beamPower, -3);
     expect(hit.absorbed).toBeCloseTo(capacity, -3);
     expect(hit.deflected).toBe(0);
-    const left =
-      (LASER_BURST_POWER * TEST_LASER.beamPower - capacity) /
-      (LASER_BURST_POWER * TEST_LASER.beamPower);
-    expect(shielded.worn / bare.worn).toBeCloseTo(left, 3);
+    // Only what is left beyond what the glowing armour sheds burns it away.
+    const intensity = firstHit(bare.hits).intensity;
+    const limit = radiativeLimit(NOSE_ARMOUR.type);
+    const shieldedIntensity =
+      (intensity * (TEST_LASER.beamPower - capacity)) / TEST_LASER.beamPower;
+    expect(shielded.worn / bare.worn).toBeCloseTo(
+      (shieldedIntensity - limit) / (intensity - limit),
+      3,
+    );
     expect(shielded.red.shields.coolantCapacity.forward).toBeCloseTo(capacity, -3);
     expect(shielded.red.heat.absorbed).toBeCloseTo(capacity, -3);
 
     // The ship's heat rises by what the coolant carried in, and the books still balance.
     const ledger = shielded.red.energyLedger;
     expect(ledger.heatAbsorbed).toBeCloseTo(
-      capacity * (bare.red.energyLedger.hitEnergy / (LASER_BURST_POWER * TEST_LASER.beamPower)),
+      capacity * (bare.red.energyLedger.hitEnergy / TEST_LASER.beamPower),
       -3,
     );
     expect(ledger.heatAbsorbed + ledger.hitEnergy).toBeCloseTo(bare.red.energyLedger.hitEnergy, -3);
     const startHeat = shielded.red.heat.heatCapacity * 300;
     expect(shielded.red.heat.heat - startHeat).toBeCloseTo(
-      ledger.heatGenerated + ledger.heatAbsorbed - ledger.heatRadiated,
+      ledger.heatGenerated + ledger.heatAbsorbed + ledger.heatConducted - ledger.heatRadiated,
       -3,
     );
     expect(shielded.red.heat.heat - bare.red.heat.heat).toBeGreaterThan(0.9 * ledger.heatAbsorbed);
@@ -231,7 +243,7 @@ describe('unpowered shields', () => {
       const priorities: PowerSystem[] = ['drive', 'capacitors', 'shields', 'weapons'];
       const prepare: Prepare = (give) => {
         give({ type: 'power', priorities });
-        give({ type: 'burn', throttle: 1, duration: SECONDS + LASER_CHARGE_TIME });
+        give({ type: 'burn', throttle: 1, duration: SECONDS });
       };
       const design = weak(target(BOTH));
       // The same ship with its shields lowered, so that it burns away from the beam just the same.
@@ -259,7 +271,7 @@ describe('unpowered shields', () => {
     const design = withComponent(target(BOTH), 'reactor', { output: 1.5e9 + shieldPower / 4 });
     const prepare: Prepare = (give) => {
       give({ type: 'power', priorities: ['drive', 'capacitors', 'shields', 'weapons'] });
-      give({ type: 'burn', throttle: 1, duration: SECONDS + LASER_CHARGE_TIME });
+      give({ type: 'burn', throttle: 1, duration: SECONDS });
     };
     const charged = attack(TEST_CHARGED_BEAM, design, { prepare });
     expect(charged.red.shields.powered).toBeCloseTo(0.25, 6);
