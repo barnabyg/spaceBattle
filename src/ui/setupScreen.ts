@@ -1,11 +1,6 @@
-import { STARTING_SCENARIOS, startingScenario } from '../data/scenarios';
+import { OPENING_PASS, scenarioFor, STARTING_SCENARIOS, startingScenario } from '../data/scenarios';
 import { DEFAULT_TIME_LIMIT } from '../game/batch';
-import {
-  FREE_BATTLE_SIDES,
-  freeBattleScenario,
-  type FreeBattleSetup,
-  type FreeBattleSide,
-} from '../game/freeBattle';
+import { FREE_BATTLE_SIDES, type FreeBattleSetup, type FreeBattleSide } from '../game/freeBattle';
 import type { Commander } from '../sim/battle';
 import type { Design } from '../sim/design';
 import { CAPTAIN_SKILLS } from '../sim/captain';
@@ -135,8 +130,11 @@ const select = (options: readonly (readonly [string, string])[], value: string) 
   return element;
 };
 
-/** The starting scenario, with what it looks like and how far apart and how fast it starts. */
-const createScenarioChoice = (initialId: string) => {
+/**
+ * The starting scenario, with what it looks like and how far apart and how fast it starts for the
+ * designs `designsOf` gives; call `describe` again when they change.
+ */
+const createScenarioChoice = (initialId: string, designsOf: () => readonly Design[]) => {
   const scenario = select(
     STARTING_SCENARIOS.map((s) => [s.id, s.name]),
     initialId,
@@ -147,7 +145,7 @@ const createScenarioChoice = (initialId: string) => {
     attrs: { 'aria-label': 'Starting geometry' },
   });
   const describe = () => {
-    const chosen = startingScenario(scenario.value);
+    const chosen = scenarioFor(startingScenario(scenario.value), designsOf());
     description.textContent = chosen.description;
     geometry.textContent = [
       `${formatKm(chosen.separation)} apart`,
@@ -167,6 +165,7 @@ const createScenarioChoice = (initialId: string) => {
       geometry,
     ),
     value: (): string => scenario.value,
+    describe,
   };
 };
 
@@ -232,6 +231,7 @@ const createSideChoice = (
 
   return {
     element,
+    design,
     commander,
     /** Shows or hides the skill choice after the commander was changed from outside. */
     showSkill,
@@ -259,7 +259,14 @@ export const createSetupScreen = (
   const [blueSide, redSide] = FREE_BATTLE_SIDES;
   const blue = createSideChoice(blueSide, SIDE_COLOURS[0], initial.sides[0], designs);
   const red = createSideChoice(redSide, SIDE_COLOURS[1], initial.sides[1], designs);
-  const scenario = createScenarioChoice(freeBattleScenario(initial).id);
+  const scenario = createScenarioChoice(
+    startingScenario(initial.scenarioId ?? OPENING_PASS.id).id,
+    () =>
+      [blue.value(), red.value()].flatMap(({ designId }) =>
+        designs.filter((design) => design.id === designId),
+      ),
+  );
+  for (const side of [blue, red]) side.design.addEventListener('change', scenario.describe);
   const setup = (): FreeBattleSetup => ({
     sides: [blue.value(), red.value()],
     scenarioId: scenario.value(),

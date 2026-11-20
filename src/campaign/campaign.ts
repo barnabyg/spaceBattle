@@ -1,7 +1,7 @@
 import { BALANCE, type Tier } from '../data/balance';
 import { handMadeDesign } from '../data/designs';
 import { OPPONENTS, type Opponent } from '../data/opponents';
-import { STARTING_SCENARIOS } from '../data/scenarios';
+import { scenarioFor, STARTING_SCENARIOS } from '../data/scenarios';
 import type { BattleSetup } from '../sim/battle';
 import type { Design } from '../sim/design';
 import type { BattleOutcome } from '../sim/outcome';
@@ -135,7 +135,8 @@ export const prepareBattle = (campaign: Campaign, shipId: string, tier: number):
     return choice;
   };
   const opponent = pick(OPPONENTS.filter((o) => o.tier === tier));
-  const scenario = pick(STARTING_SCENARIOS);
+  // Just out of reach of each other, whichever scenario is picked.
+  const scenario = scenarioFor(pick(STARTING_SCENARIOS), [ship.design, opponent.design]);
   return {
     shipId,
     tier,
