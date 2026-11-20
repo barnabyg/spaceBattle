@@ -14,6 +14,7 @@ import { add, distance, dot, normalize, scale, sub, type Vec3 } from '../sim/vec
 import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
+import { createArmourGlow } from './armourGlow';
 import { createShipEffects } from './shipEffects';
 import {
   contactModelExtent,
@@ -139,6 +140,8 @@ const createSky = () => {
 /** One ship as the view draws it, alone on its own layer at the origin. */
 interface ShipView {
   readonly effects: ReturnType<typeof createShipEffects>;
+  /** Armour glowing where beams struck it (see `createArmourGlow`). */
+  readonly glow: ReturnType<typeof createArmourGlow>;
   modelSource: 'design' | 'contact' | 'empty';
   readonly side: SideSetup;
   readonly colour: string;
@@ -173,6 +176,7 @@ const createShipView = (
   const anchor = new THREE.Group();
   const model = knownDesign ? createShipModel(side.design, {}, colour) : new THREE.Group();
   const effects = createShipEffects();
+  const glow = createArmourGlow();
   const spots = Array.from({ length: MAX_SPOTS }, () => {
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -187,7 +191,7 @@ const createShipView = (
   });
   // Always present, dark when nothing lands, so the number of lights (and shaders) never changes.
   const hitLight = new THREE.PointLight('#ffcf8a', 0, 0, 2);
-  anchor.add(model, effects.element, ...spots, hitLight);
+  anchor.add(model, effects.element, glow.element, ...spots, hitLight);
   setLayer(anchor, layer);
   // The burst is placed in world axes, so it sits outside the anchor, which turns with the ship.
   const burstLight = new THREE.DirectionalLight(BURST_COLOUR, 0);
@@ -215,6 +219,7 @@ const createShipView = (
   scene.add(anchor, burstLight, burstGlow, interceptGlow);
   return {
     effects,
+    glow,
     modelSource: knownDesign ? 'design' : 'empty',
     side,
     colour,
@@ -267,6 +272,7 @@ const flashesOf = (look: Pick<ShipAppearance, 'impacts' | 'beamsLanding'>): Flas
 /** Brings a ship's model, orientation and hit spots up to date with what is observed. */
 const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance, time: number) => {
   view.effects.update(look.firing, look.damage, time, look.parts);
+  view.glow.update(look.armourGlow, look.parts, look.beamsLanding);
   toQuaternion(orientation, view.anchor.quaternion);
   if (view.modelSource !== 'design' || shipModelNeedsRebuild(view.model, look)) {
     view.anchor.remove(view.model);
@@ -574,6 +580,11 @@ export const createInstrumentView = (
           }
           contact.length = seen.hullSize ? hullLength(HULLS[seen.hullSize]) : 80;
           showFlashes(contact, seen.appearance);
+          contact.glow.update(
+            seen.appearance.armourGlow,
+            seen.appearance.parts,
+            seen.appearance.beamsLanding,
+          );
           contactCaption.textContent = `${contactSide.name} · ${seen.hullSize ?? 'unknown hull'} · Full exterior detail · ${range}`;
           detailExplanation.textContent =
             'Every surviving section and mount is currently resolved. Full exterior detail; interior equipment and stores remain hidden.';
@@ -583,6 +594,11 @@ export const createInstrumentView = (
           // Never frame an ordinary contact using its undisclosed design dimensions.
           contact.length = contactModelExtent(fogged) ?? 80;
           showFlashes(contact, seen.appearance);
+          contact.glow.update(
+            seen.appearance.armourGlow,
+            seen.appearance.outline.length > 0 ? seen.appearance.outline : seen.appearance.parts,
+            seen.appearance.beamsLanding,
+          );
           contactCaption.textContent = `${contactSide.name} · ${seen.hullSize ?? 'unknown hull'} · ${CONTACT_DETAIL_TEXT[seen.detail]} · ${range}`;
           const descriptions = {
             position: 'Position tracked; shape and equipment unresolved.',
@@ -662,6 +678,8 @@ export const createInstrumentView = (
       controls.dispose();
       own.effects.dispose();
       contact.effects.dispose();
+      own.glow.dispose();
+      contact.glow.dispose();
       disposeShipModel(own.model);
       disposeShipModel(contact.model);
       disposeContactModel(fogged);
