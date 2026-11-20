@@ -15,6 +15,7 @@ import { createBurstFlash, createInterceptFlash } from './burstFlash';
 import { disposeRenderer, disposeScene } from './dispose';
 import { el } from './el';
 import { createArmourGlow } from './armourGlow';
+import { createWreckage } from './wreckage';
 import { createShipEffects } from './shipEffects';
 import {
   contactModelExtent,
@@ -142,6 +143,8 @@ interface ShipView {
   readonly effects: ReturnType<typeof createShipEffects>;
   /** Armour glowing where beams struck it (see `createArmourGlow`). */
   readonly glow: ReturnType<typeof createArmourGlow>;
+  /** The ship coming apart as it loses parts (see `createWreckage`). */
+  readonly wreckage: ReturnType<typeof createWreckage>;
   modelSource: 'design' | 'contact' | 'empty';
   readonly side: SideSetup;
   readonly colour: string;
@@ -177,6 +180,7 @@ const createShipView = (
   const model = knownDesign ? createShipModel(side.design, {}, colour) : new THREE.Group();
   const effects = createShipEffects();
   const glow = createArmourGlow();
+  const wreckage = createWreckage();
   const spots = Array.from({ length: MAX_SPOTS }, () => {
     const sprite = new THREE.Sprite(
       new THREE.SpriteMaterial({
@@ -191,7 +195,7 @@ const createShipView = (
   });
   // Always present, dark when nothing lands, so the number of lights (and shaders) never changes.
   const hitLight = new THREE.PointLight('#ffcf8a', 0, 0, 2);
-  anchor.add(model, effects.element, glow.element, ...spots, hitLight);
+  anchor.add(model, effects.element, glow.element, wreckage.element, ...spots, hitLight);
   setLayer(anchor, layer);
   // The burst is placed in world axes, so it sits outside the anchor, which turns with the ship.
   const burstLight = new THREE.DirectionalLight(BURST_COLOUR, 0);
@@ -220,6 +224,7 @@ const createShipView = (
   return {
     effects,
     glow,
+    wreckage,
     modelSource: knownDesign ? 'design' : 'empty',
     side,
     colour,
@@ -273,6 +278,11 @@ const flashesOf = (look: Pick<ShipAppearance, 'impacts' | 'beamsLanding'>): Flas
 const updateShipView = (view: ShipView, orientation: Quat, look: ShipAppearance, time: number) => {
   view.effects.update(look.firing, look.damage, time, look.parts);
   view.glow.update(look.armourGlow, look.parts, look.beamsLanding);
+  view.wreckage.update(
+    look.damage,
+    (section, mount) =>
+      view.side.design.sections.find((s) => s.kind === section)?.mounts[mount]?.type,
+  );
   toQuaternion(orientation, view.anchor.quaternion);
   if (view.modelSource !== 'design' || shipModelNeedsRebuild(view.model, look)) {
     view.anchor.remove(view.model);
@@ -576,7 +586,10 @@ export const createInstrumentView = (
             setLayer(contact.model, contact.layer);
             contact.anchor.add(contact.model);
           } else {
-            updateResolvedShipModel(contact.model, detailed);
+            updateResolvedShipModel(contact.model, {
+              ...detailed,
+              falter: seen.appearance.driveFalter,
+            });
           }
           contact.length = seen.hullSize ? hullLength(HULLS[seen.hullSize]) : 80;
           showFlashes(contact, seen.appearance);
@@ -608,13 +621,20 @@ export const createInstrumentView = (
           };
           detailExplanation.textContent = descriptions[seen.detail];
         }
-        if (!enemy)
+        if (!enemy) {
           contact.effects.update(
             seen.appearance.firing,
             seen.appearance.damage,
             observation.time,
             seen.appearance.parts,
           );
+          // Only the mounts the sensors make out show what they were.
+          contact.wreckage.update(
+            seen.appearance.damage,
+            (section, mount) =>
+              seen.mounts.find((m) => m.section === section && m.mount === mount)?.component.type,
+          );
+        }
         for (const [index, label] of stageLabels.entries()) {
           if (!enemy && !detailed && detailStages[index] === seen.detail)
             label.setAttribute('aria-current', 'step');
@@ -680,6 +700,8 @@ export const createInstrumentView = (
       contact.effects.dispose();
       own.glow.dispose();
       contact.glow.dispose();
+      own.wreckage.dispose();
+      contact.wreckage.dispose();
       disposeShipModel(own.model);
       disposeShipModel(contact.model);
       disposeContactModel(fogged);

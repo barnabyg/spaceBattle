@@ -34,6 +34,7 @@ it('flashes only new damage, retains a damage outline, and clears when detail is
     mount: null,
     wear: 0.2,
     destroyed: false,
+    breached: false,
     point: vec3(5, 0, 0),
     size: vec3(10, 4, 4),
   };

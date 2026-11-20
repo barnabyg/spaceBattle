@@ -168,6 +168,15 @@ Bastion against a computer Lance in **Head-on**, target the enemy, select **Fire
 advance until the enemy is within your reach: the Lance should glow orange where your laser lands,
 and keep glowing, fading, for a while after **Hold fire**.
 
+Ships visibly come apart. When a beam breaks through a section's armour, a puff of gas vents from
+the breach and a few pieces of debris fly off. A wrecked mount throws debris, and a deployed radiator
+shatters into bright panel shards instead. A section lost to structural failure goes dark and
+tumbles away, trailing debris. A damaged drive's plume falters and flickers, more so the worse the
+drive is hurt. Effects run in real time at any time compression, start only when the damage
+happens, and look the same each time for the same damage. A contact shows them only for the
+sections and mounts the sensors make out; its plume falters once they make out its sections. To
+check, run the free battle above until the Lance's nose gives way.
+
 **Roll** in the **Navigation** tab turns the ship slowly about its long axis, so an enemy beam
 sweeps round the struck section instead of boring into one patch: each patch is lit only for the
 share of each turn the beam spot covers, about its width over the section's 48 m (frigate) or
