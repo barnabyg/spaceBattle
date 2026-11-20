@@ -8,6 +8,8 @@ import {
   testSetup,
   testSides,
 } from '../sim/testing';
+import { vec3 } from '../sim/vector';
+import { designReach } from '../sim/weapons';
 import { ADVANCE_DURATION, ownReach, separationOf, type AdvanceCondition } from './advance';
 import { createBattleRunner, type BattleRunner } from './battleRunner';
 
@@ -17,9 +19,27 @@ const playersOnly = (setup: BattleSetup): BattleSetup => ({
   sides: setup.sides.map((side) => ({ ...side, commander: 'player' })),
 });
 
-/** The test scenario's ships close at about 2 km/s from 200,000 km apart. */
-const closingRunner = (designs = testSides()) =>
-  createBattleRunner(createBattle(playersOnly(testSetup({ sides: designs }))));
+/**
+ * Two ships `separation` apart, m, closing head-on at 2 km/s. Starting near the goal keeps each
+ * advance to a few thousand simulation steps.
+ */
+const closingRunner = (separation = 200_000e3, designs = testSides()) =>
+  createBattleRunner(
+    createBattle(
+      playersOnly(
+        testSetup({
+          sides: designs,
+          scenario: {
+            name: 'Closing',
+            starts: [
+              { position: vec3(-separation / 2, 0, 0), velocity: vec3(1_000, 0, 0) },
+              { position: vec3(separation / 2, 0, 0), velocity: vec3(-1_000, 0, 0) },
+            ],
+          },
+        }),
+      ),
+    ),
+  );
 
 /** Runs real time through the runner until it pauses, or gives up. */
 const runUntilPaused = (r: BattleRunner) => {
@@ -35,7 +55,7 @@ describe('advancing the battle until a condition', () => {
     const r = closingRunner();
     r.setTimeCompression(10);
     const start = blueSeparation(r);
-    const goal = start - 10_000e3;
+    const goal = start - 2_000e3;
     expect(r.advanceUntil('blue', { type: 'separation', distance: goal })).toBeNull();
     expect(r.advancing).toEqual({ type: 'separation', distance: goal });
     expect(r.timeCompression).toBe(1000);
@@ -46,7 +66,7 @@ describe('advancing the battle until a condition', () => {
     // The first step at or inside the goal: closing at about 2 km/s, within one step of it.
     const separation = blueSeparation(r);
     expect(separation).toBeLessThanOrEqual(goal);
-    expect(goal - separation).toBeLessThan(3_000 * TIME_STEP);
+    expect(goal - separation).toBeLessThanOrEqual(2_000 * TIME_STEP);
     // It resumes at the speed chosen before.
     expect(r.timeCompression).toBe(10);
     r.togglePause();
@@ -64,14 +84,18 @@ describe('advancing the battle until a condition', () => {
   });
 
   it('pauses once the enemy comes within reach of its own weapons', () => {
-    const r = closingRunner(testSides([armedTestDesign(), testDesign()]));
+    // 2,000 km beyond the laser's reach.
+    const r = closingRunner(
+      designReach(armedTestDesign()) + 2_000e3,
+      testSides([armedTestDesign(), testDesign()]),
+    );
     expect(r.advanceUntil('blue', { type: 'own-reach' })).toBeNull();
     runUntilPaused(r);
     const observation = r.battle.observe('blue');
     expect(r.advanceReached).toEqual({ type: 'own-reach' });
     const separation = separationOf(observation) ?? NaN;
     expect(separation).toBeLessThanOrEqual(ownReach(observation));
-    expect(ownReach(observation) - separation).toBeLessThan(3_000 * TIME_STEP);
+    expect(ownReach(observation) - separation).toBeLessThanOrEqual(2_000 * TIME_STEP);
   });
 
   it('runs for ten minutes of battle time', () => {
