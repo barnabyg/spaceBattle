@@ -412,11 +412,15 @@ export const createTacticalMap = (
   const showSlugs = munitionDots(MUNITION_SIZE);
   const showMissiles = munitionDots(MISSILE_SIZE);
   const showAntiMissiles = munitionDots(ANTI_MISSILE_SIZE, ANTI_MISSILE_PALENESS);
+  // A salvo picked out from the threat timeline: its missiles larger and pale, drawn over the rest.
+  const showPicked = munitionDots(2 * MISSILE_SIZE, 0.6);
+  let picked: ReadonlySet<number> = new Set();
   const showMunitions = (observation: SideObservation) => {
     const { munitions } = observation;
     showSlugs(munitions.filter((m) => m.kind === 'slug'));
     showMissiles(munitions.filter((m) => m.kind === 'missile' && m.role === 'anti-ship'));
     showAntiMissiles(munitions.filter((m) => m.kind === 'missile' && m.role === 'anti-missile'));
+    showPicked(munitions.filter((m) => picked.has(m.id)));
   };
 
   const resize = () => {
@@ -544,6 +548,10 @@ export const createTacticalMap = (
 
   return {
     element,
+    /** Picks out the missiles with these ids, as the threat timeline's salvo hovered or focused. */
+    highlight(ids: readonly number[]) {
+      picked = new Set(ids);
+    },
     update(observation: SideObservation) {
       const own = observation.ownShip;
       const followed = followedContact(observation);
