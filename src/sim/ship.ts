@@ -90,6 +90,8 @@ export interface ShipState {
   /** Heat held in the ship, J: its heat capacity times its temperature. */
   heat: number;
   radiatorsDeployed: boolean;
+  /** Whether it is rolling about its long axis (see `RollOrder`). */
+  rolling: boolean;
   /** Simulated seconds left to deploy; zero when idle. Retraction cancels deployment. */
   radiatorDeploymentRemaining: number;
   /** Whether the captain has the shields raised, so they draw power and work. */
@@ -406,6 +408,7 @@ const createFreshShip = (
   storedEnergy: powerPlant(design).storageCapacity,
   heat: thermalProperties(design).heatCapacity * BASE_TEMPERATURE,
   radiatorsDeployed: false,
+  rolling: false,
   radiatorDeploymentRemaining: 0,
   shieldsRaised: true,
   coolantLoad: NO_COOLANT_LOAD,

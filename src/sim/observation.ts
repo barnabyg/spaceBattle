@@ -438,6 +438,8 @@ export interface OwnShipObservation {
   readonly thrust: number;
   /** Thruster torque applied in the last step (body frame), N·m. */
   readonly torque: Vec3;
+  /** Whether it is rolling about its long axis (see `RollOrder`). */
+  readonly rolling: boolean;
   readonly attitude: AttitudeOrder | null;
   readonly burn: BurnState | null;
   /** The standing manoeuvre order and its plan; null under manual control. */
@@ -869,6 +871,7 @@ export const observeOwnShip = (
     withdrawing: ship.withdrawingSince !== null,
     thrust: ship.thrust,
     torque: ship.torque,
+    rolling: ship.rolling,
     attitude: ship.attitude,
     burn: ship.burn,
     manoeuvre: ship.manoeuvre ? observeManoeuvre(ship, ship.manoeuvre, contact) : null,

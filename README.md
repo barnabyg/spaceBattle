@@ -126,6 +126,19 @@ heat armour through its depth, but it still sheds them by radiating from its sur
 captains that cannot outrange the enemy close to 0.3 of their reach to burn through. See the
 [armour glow notes](docs/research/armour-glow.md).
 
+**Roll** in the **Navigation** tab turns the ship slowly about its long axis, so an enemy beam
+sweeps round the struck section instead of boring into one patch: each patch is lit only for the
+share of each turn the beam spot covers, about its width over the section's 48 m (frigate) or
+80 m (cruiser) girth, so the armour wears and glows that much less. It helps most close in, where
+the spot is a few metres across, and not at all once the spot is as wide as the ship. Rolling keeps
+the nose, the drive and any manoeuvre as they are, but the ship's own beam weapons fire at half
+power, their mounts facing the target only part of each turn. It is refused while the thrusters are
+wrecked. Medium and high computer captains roll under beam fire they cannot yet answer, and stop
+once within their own reach. To check it, start a free battle as Torch against a computer Lance,
+order **Close** and select **Roll** once the Lance's laser starts landing: in test mode the **Enemy**
+tab's view of your ship, or your **Damage** tab, should show the forward armour wearing far more
+slowly than without rolling.
+
 To check manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from
 `C:/docs/git/spaceBattle` in PowerShell 7. Switch on **Test mode**, then start a free battle with
 Blue's Bastion as the player and Red's Lance as the computer in **Head-on**. Target the enemy,

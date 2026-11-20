@@ -58,6 +58,18 @@ export interface RadiatorsOrder {
 }
 
 /**
+ * Roll the ship slowly about its long axis, or stop. Rolling sweeps an enemy beam around a
+ * section's armour, so each patch is lit for only part of each turn (see `rollShare`); it keeps
+ * the nose, the drive and any manoeuvre as they are. The ship's own beam weapons, on mounts that
+ * face the target for only part of each turn, fire at `ROLL_FIRING_SHARE` of their power while it
+ * rolls. Refused while the thrusters are wrecked.
+ */
+export interface RollOrder {
+  readonly type: 'roll';
+  readonly rolling: boolean;
+}
+
+/**
  * Raise the shields, so they draw power under the 'shields' priority and work as far as they get
  * it, or lower them, so they draw nothing and do nothing. Every ship starts with them raised.
  */
@@ -163,6 +175,7 @@ export type Order =
   | ManoeuvreOrder
   | PowerOrder
   | RadiatorsOrder
+  | RollOrder
   | ShieldsOrder
   | WeaponsOrder
   | LaunchOrder

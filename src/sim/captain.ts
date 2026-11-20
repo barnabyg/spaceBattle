@@ -29,6 +29,7 @@ import type {
   PointDefenceOrder,
   PowerOrder,
   RadiatorsOrder,
+  RollOrder,
   ShieldsOrder,
   WeaponsOrder,
 } from './orders';
@@ -343,6 +344,8 @@ const inForce = (ship: OwnShipObservation, order: Order): boolean => {
   switch (order.type) {
     case 'weapons':
       return ship.weapons.target === order.target && ship.weapons.mode === order.mode;
+    case 'roll':
+      return ship.rolling === order.rolling;
     case 'radiators':
       return (
         (ship.heat.radiatorsDeployed || ship.heat.radiatorDeploymentRemaining > 0) ===
@@ -896,6 +899,17 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         };
         orders.push(shields);
       }
+      // Under beam fire it cannot answer yet, it rolls to spread the beam's heat around its armour;
+      // within its own reach it stops, so its own beams bear in full.
+      const thrusters = ship.sections.some((section) =>
+        section.components.some((part) => part.type === 'thrusters' && part.integrity > 0),
+      );
+      const roll: RollOrder = {
+        type: 'roll',
+        rolling:
+          profile.predicts && thrusters && range > reach && ship.appearance.beamsLanding.length > 0,
+      };
+      orders.push(roll);
       const launch = missiles(observation, enemy, range, threats);
       if (launch) orders.push(launch);
       return orders.filter((order) => !inForce(ship, order));

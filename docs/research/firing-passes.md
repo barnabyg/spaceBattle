@@ -52,3 +52,24 @@ short-ranged ships sometimes beating long-ranged ones) needs a balance lever rat
 tactics. Two candidates: rolling to spread beam heat over the hull
 ([#112](https://github.com/barnabyg/spaceBattle/issues/112)), and stock designs suited to closing
 under fire (ablative forward armour, weapons and sensors away from the nose).
+
+## With rolling (#112)
+
+Rolling about the long axis sweeps a beam round the struck section, so each patch is lit only for
+the share of each turn the spot covers: its width over the section's girth, 48 m for a frigate.
+Close in, where a laser spot is a few metres across, that cuts wear by five to ten times; at long
+range, where the spot is as wide as the ship, it does nothing. Medium and high captains roll under
+beam fire they cannot answer yet and stop within their own reach, where rolling would halve their
+own beams. The same 200 battles, with rolling:
+
+| Measure                                   | Before passes | Passes | Passes and rolling |
+| ----------------------------------------- | ------------: | -----: | -----------------: |
+| Battles where the shorter-reach ship hits |            64 |     64 |                 88 |
+| Battles the shorter-reach ship wins       |            36 |     36 |                 40 |
+
+The Torch now reaches its own range and hits every laser ship, though it still loses to them. The
+Bulwark now beats the Needle in all four scenarios. The Sling, Quiver and Pyre still land nothing:
+their 1.2 cm of heavy forward armour sheds only 0.38 MW/m², and a beam spot at the 50,000 to
+100,000 km where it burns them is too wide for rolling to spread. Mean battle length hardly
+changes (2.8 h to 2.9 h). What remains for #114 is in the stock designs: ablative noses and weapons
+and sensors away from the forward section for the ships meant to close.

@@ -204,6 +204,10 @@ _Avoid_: Interceptor, counter-missile
 One of the opposing forces in a battle, commanded by either the player or the computer.
 _Avoid_: Faction, team, player
 
+**Roll**:
+A slow turn of the ship about its long axis that sweeps an enemy beam round a section's armour, so each patch is lit for only part of each turn; the ship's own beams fire at half power meanwhile.
+_Avoid_: Spin, barbecue roll
+
 **Captain**:
 The role the commander of a side plays: they give orders to their ship rather than steering it directly.
 _Avoid_: Pilot

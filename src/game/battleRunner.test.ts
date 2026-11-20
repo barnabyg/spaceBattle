@@ -387,8 +387,15 @@ describe('battle runner', () => {
   });
 
   it('drops to real time and stops at the step in which a ship loses', () => {
-    // Blue's beam burns through red's unarmoured engine section and its drive.
-    const battle = createBattle(duelSetup(armedTestDesign(), testDesign(), 20_000e3, IDENTITY));
+    // Blue's beam burns through red's unarmoured engine section and its drive. Red's low-skill
+    // captain does not roll to spread it.
+    const setup = duelSetup(armedTestDesign(), testDesign(), 20_000e3, IDENTITY);
+    const battle = createBattle({
+      ...setup,
+      sides: setup.sides.map((side) =>
+        side.id === 'red' ? { ...side, skill: 'low' as const } : side,
+      ),
+    });
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
     const r = createBattleRunner(battle);
     const events: BattleEvent[] = [];
