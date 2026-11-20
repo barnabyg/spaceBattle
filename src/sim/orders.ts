@@ -57,6 +57,24 @@ export interface RadiatorsOrder {
   readonly deployed: boolean;
 }
 
+/** A component of the ship: in a section, inside it or on one of its mounts, by its place there. */
+export interface ComponentAddress {
+  readonly section: SectionKind;
+  readonly mounted: boolean;
+  readonly index: number;
+}
+
+/**
+ * Set the crew to repair one damaged component, or stop (null): damage control. They restore its
+ * integrity at `REPAIR_RATE` a second up to `REPAIR_CAP` (a field repair, not a full one), one
+ * component at a time, and stop work while its section is under fire (see `REPAIR_PAUSE`). A
+ * wrecked component cannot be repaired; nor can one already as sound as the cap.
+ */
+export interface RepairOrder {
+  readonly type: 'repair';
+  readonly target: ComponentAddress | null;
+}
+
 /**
  * Roll the ship slowly about its long axis, or stop. Rolling sweeps an enemy beam around a
  * section's armour, so each patch is lit for only part of each turn (see `rollShare`); it keeps
@@ -176,6 +194,7 @@ export type Order =
   | PowerOrder
   | RadiatorsOrder
   | RollOrder
+  | RepairOrder
   | ShieldsOrder
   | WeaponsOrder
   | LaunchOrder

@@ -213,6 +213,7 @@ const damageSection = (
   ctx: DamageContext,
 ) => {
   const design = ship.design.sections.find((s) => s.kind === kind);
+  ship.sections[kind] = { ...ship.sections[kind], lastHit: ctx.time };
   const state = ship.sections[kind];
   if (!design) return;
   let inside = energy;
@@ -256,6 +257,7 @@ export const intactShape = (ship: ShipState): readonly ShapePart[] =>
 
 /** A hit carrying `energy` J on a mount, which sits outside the armour and takes all of it. */
 const damageMount = (ship: ShipState, part: ShapePart, energy: number, ctx: DamageContext) => {
+  ship.sections[part.section] = { ...ship.sections[part.section], lastHit: ctx.time };
   const slot = slotOf(ship, part.section, true, part.mount ?? -1);
   const mass = componentSlots(ship.design)[slot]?.component.mass ?? 1;
   damageComponent(ship, slot, energy / (mass * COMPONENT_WRECK_ENERGY), ctx);

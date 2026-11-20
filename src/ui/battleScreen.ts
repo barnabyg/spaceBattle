@@ -10,6 +10,7 @@ import { createHitIndicator } from './hitIndicator';
 import { createOrdersPanel } from './ordersPanel';
 import { createResultScreen } from './resultScreen';
 import { createShipSound } from './shipSound';
+import type { Order } from '../sim/orders';
 import { createStatusPanel } from './statusPanel';
 import { createNarrationFeed } from './narration';
 import { createNarrator } from '../game/narration';
@@ -80,8 +81,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   });
   const status = createStatusPanel();
   const hits = createHitIndicator();
-  const damage = createDamagePanel(viewer.id);
-  const orders = createOrdersPanel((order) => {
+  const giveOrder = (order: Order) => {
     // The battle refuses orders the rules forbid, such as pursuing a withdrawing enemy.
     try {
       battle.giveOrder(viewer.id, order);
@@ -89,7 +89,18 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     } catch (error) {
       orders.refused(error instanceof Error ? error.message : String(error));
     }
-  });
+  };
+  const orders = createOrdersPanel(giveOrder);
+  const damage = createDamagePanel(
+    viewer.id,
+    viewer.commander === 'player'
+      ? {
+          onRepair: (target) => {
+            giveOrder({ type: 'repair', target });
+          },
+        }
+      : {},
+  );
   const { test } = options;
   const enemy = ordered[1];
   const enemyPanel = test && enemy ? createEnemyPanel(enemy) : null;

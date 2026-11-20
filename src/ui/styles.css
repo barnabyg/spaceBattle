@@ -1375,6 +1375,17 @@ h3 {
   width: 50rem;
 }
 
+.damage-repair {
+  margin-left: 0.4rem;
+  padding: 0 0.4rem;
+  font-size: 0.75rem;
+}
+
+.damage-repair[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* Enemy salvos aimed at the ship, counting down; hidden while there is none. */
 .salvo-timeline h2 {
   margin: 0.4rem 0 0.2rem;

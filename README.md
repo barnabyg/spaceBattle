@@ -79,6 +79,14 @@ free battle as Bastion against a computer Lance and **Advance until** **Enemy in
 enemy is now within reach of our weapons." should appear over the instrument view and stay in the
 **Damage** tab.
 
+**Damage control**: in the **Damage** tab, each damaged component that a field repair can help has a
+**Repair** button. The crew then restore it at 0.2% integrity a second up to 75%, one component at a
+time; the row shows "repairing", or "repair paused under fire" for 30 seconds after its section is
+hit, and **Stop** calls them off. Wrecked components cannot be repaired in battle, and repairs between
+campaign battles are unchanged. Medium and high computer captains repair the drive first, then the
+sensor, thrusters, weapons, reactor and radiators. To check, start a free battle, let the enemy damage
+your ship, then press **Repair** beside a damaged component and watch its integrity climb.
+
 Below the **Incoming hits** schematic, **Incoming salvos** lists each enemy salvo aimed at your
 ship while it is in flight (missiles launched within two minutes of each other count as one salvo):
 how many of its missiles are left and their warhead, the time to impact at their present closing

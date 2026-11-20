@@ -204,6 +204,10 @@ _Avoid_: Interceptor, counter-missile
 One of the opposing forces in a battle, commanded by either the player or the computer.
 _Avoid_: Faction, team, player
 
+**Damage control**:
+The crew's repair of one damaged component at a time during a battle: slow, no further than a field repair restores, never of a wrecked component, and paused while its section is under fire.
+_Avoid_: Repair crew, field repair (as the name)
+
 **Roll**:
 A slow turn of the ship about its long axis that sweeps an enemy beam round a section's armour, so each patch is lit for only part of each turn; the ship's own beams fire at half power meanwhile.
 _Avoid_: Spin, barbecue roll
