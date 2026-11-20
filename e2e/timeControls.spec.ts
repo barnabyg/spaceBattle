@@ -90,3 +90,37 @@ for (const scenario of ['routine', 'own-damage', 'contact-damage']) {
     await expect(reason).toBeEmpty();
   });
 }
+
+test('a new missile threat names the ship it was launched at', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const { createBattle } = await import('../src/sim/battle');
+    const { testSetup } = await import('../src/sim/testing');
+    const { createBattleRunner } = await import('../src/game/battleRunner');
+    const { createTimeControls } = await import('../src/ui/timeControls');
+    const real = createBattle(testSetup());
+    // Red, the computer's, launches at Blue, the player's.
+    const runner = createBattleRunner({
+      ...real,
+      step: () => [
+        {
+          type: 'launch',
+          time: real.time,
+          attacker: 'red',
+          target: 'blue',
+          munition: 1,
+          section: 'forward',
+          mount: 0,
+        },
+      ],
+    });
+    const controls = createTimeControls(runner, 'blue');
+    document.body.replaceChildren(controls.element);
+    runner.setTimeCompression(1000);
+    runner.update(0.1);
+    controls.update();
+  });
+  await expect(page.getByRole('status', { name: 'Time compression change' })).toHaveText(
+    'Slowed to 1×: missiles launched at Blue',
+  );
+});

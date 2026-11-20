@@ -1,6 +1,7 @@
 import { TIME_STEP, type Battle, type BattleEvent, type SideId } from '../sim/battle';
 import { withComputerCaptains } from '../sim/command';
 import { targetsMissile } from '../sim/missile';
+import { advanceTest, type AdvanceCondition, type AdvanceTest } from './advance';
 import { withOrderLog, type RecordedAction } from './orderLog';
 
 /** The time compression settings the captain can choose between. */
@@ -91,6 +92,21 @@ export interface BattleRunner {
   readonly timeCompression: TimeCompression;
   /** The event that last reduced compression from above 1×; cleared by choosing a speed. */
   readonly slowdownEvent: BattleEvent | null;
+  /** The advance under way, or null (see `advanceUntil`). */
+  readonly advancing: AdvanceCondition | null;
+  /**
+   * The condition the last advance reached, pausing the battle; cleared by choosing a speed,
+   * pausing or resuming, or starting another advance.
+   */
+  readonly advanceReached: AdvanceCondition | null;
+  /**
+   * Runs the battle at the highest time compression offered until `condition` holds for
+   * `side`, then pauses it at the step it first holds, keeping the time compression chosen
+   * before. An event that needs the captain stops it first, at 1× as ever. Choosing a speed or
+   * pausing cancels it. Returns why it cannot start (its condition already holds, say), or null
+   * once it has started.
+   */
+  advanceUntil(side: SideId, condition: AdvanceCondition): string | null;
   setPaused(paused: boolean): void;
   togglePause(): void;
   /** Sets a time compression directly; one this runner does not offer leaves it at 1×. */
@@ -122,8 +138,22 @@ export const createBattleRunner = (
   let slowdownEvent: BattleEvent | null = null;
   const players = battle.sides.filter((side) => side.commander === 'player');
   const watched = new Set((players.length > 0 ? players : battle.sides).map((side) => side.id));
+  let advance: {
+    readonly side: SideId;
+    readonly condition: AdvanceCondition;
+    readonly test: AdvanceTest;
+    /** The time compression chosen before the advance, kept for after it. */
+    readonly resumeAt: number;
+  } | null = null;
+  let advanceReached: AdvanceCondition | null = null;
 
   const compression = (): TimeCompression => compressions[compressionIndex] ?? 1;
+  /** Ends any advance under way, back at the time compression chosen before it. */
+  const cancelAdvance = () => {
+    if (advance) compressionIndex = advance.resumeAt;
+    advance = null;
+    advanceReached = null;
+  };
 
   return {
     battle,
@@ -138,22 +168,44 @@ export const createBattleRunner = (
     get slowdownEvent() {
       return slowdownEvent;
     },
+    get advancing() {
+      return advance?.condition ?? null;
+    },
+    get advanceReached() {
+      return advanceReached;
+    },
+    advanceUntil(side, condition) {
+      if (battle.outcome) return 'The battle is over';
+      const test = advanceTest(condition, battle.observe(side));
+      if (typeof test === 'string') return test;
+      cancelAdvance();
+      slowdownEvent = null;
+      advance = { side, condition, test, resumeAt: compressionIndex };
+      compressionIndex = compressions.length - 1;
+      paused = false;
+      return null;
+    },
     setPaused(value) {
+      cancelAdvance();
       paused = value;
     },
     togglePause() {
+      cancelAdvance();
       paused = !paused;
     },
     setTimeCompression(value) {
+      cancelAdvance();
       slowdownEvent = null;
       // A compression this runner does not offer leaves it at real time.
       compressionIndex = Math.max(compressions.indexOf(value), 0);
     },
     faster() {
+      cancelAdvance();
       slowdownEvent = null;
       compressionIndex = Math.min(compressionIndex + 1, compressions.length - 1);
     },
     slower() {
+      cancelAdvance();
       slowdownEvent = null;
       compressionIndex = Math.max(compressionIndex - 1, 0);
     },
@@ -176,7 +228,16 @@ export const createBattleRunner = (
         );
         if (significant) {
           if (compression() > 1) slowdownEvent = significant;
+          advance = null;
           compressionIndex = 0;
+          owed = 0;
+          break;
+        }
+        if (advance?.test(battle.observe(advance.side), happened)) {
+          advanceReached = advance.condition;
+          compressionIndex = advance.resumeAt;
+          advance = null;
+          paused = true;
           owed = 0;
           break;
         }

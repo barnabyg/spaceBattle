@@ -138,6 +138,41 @@ button {
   font-size: 0.8rem;
 }
 
+.advance {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.advance-choice,
+.advance-km {
+  padding: 0.2rem 0.4rem;
+  background: #16223a;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+}
+
+.advance-km {
+  width: 8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.advance-km[hidden] {
+  display: none;
+}
+
+.advance-go[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.advance-status {
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+
 .tactical-map {
   grid-area: map;
   position: relative;
