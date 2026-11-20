@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
-import { createBattle, type Battle, type BattleEvent } from '../sim/battle';
+import { createBattle, type Battle, type BattleEvent, type BattleSetup } from '../sim/battle';
 import { IDENTITY } from '../sim/quaternion';
 import {
   antiMissileTestDesign,
@@ -24,9 +24,10 @@ import {
 
 const runner = () => createBattleRunner(createBattle(testSetup()));
 
+/** Blue is the player's side in `testSetup`; red is the computer's. */
 const majorEvents: readonly BattleEvent[] = [
   { type: 'armour-breached', time: 0.1, side: 'blue', section: 'forward' },
-  { type: 'structural-failure', time: 0.1, side: 'red', section: 'engine' },
+  { type: 'structural-failure', time: 0.1, side: 'blue', section: 'engine' },
   { type: 'withdrawal', time: 0.1, side: 'red' },
   {
     type: 'battle-ended',
@@ -36,7 +37,7 @@ const majorEvents: readonly BattleEvent[] = [
   {
     type: 'magazine-explosion',
     time: 0.1,
-    side: 'blue',
+    side: 'red',
     section: 'middle',
     index: 0,
     warheads: 1,
@@ -44,7 +45,77 @@ const majorEvents: readonly BattleEvent[] = [
   },
 ];
 
+/** Damage to the computer's red ship: the player's blue captain need not respond. */
+const enemyDamage: readonly BattleEvent[] = [
+  { type: 'armour-breached', time: 0.1, side: 'red', section: 'forward' },
+  {
+    type: 'component-lost',
+    time: 0.1,
+    side: 'red',
+    section: 'middle',
+    mounted: true,
+    index: 0,
+    component: 'radiator',
+  },
+  { type: 'structural-failure', time: 0.1, side: 'red', section: 'engine' },
+];
+
+/** A runner whose battle reports `event` on every step. */
+const scriptedRunner = (event: BattleEvent, setup = testSetup()) => {
+  const real = createBattle(setup);
+  return createBattleRunner({ ...real, step: () => [event] });
+};
+
+/** Both sides left to players, so the computer neither launches nor dodges. */
+const playersOnly = (setup: BattleSetup): BattleSetup => ({
+  ...setup,
+  sides: setup.sides.map((side) => ({ ...side, commander: 'player' })),
+});
+
 describe('battle runner', () => {
+  it.each(enemyDamage)('keeps time compression when the enemy suffers $type', (event) => {
+    const r = scriptedRunner(event);
+    r.setTimeCompression(1000);
+    expect(r.update(0.1)).toHaveLength(1000);
+    expect(r.timeCompression).toBe(1000);
+    expect(r.slowdownEvent).toBeNull();
+  });
+
+  it('drops to real time for damage to any ship when the computer commands every side', () => {
+    const [event] = enemyDamage;
+    if (!event) throw new Error('No enemy damage event');
+    const setup = testSetup();
+    const r = scriptedRunner(event, {
+      ...setup,
+      sides: setup.sides.map((side) => ({ ...side, commander: 'computer' })),
+    });
+    r.setTimeCompression(1000);
+    expect(r.update(0.1)).toEqual([event]);
+    expect(r.timeCompression).toBe(1);
+    expect(r.slowdownEvent).toEqual(event);
+  });
+
+  it('drops to real time when an enemy salvo opens, but not for each further missile in it', () => {
+    const battle = createBattle(
+      playersOnly(duelSetup(testDesign(), launchingTestDesign(2), 10_000e3)),
+    );
+    const r = createBattleRunner(battle);
+    battle.giveOrder('red', { type: 'launch', target: 'blue', missiles: 2 });
+    r.setTimeCompression(1000);
+    const first = r.update(0.25);
+    expect(first.filter((e) => e.type === 'launch')).toHaveLength(1);
+    expect(r.timeCompression).toBe(1);
+    expect(r.slowdownEvent).toMatchObject({ type: 'launch', attacker: 'red', target: 'blue' });
+    r.setTimeCompression(1000);
+    const later: BattleEvent[] = [];
+    for (let i = 0; i < 20 && !later.some((e) => e.type === 'launch'); i++) {
+      later.push(...r.update(0.25));
+    }
+    expect(later.some((e) => e.type === 'launch')).toBe(true);
+    expect(r.timeCompression).toBe(1000);
+    expect(r.slowdownEvent).toBeNull();
+  });
+
   it.each(majorEvents)(
     'records a slowdown for $type, preserves it at 1× and clears it on speed selection',
     (event) => {

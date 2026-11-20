@@ -164,7 +164,7 @@ charge than the standard 500 MW laser. See the
 [range-balance evaluation](docs/research/range-balance.md) for matchup results and
 manual checks.
 
-In battle, the time controls in the top bar pause the battle (or Space) and set its time compression with one button per speed, 1×, 10×, 100×, 500× and 1000× (or keys 1–5, and + / − to step between them); the chosen speed stays selected while paused. Routine hits, impacts, launches, interceptions and misses preserve the selected speed. Nuclear detonations, magazine explosions, armour breaches, component loss, structural failure, withdrawal and battle end drop time compression back to 1×. The time controls show the cause of an automatic slowdown until you choose a speed again.
+In battle, the time controls in the top bar pause the battle (or Space) and set its time compression with one button per speed, 1×, 10×, 100×, 500× and 1000× (or keys 1–5, and + / − to step between them); the chosen speed stays selected while paused. Time compression drops back to 1× only for what needs the captain: an armour breach, component loss or structural failure on your own ship, a missile launched at your ship when no other enemy missile is already flying at it, nuclear detonations, magazine explosions, withdrawal and battle end. Damage you do to the enemy, hits, impacts, interceptions, misses and further missiles of a salvo already under way preserve the selected speed; the hit indicator and battle log still report them. When the computer commands every side, damage to either ship drops time compression too. The time controls show the cause of an automatic slowdown until you choose a speed again.
 
 You know the enemy only as a contact: its position and motion always, the rest only as far as your sensors make it out at the range. The tactical map labels the contact with what is made out (position only, silhouette, sections, mounts), and **Aim at** in the weapons orders offers each section and mount once it is made out; until then the weapons aim at the whole ship.
 
@@ -231,12 +231,11 @@ Ship models in the shipyard and instrument view share a faceted prow, armour hou
 - `e2e/` — Playwright tests in Firefox.
 
 To check time compression manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }`
-from `C:/docs/git/spaceBattle` in PowerShell 7. Start a free battle, select Fire freely and a higher
-time multiplier. Routine fire should preserve it. A major damage event should select 1× and show
-“Slowed to 1×” with the affected ship and cause. Enemy damage hidden from your sensors shows
-“Enemy combat damage (details unavailable)”; your own **Damage** panel can remain undamaged
-because this event affected the enemy. Choosing a speed should clear that message.
-To check that case, let your lasers damage the enemy before it reaches its own weapon range:
-the enemy damage message should appear without implying damage to your own ship. The panel
-should still show your ship's actual armour and integrity. An incoming major hit should name
-your ship and the affected part instead.
+from `C:/docs/git/spaceBattle` in PowerShell 7. Start a free battle as **Bastion** against a
+computer **Lance**, target the enemy, select **Fire freely** and **Close**, and choose 1000×.
+Your long-range lasers should damage the enemy before it can reply without dropping time
+compression; the **Incoming hits** schematic and battle log still report the hits. When the
+enemy's fire damages your own ship, time compression should drop to 1× and show
+“Slowed to 1×” naming your ship and the affected part. Choosing a speed should clear that
+message. Against a computer **Quiver**, its first missile launch at you should drop to 1×,
+and further launches while its missiles are still in flight should not.
