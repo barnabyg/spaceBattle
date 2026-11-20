@@ -1,9 +1,10 @@
+import { ADVANCE_DURATION, type AdvanceCondition } from '../game/advance';
 import type { BattleRunner } from '../game/battleRunner';
 import type { BattleEvent, SideId, SideSetup } from '../sim/battle';
 import { involves } from '../sim/events';
 import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
-import { formatBattleTime } from './format';
+import { formatBattleTime, formatKm } from './format';
 
 /** How many time compressions have a number key: 1 to 5. */
 const NUMBERED = 5;
@@ -30,11 +31,149 @@ const slowdownReason = (
       return `${name(event.side)}: ${SECTION_TEXT[event.section].toLowerCase()} section lost`;
     case 'withdrawal':
       return `${name(event.side)} withdrawing`;
+    case 'launch':
+      return typeof event.target === 'string'
+        ? `missiles launched at ${name(event.target)}`
+        : 'anti-missile missiles launched';
     case 'battle-ended':
       return 'Battle ended';
     default:
       return '';
   }
+};
+
+/** The conditions an advance can run until, as the captain chooses them. */
+const ADVANCE_CHOICES = [
+  ['own-reach', 'Enemy in our reach'],
+  ['enemy-reach', 'Us in known enemy reach'],
+  ['separation', 'Separation (km)'],
+  ['launch', 'Next missile launch'],
+  ['duration', '10 minutes'],
+] as const;
+type AdvanceChoice = (typeof ADVANCE_CHOICES)[number][0];
+
+/** What the time controls say once an advance has reached its condition and paused. */
+const reachedText = (condition: AdvanceCondition): string => {
+  switch (condition.type) {
+    case 'own-reach':
+      return 'Paused: the enemy is within our reach';
+    case 'enemy-reach':
+      return 'Paused: we are within known enemy reach';
+    case 'separation':
+      return `Paused at ${formatKm(condition.distance)} separation`;
+    case 'launch':
+      return 'Paused: missile launched';
+    case 'duration':
+      return 'Paused after 10 minutes';
+  }
+};
+
+/** What the time controls say while an advance runs. */
+const advancingText = (condition: AdvanceCondition): string => {
+  switch (condition.type) {
+    case 'own-reach':
+      return 'Advancing until the enemy is within our reach…';
+    case 'enemy-reach':
+      return 'Advancing until we are within known enemy reach…';
+    case 'separation':
+      return `Advancing to ${formatKm(condition.distance)} separation…`;
+    case 'launch':
+      return 'Advancing until a missile is launched…';
+    case 'duration':
+      return 'Advancing 10 minutes…';
+  }
+};
+
+/**
+ * "Advance until": a condition to run the battle until at the highest time compression, a
+ * separation in km for that condition, and the button that starts it, for the viewing side.
+ */
+const createAdvanceControl = (runner: BattleRunner, viewer: SideId) => {
+  const choice = el(
+    'select',
+    { className: 'advance-choice', attrs: { 'aria-label': 'Advance until' } },
+    ...ADVANCE_CHOICES.map(([value, text]) => el('option', { text, attrs: { value } })),
+  );
+  const km = el('input', {
+    className: 'advance-km',
+    attrs: {
+      type: 'number',
+      min: '1',
+      step: '1000',
+      value: '100000',
+      inputmode: 'numeric',
+      'aria-label': 'Advance until separation km',
+    },
+  });
+  const go = el('button', {
+    className: 'time-button advance-go',
+    text: 'Advance',
+    attrs: { type: 'button', title: 'Run at the highest speed until this happens, then pause' },
+  });
+  const status = el('span', {
+    className: 'advance-status',
+    attrs: { role: 'status', 'aria-label': 'Advance' },
+  });
+  let refusal = '';
+  const showKm = () => {
+    km.hidden = choice.value !== 'separation';
+  };
+  const condition = (): AdvanceCondition | string => {
+    switch (choice.value as AdvanceChoice) {
+      case 'own-reach':
+        return { type: 'own-reach' };
+      case 'enemy-reach':
+        return { type: 'enemy-reach' };
+      case 'separation': {
+        const value = km.value.trim() === '' ? NaN : Number(km.value);
+        return value > 0 && Number.isFinite(value)
+          ? { type: 'separation', distance: value * 1_000 }
+          : 'Enter a separation above 0 km';
+      }
+      case 'launch':
+        return { type: 'launch' };
+      case 'duration':
+        return { type: 'duration', seconds: ADVANCE_DURATION };
+    }
+  };
+  const start = () => {
+    const chosen = condition();
+    refusal = typeof chosen === 'string' ? chosen : (runner.advanceUntil(viewer, chosen) ?? '');
+  };
+  choice.addEventListener('change', () => {
+    refusal = '';
+    showKm();
+  });
+  km.addEventListener('input', () => {
+    refusal = '';
+  });
+  km.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') start();
+  });
+  go.addEventListener('click', start);
+  showKm();
+
+  return {
+    element: el(
+      'div',
+      { className: 'advance', attrs: { role: 'group', 'aria-label': 'Advance until' } },
+      choice,
+      km,
+      go,
+    ),
+    status,
+    update() {
+      const message = refusal
+        ? `Cannot advance: ${refusal}`
+        : runner.advancing
+          ? advancingText(runner.advancing)
+          : runner.advanceReached
+            ? reachedText(runner.advanceReached)
+            : '';
+      if (status.textContent !== message) status.textContent = message;
+      go.setAttribute('aria-pressed', String(runner.advancing !== null));
+    },
+  };
 };
 
 /**
@@ -48,6 +187,7 @@ export const createTimeControls = (runner: BattleRunner, viewer: SideId) => {
     className: 'time-slowdown',
     attrs: { role: 'status', 'aria-label': 'Time compression change' },
   });
+  const advance = createAdvanceControl(runner, viewer);
   const speeds = runner.compressions.map((compression, i) => {
     const button = el('button', {
       className: 'time-button time-speed',
@@ -73,6 +213,7 @@ export const createTimeControls = (runner: BattleRunner, viewer: SideId) => {
       { className: 'time-speeds', attrs: { role: 'group', 'aria-label': 'Time compression' } },
       ...speeds.map(({ button }) => button),
     ),
+    advance.element,
     el(
       'div',
       { className: 'time-messages' },
@@ -81,6 +222,7 @@ export const createTimeControls = (runner: BattleRunner, viewer: SideId) => {
         text: `Space pause · 1–${String(Math.min(speeds.length, NUMBERED))} or + / − time compression`,
       }),
       reason,
+      advance.status,
     ),
   );
 
@@ -126,6 +268,7 @@ export const createTimeControls = (runner: BattleRunner, viewer: SideId) => {
         ? `Slowed to 1×: ${slowdownReason(runner.slowdownEvent, runner.battle.sides, viewer)}`
         : '';
       if (reason.textContent !== message) reason.textContent = message;
+      advance.update();
       clock.textContent = formatBattleTime(runner.battle.time);
       pause.textContent = runner.paused ? '▶' : '❚❚';
       pause.setAttribute('aria-label', runner.paused ? 'Resume' : 'Pause');

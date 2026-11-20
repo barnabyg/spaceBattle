@@ -166,6 +166,16 @@ manual checks.
 
 In battle, the time controls in the top bar pause the battle (or Space) and set its time compression with one button per speed, 1×, 10×, 100×, 500× and 1000× (or keys 1–5, and + / − to step between them); the chosen speed stays selected while paused. Time compression drops back to 1× only for what needs the captain: an armour breach, component loss or structural failure on your own ship, a missile launched at your ship when no other enemy missile is already flying at it, nuclear detonations, magazine explosions, withdrawal and battle end. Damage you do to the enemy, hits, impacts, interceptions, misses and further missiles of a salvo already under way preserve the selected speed; the hit indicator and battle log still report them. When the computer commands every side, damage to either ship drops time compression too. The time controls show the cause of an automatic slowdown until you choose a speed again.
 
+**Advance until** beside the speeds runs the battle at the highest time compression until something happens, then pauses it: the enemy comes within reach of your weapons, you come within reach of an enemy weapon your sensors have made out, the separation reaches a distance you enter in km (closing or opening, whichever way the ships are going), the next missile launch, or 10 minutes have passed. The battle pauses at the first step the condition holds and keeps the speed you had chosen before, and the time controls say why it paused. An event that needs the captain stops the advance early, at 1×, as above; choosing a speed or pausing cancels it. A condition that already holds, or a separation that is not above 0 km, is refused with a reason.
+
+To check it manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from
+`C:/docs/git/spaceBattle` in PowerShell 7 and start a free battle with Lance against a computer
+Bastion. Choose 10×, then **Advance until** **Separation (km)**, enter 250000 and press Enter.
+The battle should run fast, then pause with “Paused at 250,000 km separation”, **Separation**
+just under 250,000 km and 10× still selected. Choose **Enemy in our reach** and **Advance**: it
+should pause as the Lance's laser comes into range (or stop earlier at 1× if the Bastion damages
+your ship first).
+
 You know the enemy only as a contact: its position and motion always, the rest only as far as your sensors make it out at the range. The tactical map labels the contact with what is made out (position only, silhouette, sections, mounts), and **Aim at** in the weapons orders offers each section and mount once it is made out; until then the weapons aim at the whole ship.
 
 The tactical map's **Legend** shows how each layer is drawn and what it means, such as velocity, relative velocity, heading, trails and planned burns, with a switch to hide or show each one; the choices are kept for the browser session. **Trail**, **Drop lines**, **Projected path** and **Planned burns** start off by default; saved session choices take precedence.
