@@ -56,7 +56,10 @@ before they could score damage in the sampled fights. These scripted runs measur
 particular tactics and starting setups.
 
 The regression tests use the original optics and cover both decisions with
-Bastion. The stock tests cover Bastion's first hit and Sling's safe withdrawal
+Bastion. The stock tests cover Bastion's first hit and, since the reworked stock designs of
+[#114](https://github.com/barnabyg/spaceBattle/issues/114) (see the
+[firing pass notes](firing-passes.md)), the Sling pressing its attack under fire and still
+getting away (it used to withdraw before the first shot)
 in each starting scenario. Run them from the repository root with
 `npm.cmd test -- src/sim/rangeBalance.test.ts -t 'responding to standoff fire'`.
 

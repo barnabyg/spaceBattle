@@ -6,7 +6,7 @@ import type {
   SideObservation,
   SideSetup,
 } from './battle';
-import { effectiveRange } from './beams';
+import { effectiveRange, USEFUL_INTENSITY } from './beams';
 import {
   designComponent,
   designComponents,
@@ -17,7 +17,7 @@ import {
   type ShieldType,
 } from './design';
 import { ARMOUR } from './armour';
-import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE } from './heat';
+import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE, radiativeLimit } from './heat';
 import { missileReach, reachOfDeltaV } from './missile';
 import type {
   AntiMissileOrder,
@@ -146,6 +146,11 @@ const PASS_TOLERANCE = 0.05;
 const ATTACK_RUN_ARMOUR = 0.5;
 /** Maximum time a severely outranged ship will knowingly spend crossing beam fire. */
 const MAX_BEAM_EXPOSURE = 1_800;
+/**
+ * A ship that can roll bears beam fire this many times as long (see `RollOrder`): rolling cuts the
+ * wear five to ten times close in, and this keeps a margin.
+ */
+const ROLLING_EXPOSURE_FACTOR = 4;
 /** Allow several laser bursts to inform the estimate of damage per second. */
 const DAMAGE_RATE_WINDOW = 60;
 /** A badly damaged sensor or drive can make an approach untenable. */
@@ -247,6 +252,19 @@ const gunReach = ({ weapons }: OwnShipObservation): number =>
  */
 const ownReach = (ship: OwnShipObservation): number =>
   Math.max(missileReachOf(ship), beamReach(ship), gunReach(ship));
+
+/**
+ * How close the ship must be for its weapons to do the enemy harm, m. Its beams fire out to where
+ * they land at `USEFUL_INTENSITY`, but burn armour only where they beat what it sheds by glowing:
+ * about half that far against ablative armour, a quarter of the intensity. Taking the armour of
+ * the enemy's nose as made out, or ablative until it is, that is its beams' reach scaled by
+ * √(I/L). Its guns and missiles reach as they always do.
+ */
+const biteReach = (ship: OwnShipObservation, enemy: ContactObservation): number => {
+  const armour = enemy.sections.find((s) => s.kind === 'forward')?.armour.type ?? 'ablative';
+  const scale = Math.min(1, Math.sqrt(USEFUL_INTENSITY / radiativeLimit(armour)));
+  return Math.max(missileReachOf(ship), gunReach(ship), scale * beamReach(ship));
+};
 
 /** How far the ship's point defence reaches while it has a working gun and rounds left, m. */
 const pointDefenceReach = ({ weapons }: OwnShipObservation): number =>
@@ -837,13 +855,22 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       if (!crossingBeamFire) damage = null;
       const failingApproach =
         crossingBeamFire && approachFails(observation.time, ship, enemy, range - reach);
+      // The enemy's beams wear its nose only where they beat what that armour sheds by glowing;
+      // further out they only heat it. Rolling, it can bear several times as long under them.
+      const nose = ship.sections.find((section) => section.kind === 'forward')?.armour.type;
+      const enemyBurnReach =
+        enemyBeamReach * Math.min(1, Math.sqrt(USEFUL_INTENSITY / radiativeLimit(nose ?? 'heavy')));
+      const canRoll = ship.sections.some((section) =>
+        section.components.some((part) => part.type === 'thrusters' && part.integrity > 0),
+      );
+      const bearable = (canRoll ? ROLLING_EXPOSURE_FACTOR : 1) * MAX_BEAM_EXPOSURE;
       const untenable =
         profile.predicts &&
         reach > 0 &&
         !enemy.withdrawing &&
         range > enemyReach &&
-        enemyBeamReach > ATTACK_RUN_RATIO * reach &&
-        timeToClose(ship, enemy, enemyBeamReach - reach) > MAX_BEAM_EXPOSURE;
+        enemyBurnReach > ATTACK_RUN_RATIO * reach &&
+        timeToClose(ship, enemy, enemyBurnReach - reach) > bearable;
       const exposed =
         range > reach &&
         (attackSpeed !== null || passSpeed !== null) &&
@@ -907,7 +934,10 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       const roll: RollOrder = {
         type: 'roll',
         rolling:
-          profile.predicts && thrusters && range > reach && ship.appearance.beamsLanding.length > 0,
+          profile.predicts &&
+          thrusters &&
+          range > biteReach(ship, enemy) &&
+          ship.appearance.beamsLanding.length > 0,
       };
       orders.push(roll);
       const launch = missiles(observation, enemy, range, threats);

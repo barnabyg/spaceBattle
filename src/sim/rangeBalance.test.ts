@@ -95,19 +95,31 @@ describe('responding to standoff fire', () => {
       expect(firstHit).toMatchObject({ type: 'hit', attacker: 'red' });
     }, 60_000);
 
-    it('lets the gunboat recognise the threat and complete withdrawal outside beam range', () => {
+    it('lets the gunboat close under fire, rolling its ablative nose, and still get away', () => {
       const setup = duelSetup(
         handMadeDesign('lance'),
         handMadeDesign('sling'),
         scenario.separation,
       );
       const battle = lanceAttack(setup, scenario, 1);
-      while (!battle.outcome) battle.advance(10);
+      let closest = Infinity;
+      let rolled = false;
+      while (!battle.outcome) {
+        battle.advance(10);
+        const red = battle.observe('red');
+        rolled ||= red.ownShip.rolling;
+        const contact = red.contacts[0];
+        if (contact) closest = Math.min(closest, distance(red.ownShip.position, contact.position));
+      }
+      // Its nose sheds the Lance's laser beyond half its reach, and rolling spreads it closer
+      // in, so it presses its attack into its own guns' reach rather than turn back far off.
+      expect(rolled).toBe(true);
+      expect(closest).toBeLessThan(10_000 * KM);
+      expect(battle.observe('blue').ownShip.energyLedger.beamEmitted).toBeGreaterThan(0);
       expect(battle.outcome.sides[1]).toMatchObject({
         loss: { result: 'withdrawn' },
         shipLost: false,
       });
-      expect(battle.observe('blue').ownShip.energyLedger.beamEmitted).toBe(0);
     }, 60_000);
   });
 });
