@@ -18,7 +18,21 @@ jobs:
           cache: npm
       # The dedicated audit step below checks both production and development dependencies.
       - run: npm ci --no-audit
-      - run: npx playwright install --with-deps firefox
+      - name: Find the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      # Firefox for Playwright is a large download that a slow runner can take minutes over: keep
+      # it between runs, keyed by the Playwright version that needs it.
+      - uses: actions/cache@v6
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-firefox
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps firefox
+      # From the cache, Firefox still needs its system libraries installed.
+      - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps firefox
       # The runner has no GPU: give Firefox a virtual display and Mesa's software OpenGL for WebGL.
       # Nor a sound device: give it a PulseAudio server with a silent sink, so Web Audio can start.
       - run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libegl-mesa0 pulseaudio
