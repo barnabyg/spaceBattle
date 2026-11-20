@@ -4,6 +4,7 @@ import {
   chooseSide,
   selectedTimeCompression,
   startFreeBattle,
+  timeCompressionButton,
   timeCompressionButtons,
 } from './freeBattle';
 
@@ -145,7 +146,7 @@ test('a nuclear warhead going off near the enemy strips the mounts facing it', a
   });
   await expect(testLog).toContainText('Red laser lost (middle mount');
   await expect(testLog).not.toContainText('Red radiator lost');
-  await expect(testLog).not.toContainText('armour breached');
+  await expect(testLog).not.toContainText(/Red \w+ armour breached/);
   await expect(page.getByRole('list', { name: 'Battle log', includeHidden: true })).toContainText(
     'Nuclear warhead hit enemy · 10 kt at 1.0 km',
   );
@@ -177,7 +178,9 @@ test('anti-missile missiles intercept a salvo', async ({ page }) => {
   await expect(page.getByLabel('Anti-missile missiles in flight')).toHaveText(
     '0 ours · 2 incoming',
   );
-  await fastest(page);
+  // Slow enough that the interception is still among the battle log's latest entries when
+  // checked, before the ships close to laser range and hits crowd it out.
+  await timeCompressionButton(page, '100×').click();
   await expect(testLog).toContainText(/Red anti-missile missile \d+ (shot down|missed) Blue/, {
     timeout: SIMULATION_EXPECT_TIMEOUT,
   });

@@ -52,7 +52,8 @@ test('a new campaign builds its first ship, fights tier 1 and is paid for the wi
     const random = Math.random;
     Math.random = () => {
       Math.random = random;
-      return 0;
+      // Campaign seed 7: a Corsair in pursuit, which this missile frigate's tactics beat.
+      return 7 / 2 ** 32;
     };
   });
   await page.getByRole('button', { name: 'Campaign', exact: true }).click();

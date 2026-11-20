@@ -1,7 +1,7 @@
 import { tierOf } from '../campaign/campaign';
 import { HAND_MADE_DESIGNS } from '../data/designs';
 import { OPPONENTS, type Opponent } from '../data/opponents';
-import { startingScenario } from '../data/scenarios';
+import { scenarioFor, startingScenario } from '../data/scenarios';
 import { DEFAULT_TIME_LIMIT, runBatch, type BatchSummary } from './batch';
 import { freeBattleBatch } from './freeBattle';
 
@@ -37,8 +37,8 @@ const skillOf = (opponent: Opponent) => tierOf(opponent.tier).skill;
 
 /**
  * Every opponent of a tier against every opponent of the tier below, the computer commanding
- * both at their tiers' skill, head-on, each taking each side once: how many battles the higher
- * tier won and lost.
+ * both at their tiers' skill, head-on and just out of reach as the campaign starts them, each
+ * taking each side once: how many battles the higher tier won and lost.
  */
 export const tierBatch = (tier: number): { wins: number; losses: number } => {
   let wins = 0;
@@ -66,7 +66,7 @@ export const tierBatch = (tier: number): { wins: number; losses: number } => {
               skill: skillOf(red),
             },
           ],
-          scenario: startingScenario('head-on'),
+          scenario: scenarioFor(startingScenario('head-on'), [blue.design, red.design]),
           battles: 1,
           seed: 11,
           timeLimit: DEFAULT_TIME_LIMIT,
