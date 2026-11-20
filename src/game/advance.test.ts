@@ -10,8 +10,14 @@ import {
 } from '../sim/testing';
 import { vec3 } from '../sim/vector';
 import { designReach } from '../sim/weapons';
-import { ADVANCE_DURATION, ownReach, separationOf, type AdvanceCondition } from './advance';
-import { createBattleRunner, type BattleRunner } from './battleRunner';
+import {
+  ADVANCE_DURATION,
+  ownReach,
+  passAhead,
+  separationOf,
+  type AdvanceCondition,
+} from './advance';
+import { createBattleRunner, PASS_IMMINENT, PASS_WARNING, type BattleRunner } from './battleRunner';
 
 /** Both sides left to players, so nothing slows time but the advance itself. */
 const playersOnly = (setup: BattleSetup): BattleSetup => ({
@@ -47,6 +53,28 @@ const runUntilPaused = (r: BattleRunner) => {
   for (let i = 0; i < 2_000 && !r.paused && !r.battle.outcome; i++) events.push(...r.update(0.25));
   return events;
 };
+
+/**
+ * Blue keeps still while Red flies past at 2 km/s, missing it by `miss`, m, at closest approach
+ * `timeToPass` from the start, s; negative once past. Both are players' sides.
+ */
+const passingRunner = (miss: number, timeToPass: number, designs = testSides()) =>
+  createBattleRunner(
+    createBattle(
+      playersOnly(
+        testSetup({
+          sides: designs,
+          scenario: {
+            name: 'Passing',
+            starts: [
+              { position: vec3(0, 0, 0), velocity: vec3(0, 0, 0) },
+              { position: vec3(2_000 * timeToPass, miss, 0), velocity: vec3(-2_000, 0, 0) },
+            ],
+          },
+        }),
+      ),
+    ),
+  );
 
 const blueSeparation = (r: BattleRunner) => separationOf(r.battle.observe('blue')) ?? NaN;
 
@@ -191,5 +219,85 @@ describe('advancing the battle until a condition', () => {
     expect(closingRunner().advanceUntil('blue', { type: 'own-reach' })).toBe(
       'No weapon with a reach',
     );
+  });
+
+  it('pauses at the closest pass, however far off it is', () => {
+    const r = passingRunner(5_000e3, 1_500);
+    expect(r.advanceUntil('blue', { type: 'closest-pass' })).toBeNull();
+    runUntilPaused(r);
+    expect(r.advanceReached).toEqual({ type: 'closest-pass' });
+    expect(passAhead(r.battle.observe('blue'))).toBeNull();
+    // The first step after closest approach: within a step's travel of the 5,000 km miss.
+    expect(blueSeparation(r) - 5_000e3).toBeLessThan(2_000 * TIME_STEP);
+    expect(r.battle.time).toBeCloseTo(1_500, 0);
+  });
+
+  it('refuses to advance to a closest pass while the ships draw apart', () => {
+    const r = passingRunner(5_000e3, -100);
+    expect(r.advanceUntil('blue', { type: 'closest-pass' })).toBe('The ships are not closing');
+  });
+});
+
+describe('slowing into a closest pass', () => {
+  /** Runs until time compression changes or the battle passes `until`, s. */
+  const runWhile = (r: BattleRunner, until: number) => {
+    const at = r.timeCompression;
+    for (let i = 0; i < 2_000 && r.timeCompression === at && r.battle.time < until; i++) {
+      r.update(0.25);
+    }
+  };
+
+  it('drops to 10× ten minutes before a pass within reach, then 1× a minute before', () => {
+    // Blue's laser reaches far beyond the 5,000 km miss.
+    const r = passingRunner(5_000e3, 1_200, testSides([armedTestDesign(), testDesign()]));
+    r.setTimeCompression(1000);
+    runWhile(r, 2_000);
+    expect(r.timeCompression).toBe(10);
+    expect(r.slowdownPass?.time).toBeLessThanOrEqual(PASS_WARNING);
+    expect(r.slowdownPass?.time).toBeGreaterThan(PASS_WARNING - 1);
+    expect(r.slowdownPass?.separation).toBeCloseTo(5_000e3, -3);
+    runWhile(r, 2_000);
+    expect(r.timeCompression).toBe(1);
+    expect(r.slowdownPass?.time).toBeLessThanOrEqual(PASS_IMMINENT);
+    expect(r.slowdownPass?.time).toBeGreaterThan(PASS_IMMINENT - 1);
+    // Past the pass, the chosen speed holds.
+    r.setTimeCompression(1000);
+    expect(r.slowdownPass).toBeNull();
+    runWhile(r, 3_000);
+    expect(r.timeCompression).toBe(1000);
+  });
+
+  it('slows into each pass once, leaving a speed chosen after it alone', () => {
+    const r = passingRunner(5_000e3, 1_200, testSides([armedTestDesign(), testDesign()]));
+    r.setTimeCompression(1000);
+    runWhile(r, 2_000);
+    expect(r.timeCompression).toBe(10);
+    // The captain picks 100× again; only the last minute slows it once more.
+    r.setTimeCompression(100);
+    runWhile(r, 2_000);
+    expect(r.timeCompression).toBe(1);
+    expect(r.battle.time).toBeGreaterThanOrEqual(1_200 - PASS_IMMINENT - 1);
+  });
+
+  it('leaves a pass beyond every known reach at the chosen speed', () => {
+    const r = passingRunner(5_000e3, 1_200);
+    r.setTimeCompression(1000);
+    runWhile(r, 2_000);
+    expect(r.timeCompression).toBe(1000);
+    expect(r.slowdownPass).toBeNull();
+  });
+
+  it('stops another advance for the pass, but not one until the pass', () => {
+    const designs = testSides([armedTestDesign(), testDesign()]);
+    const stopped = passingRunner(5_000e3, 1_200, designs);
+    stopped.advanceUntil('blue', { type: 'duration', seconds: 2_000 });
+    runWhile(stopped, 2_000);
+    expect(stopped.advancing).toBeNull();
+    expect(stopped.timeCompression).toBe(10);
+    const through = passingRunner(5_000e3, 1_200, designs);
+    through.advanceUntil('blue', { type: 'closest-pass' });
+    runUntilPaused(through);
+    expect(through.advanceReached).toEqual({ type: 'closest-pass' });
+    expect(through.slowdownPass).toBeNull();
   });
 });

@@ -30,6 +30,8 @@ test('advance until a separation runs the battle fast, then pauses there', async
   const kmApart = await kmOf();
   expect(kmApart).toBeLessThanOrEqual(goal);
   expect(kmApart).toBeGreaterThan(goal - 1_000);
+  // The ships are closing, so the essential status counts down to their closest pass.
+  await expect(page.getByLabel('Pass', { exact: true })).toHaveText(/^Closest in .+ · [\d,]+ km$/);
   // It resumes at the speed chosen before the advance.
   await expect(selectedTimeCompression(page)).toHaveText('10×');
   await page.getByRole('button', { name: 'Resume' }).click();
