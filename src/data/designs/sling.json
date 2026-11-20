@@ -8,8 +8,8 @@
     {
       "kind": "forward",
       "armour": {
-        "type": "heavy",
-        "thickness": 0.012
+        "type": "ablative",
+        "thickness": 0.052
       },
       "components": [
         {
@@ -18,15 +18,6 @@
           "capacity": 20000000000,
           "maxCharge": 500000000,
           "maxDischarge": 5000000000
-        }
-      ],
-      "mounts": [
-        {
-          "type": "sensor",
-          "mass": 4000,
-          "aperture": 4,
-          "wavelength": 5e-8,
-          "trackingError": 3e-9
         }
       ]
     },
@@ -55,6 +46,13 @@
         }
       ],
       "mounts": [
+        {
+          "type": "sensor",
+          "mass": 4000,
+          "aperture": 4,
+          "wavelength": 5e-8,
+          "trackingError": 3e-9
+        },
         {
           "type": "radiator",
           "mass": 15000,

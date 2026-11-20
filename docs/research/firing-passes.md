@@ -73,3 +73,40 @@ their 1.2 cm of heavy forward armour sheds only 0.38 MW/m², and a beam spot at 
 100,000 km where it burns them is too wide for rolling to spread. Mean battle length hardly
 changes (2.8 h to 2.9 h). What remains for #114 is in the stock designs: ablative noses and weapons
 and sensors away from the forward section for the ships meant to close.
+
+## Reworked short-range stock designs
+
+The ships meant to close now carry what that needs:
+
+- The Sling, Quiver and Pyre trade their 1.2 cm of heavy nose armour for 5.2 cm of ablative
+  armour of the same mass, which sheds 4.1 MW/m² rather than 0.38. Each costs about 310,000
+  credits more (ablative armour costs twice as much a kilogram); all three still fit the
+  campaign's 9,000,000-credit start, with too little left for a second frigate.
+- The Sling, Quiver, Pyre and Torch carry their sensor on the middle section, shadowed by the nose
+  while it faces the enemy, so losing the nose no longer blinds them. Their weapons were already
+  there. The Pyre keeps its nuclear magazine in the nose, away from the middle section, whose loss
+  would destroy it.
+
+Two tactical refinements come with them. A captain under beam fire it cannot answer rolls until
+its own weapons can bite the enemy's armour, about half its beams' reach against ablative armour,
+rather than stopping at its full reach, where its beams would only heat the enemy. And whether an
+approach across a beam's reach is untenable now counts only the zone where the beam burns its
+nose, and allows a ship that can roll four times as long under it.
+
+The same 200 battles:
+
+| Measure                                   | Before passes | Passes and rolling | Reworked designs |
+| ----------------------------------------- | ------------: | -----------------: | ---------------: |
+| Battles where the shorter-reach ship hits |            64 |                 88 |              124 |
+| Battles the shorter-reach ship wins       |            36 |                 40 |               70 |
+
+The shorter-reach ship now lands hits in most of these battles. The pure short-ranged Torch now
+beats the Needle in all four scenarios, and the Lance and the Rampart in one each. The Quiver
+beats the Lance, Needle, Rampart and Ward, and the Pyre the Needle and Rampart. Twelve Pyre
+battles against the Lance, Ward and Rime are draws: its nuclear salvo disables the enemy as it
+withdraws.
+
+The Sling now closes to within about 1,000 km of a laser ship instead of withdrawing from
+114,000 km, and lands slugs on the Needle and the Ward, but it still loses every battle: its guns
+hold their slugs until they cannot be dodged, and it is out-shot at that range. Its kinetic guns
+are a balance question of their own.
