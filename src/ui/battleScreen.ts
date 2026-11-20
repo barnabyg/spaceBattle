@@ -13,6 +13,8 @@ import { createShipSound } from './shipSound';
 import { createStatusPanel } from './statusPanel';
 import { createNarrationFeed } from './narration';
 import { createNarrator } from '../game/narration';
+import { createSalvoTimeline } from './salvoTimeline';
+import { createSalvoTracker } from '../game/salvos';
 import { formatDuration } from './format';
 import { SIDE_COLOURS } from './mapStyle';
 import { createTacticalMap } from './tacticalMap';
@@ -72,6 +74,10 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   const narrator = createNarrator(viewer.id, battle.sides);
   const narration = createNarrationFeed();
   instruments.element.append(narration.overlay);
+  const salvos = createSalvoTracker(viewer.id);
+  const salvoTimeline = createSalvoTimeline((ids) => {
+    map.highlight(ids);
+  });
   const status = createStatusPanel();
   const hits = createHitIndicator();
   const damage = createDamagePanel(viewer.id);
@@ -159,6 +165,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
       { className: 'side-panel' },
       status.summaryElement,
       hits.element,
+      salvoTimeline.element,
       // Only a player side takes orders from the screen; a computer side's captain gives its own.
       viewer.commander === 'player'
         ? orders.messagesElement
@@ -181,6 +188,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     const observation = battle.observe(viewer.id);
     narration.add(narrator.narrate(observation, events), now / 1000);
     narration.update(now / 1000);
+    salvoTimeline.update(salvos.update(observation, events));
     timeControls.update();
     status.update(observation);
     hits.update(observation, events, now / 1000);
