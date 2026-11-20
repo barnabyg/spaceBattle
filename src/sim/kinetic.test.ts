@@ -6,6 +6,7 @@ import {
   type OwnShipObservation,
   type SectionObservation,
 } from './battle';
+import { COMPONENT_WRECK_ENERGY, IMPACT_WRECK_ENERGY, STRUCTURE_SHARE } from './damage';
 import type { ArmourDesign, Design } from './design';
 import { fromAxisAngle } from './quaternion';
 import {
@@ -210,6 +211,35 @@ describe('kinetic guns', () => {
     expect(heavy.forward.structure).toBe(1);
     expect(ablative.breached).toBe(true);
     expect(ablative.forward.structure).toBeLessThan(1);
+  });
+
+  it('wreck what lies past the armour by shock, needing far less energy than a beam', () => {
+    // An unarmoured nose holding only a 2 t capacitor, so the slug's energy goes there.
+    const capacitorMass = 2e3;
+    const target = withSection(testDesign(), 'forward', {
+      armour: { type: 'ablative', thickness: 0 },
+      components: [
+        {
+          type: 'capacitor',
+          mass: capacitorMass,
+          capacity: 1e9,
+          maxCharge: 1e8,
+          maxDischarge: 1e9,
+        },
+      ],
+    });
+    const battle = createBattle(duelSetup(gunnedTestDesign(1), target, 1_000 * KM));
+    fireAtRed(battle);
+    battle.advance(1);
+    expect(impactsOn(untilSlugsLand(battle, 120), 'red')).toHaveLength(1);
+    const capacitor = section(own(battle, 'red'), 'forward').components[0];
+    const toComponent = SLUG_ENERGY * (1 - STRUCTURE_SHARE);
+    expect(capacitor?.integrity).toBeCloseTo(
+      1 - toComponent / (capacitorMass * IMPACT_WRECK_ENERGY),
+      2,
+    );
+    // A beam would have had to melt it: ten times the energy for the same harm.
+    expect(IMPACT_WRECK_ENERGY).toBeLessThanOrEqual(COMPONENT_WRECK_ENERGY / 10);
   });
 
   it('lose the ammunition in a magazine that is wrecked', () => {

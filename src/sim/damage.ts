@@ -31,6 +31,14 @@ import type { Beam, MagazineState } from './weapons';
 export const COMPONENT_WRECK_ENERGY = 1e6;
 /** Energy that breaks through a section's structure, per kilogram of structure, J/kg. */
 export const STRUCTURE_WRECK_ENERGY = 1e6;
+/**
+ * Energy that wrecks a component or breaks a section's structure when a hypervelocity impact
+ * delivers it, per kilogram, J/kg. The impact releases its energy in microseconds, as a shock
+ * that spalls, fragments and tears machinery apart without having to melt it: far less than a
+ * beam needs. Still well above the 40 J/g at which an impact breaks up a whole satellite, as
+ * the shock spreads well beyond the part struck.
+ */
+export const IMPACT_WRECK_ENERGY = 1e5;
 /** The share of a beam's energy past the armour that the structure takes; the rest a component. */
 export const STRUCTURE_SHARE = 0.5;
 /** Integrity every component loses per second for each kelvin above the damage temperature. */
@@ -211,6 +219,7 @@ const damageSection = (
   energy: number,
   depthIn: (armour: ArmourType) => number,
   ctx: DamageContext,
+  wreckEnergy = { component: COMPONENT_WRECK_ENERGY, structure: STRUCTURE_WRECK_ENERGY },
 ) => {
   const design = ship.design.sections.find((s) => s.kind === kind);
   ship.sections[kind] = { ...ship.sections[kind], lastHit: ctx.time };
@@ -236,12 +245,12 @@ const damageSection = (
   const toComponent = struck === null ? 0 : inside * (1 - STRUCTURE_SHARE);
   const left =
     current.structure -
-    (inside - toComponent) / (structureMass(ship, kind) * STRUCTURE_WRECK_ENERGY);
+    (inside - toComponent) / (structureMass(ship, kind) * wreckEnergy.structure);
   const structure = left > NEGLIGIBLE ? left : 0;
   ship.sections[kind] = { ...current, structure, struck };
   if (struck !== null) {
     const mass = componentSlots(ship.design)[struck]?.component.mass ?? 1;
-    damageComponent(ship, struck, toComponent / (mass * COMPONENT_WRECK_ENERGY), ctx);
+    damageComponent(ship, struck, toComponent / (mass * wreckEnergy.component), ctx);
   }
   if (structure === 0) failSection(ship, kind, ctx);
 };
@@ -256,11 +265,17 @@ export const intactShape = (ship: ShipState): readonly ShapePart[] =>
   );
 
 /** A hit carrying `energy` J on a mount, which sits outside the armour and takes all of it. */
-const damageMount = (ship: ShipState, part: ShapePart, energy: number, ctx: DamageContext) => {
+const damageMount = (
+  ship: ShipState,
+  part: ShapePart,
+  energy: number,
+  ctx: DamageContext,
+  wreckEnergy = COMPONENT_WRECK_ENERGY,
+) => {
   ship.sections[part.section] = { ...ship.sections[part.section], lastHit: ctx.time };
   const slot = slotOf(ship, part.section, true, part.mount ?? -1);
   const mass = componentSlots(ship.design)[slot]?.component.mass ?? 1;
-  damageComponent(ship, slot, energy / (mass * COMPONENT_WRECK_ENERGY), ctx);
+  damageComponent(ship, slot, energy / (mass * wreckEnergy), ctx);
 };
 
 /**
@@ -395,9 +410,12 @@ export const impactKinetic = (
   ship.ledger = { ...ship.ledger, hitEnergy: ship.ledger.hitEnergy + energy };
   if (hit.part.mount === null) {
     const depthIn = (armour: ArmourType) => penetrationDepth(energy, slugMass, armour);
-    damageSection(ship, hit.part.section, energy, depthIn, ctx);
+    damageSection(ship, hit.part.section, energy, depthIn, ctx, {
+      component: IMPACT_WRECK_ENERGY,
+      structure: IMPACT_WRECK_ENERGY,
+    });
   } else {
-    damageMount(ship, hit.part, energy, ctx);
+    damageMount(ship, hit.part, energy, ctx, IMPACT_WRECK_ENERGY);
   }
 };
 

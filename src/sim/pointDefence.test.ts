@@ -8,6 +8,7 @@ import {
 } from './battle';
 import type { Design } from './design';
 import {
+  armouredAllOver,
   defendedTestDesign,
   duelSetup,
   launchingTestDesign,
@@ -49,8 +50,11 @@ const untilMissilesGone = (battle: Battle, limit: number): BattleEvent[] => {
 };
 
 /** Blue launches a salvo of six missiles at red, 2,000 km away, and waits for them to arrive. */
+/** A salvo of six launched at `red`, armoured to outlast every missile that gets through. */
 const salvoAt = (red: Design) => {
-  const battle = createBattle(duelSetup(launchingTestDesign(6, { launchers: 6 }), red, 2_000 * KM));
+  const battle = createBattle(
+    duelSetup(launchingTestDesign(6, { launchers: 6 }), armouredAllOver(red), 2_000 * KM),
+  );
   battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 6 });
   return { battle, events: untilMissilesGone(battle, 3_000) };
 };

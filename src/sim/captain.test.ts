@@ -24,6 +24,7 @@ import {
   testDesign,
   withComponent,
   withSection,
+  armouredAllOver,
 } from './testing';
 import { distance, dot, normalize, sub } from './vector';
 import { effectiveRange } from './beams';
@@ -269,7 +270,8 @@ describe('computer captain', () => {
     const far = againstIdlePlayer(testDesign(), quiver, 200_000 * KM);
     expect(far.advance(60).some((e) => e.type === 'launch')).toBe(false);
 
-    const battle = againstIdlePlayer(testDesign(), quiver, 30_000 * KM);
+    // Armour thick enough to stop its missiles outright, so the battle goes on for a second salvo.
+    const battle = againstIdlePlayer(armouredAllOver(testDesign()), quiver, 30_000 * KM);
     const reach = battle.observe('red').ownShip.weapons.ammunition.missileDesigns[0]?.reach ?? 0;
     expect(reach).toBeGreaterThan(30_000 * KM);
     const first = battle.advance(10).filter((e) => e.type === 'launch');

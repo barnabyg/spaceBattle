@@ -157,7 +157,7 @@ A weapon that fires solid slugs accelerated electromagnetically; it needs power 
 _Avoid_: Railgun, coilgun, mass driver (as the class name)
 
 **Slug**:
-A solid round fired by a kinetic gun. It flies in a straight line, and the kinetic energy it carries into the target does the damage.
+A solid round fired by a kinetic gun. It flies in a straight line, and the kinetic energy it carries into the target does the damage: past the armour, its shock wrecks ten times what a beam carrying the same energy would.
 _Avoid_: Shell, bullet, projectile
 
 **Missile**:

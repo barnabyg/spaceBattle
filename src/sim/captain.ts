@@ -18,6 +18,7 @@ import {
   type ShieldType,
 } from './design';
 import { ARMOUR } from './armour';
+import { WITHDRAWAL_TIME } from './engagement';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE, radiativeLimit } from './heat';
 import { missileReach, reachOfDeltaV } from './missile';
 import { REPAIR_CAP } from './repair';
@@ -921,6 +922,7 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       const exposed =
         range > reach &&
         (attackSpeed !== null || passSpeed !== null) &&
+        timeToClose(ship, enemy, range - reach) > WITHDRAWAL_TIME &&
         (enemyReach > ATTACK_RUN_RATIO * reach || (enemyReach === 0 && underFire)) &&
         ship.sections.some(
           (section) =>
