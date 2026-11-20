@@ -126,6 +126,16 @@ heat armour through its depth, but it still sheds them by radiating from its sur
 captains that cannot outrange the enemy close to 0.3 of their reach to burn through. See the
 [armour glow notes](docs/research/armour-glow.md).
 
+In the instrument view, struck armour glows where the beam last landed, in a black body's colours:
+a dull red at about 700 K, through orange, to white-hot at its 3,000 K limit. It builds while the beam
+is on and fades over about a minute once it is off, following the armour's surface temperature,
+and stays distinct from weapon discharges, which glow in their beams' cool blues. A contact glows
+the same way at each section the sensors make out; before they make out any, its hottest spot shows
+as a glow over the whole ship, as a hot spot shows to any sensor. To check, start a free battle as
+Bastion against a computer Lance in **Head-on**, target the enemy, select **Fire freely** and
+advance until the enemy is within your reach: the Lance should glow orange where your laser lands,
+and keep glowing, fading, for a while after **Hold fire**.
+
 **Roll** in the **Navigation** tab turns the ship slowly about its long axis, so an enemy beam
 sweeps round the struck section instead of boring into one patch: each patch is lit only for the
 share of each turn the beam spot covers, about its width over the section's 48 m (frigate) or
