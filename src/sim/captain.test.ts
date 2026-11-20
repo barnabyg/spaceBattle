@@ -1,3 +1,4 @@
+import { radiativeLimit } from './heat';
 import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
 import { OPENING_PASS } from '../data/scenarios';
@@ -121,7 +122,7 @@ describe('computer captain', () => {
     });
   });
 
-  it('outranging its enemy, holds just inside its own reach and wears the enemy down', () => {
+  it('outranging its enemy, holds just inside its own reach, where its laser only heats ablative armour', () => {
     const battle = againstIdlePlayer(
       handMadeDesign('lance'),
       handMadeDesign('bastion'),
@@ -133,12 +134,26 @@ describe('computer captain', () => {
     expect(order?.range).toBeGreaterThan(LANCE_REACH);
     expect(order?.range).toBeLessThan(BASTION_REACH);
 
-    const events = fightToTheEnd(battle, 12 * HOUR);
-    expect(battle.outcome?.winner).toBe('red');
-    const hits = events.filter((e) => e.type === 'hit' && e.attacker === 'red');
+    // From its first hit, an hour of fire.
+    const events: BattleEvent[] = [];
+    const redHits = () =>
+      events.flatMap((e) => (e.type === 'hit' && e.attacker === 'red' ? [e] : []));
+    while (redHits().length === 0 && battle.time < 12 * HOUR) events.push(...battle.advance(60));
+    events.push(...battle.advance(HOUR));
+    const hits = redHits();
     expect(hits.length).toBeGreaterThan(0);
-    // Every hit landed from beyond the reach of the enemy's lasers.
-    for (const hit of hits) expect(hit.type === 'hit' && hit.range).toBeGreaterThan(LANCE_REACH);
+    // Every hit landed from beyond the reach of the enemy's lasers...
+    for (const hit of hits) expect(hit.range).toBeGreaterThan(LANCE_REACH);
+    // ...below what the Lance's ablative armour sheds by glowing: it heats the Lance, but every
+    // section keeps all its armour.
+    const lance = battle.observe('blue').ownShip;
+    for (const hit of hits.filter((h) => h.mount === null)) {
+      expect(hit.intensity).toBeLessThan(radiativeLimit('ablative'));
+    }
+    for (const section of lance.sections) {
+      expect(section.armour.remaining).toBe(section.armour.thickness);
+    }
+    expect(lance.energyLedger.heatConducted).toBeGreaterThan(0);
   }, 20_000); // Simulates hours of battle; takes a few seconds.
 
   it('outranged, closes in to fight, with the drive first on the way and the weapons first there', () => {
@@ -566,7 +581,7 @@ describe('two computer captains', () => {
       { maxTime: 24 * HOUR },
     );
     expectDecided(battle);
-  }, 30_000); // Simulates most of a day of battle; takes a few seconds.
+  }, 60_000); // Simulates most of a day of battle; takes about 12 s under full-suite load.
 
   it.each(['lance', 'bastion', 'quiver', 'torch', 'needle', 'rampart', 'bulwark'])(
     'fight %s against its own design to a result',
@@ -589,10 +604,11 @@ describe('two computer captains', () => {
     expect(first.filter((e) => e.type === 'hit').length).toBeGreaterThan(0);
     expect(first.at(-1)?.type).toBe('battle-ended');
     expect(eventLog()).toStrictEqual(first);
-  }, 20_000);
+  }, 60_000); // Simulates hours of battle; takes up to about 14 s under full-suite load.
 
   it('fight the same battle every time from the same seed', () => {
-    const setup = computerDuel('bastion', 'lance', 140_000 * KM);
+    // Close enough that both lasers burn armour from the start, keeping the battle short.
+    const setup = computerDuel('bastion', 'lance', 60_000 * KM);
     const first = runBattle(setup, { maxTime: 6 * HOUR });
     const second = runBattle(setup, { maxTime: 6 * HOUR });
     expectDecided(first);

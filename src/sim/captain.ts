@@ -109,8 +109,12 @@ const EARLY_WITHDRAWAL = 1.5;
 
 /** A ship that outranges its enemy holds at this fraction of its own reach. */
 const STANDOFF_FRACTION = 0.95;
-/** A ship that cannot outrange its enemy closes to this fraction of its own reach. */
-const CLOSE_FRACTION = 0.5;
+/**
+ * A ship that cannot outrange its enemy closes to this fraction of its own reach: close enough
+ * that a laser lands at about eleven times the intensity it reaches out to, well above what
+ * ablative armour sheds by glowing (see `radiativeLimit`), so it burns through.
+ */
+const CLOSE_FRACTION = 0.3;
 /** Within this multiple of the longer reach a ship is fighting, not just manoeuvring. */
 const FIGHTING_FRACTION = 1.05;
 /**

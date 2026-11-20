@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
 import { createBattle, type Battle, type BattleEvent, type OwnShipObservation } from './battle';
 import { designComponent, designComponentsOfType, type Design, type SectionKind } from './design';
-import { CUTOFF_TEMPERATURE, DAMAGE_TEMPERATURE, OVERHEAT_TEMPERATURE } from './heat';
+import {
+  CUTOFF_TEMPERATURE,
+  DAMAGE_TEMPERATURE,
+  OVERHEAT_TEMPERATURE,
+  radiativeLimit,
+} from './heat';
 import { fromAxisAngle, multiply } from './quaternion';
 import {
   armedTestDesign,
@@ -14,7 +19,7 @@ import {
   withSection,
 } from './testing';
 import { vec3 } from './vector';
-import { SPEED_OF_LIGHT, LASER_CHARGE_TIME, LASER_BURST_POWER } from './beams';
+import { SPEED_OF_LIGHT } from './beams';
 
 const KM = 1000;
 const DEGREE = Math.PI / 180;
@@ -43,29 +48,31 @@ describe('lasers', () => {
     const fire = (range: number) => {
       const battle = createBattle(duelSetup(armedTestDesign(), armouredTarget(), range));
       fireAtRed(battle);
-      battle.advance(16.5); // Let the complete first shot arrive at both ranges.
+      // Long enough that the extra 0.1 s the farther beam takes to arrive hardly counts.
+      battle.advance(30);
       const hit = own(battle, 'blue').weapons.lastHit;
       const armour = section(own(battle, 'red'), 'forward').armour;
       return { hit, worn: armour.thickness - armour.remaining };
     };
-    const near = fire(40_000 * KM);
-    const far = fire(80_000 * KM);
+    // Close enough that both beams burn the ablative nose, above what it sheds by glowing.
+    const near = fire(30_000 * KM);
+    const far = fire(60_000 * KM);
     for (const [range, { hit }] of [
-      [40_000 * KM, near],
-      [80_000 * KM, far],
+      [30_000 * KM, near],
+      [60_000 * KM, far],
     ] as const) {
       // Airy disc: r = 1.22 λR/D, intensity P/(πr²).
       const radius = (1.22 * TEST_LASER.wavelength * range) / TEST_LASER.aperture;
       expect(hit?.range).toBeCloseTo(range, -3);
       expect(hit?.spotRadius).toBeCloseTo(radius, 6);
-      expect(hit?.intensity).toBeCloseTo(
-        (LASER_BURST_POWER * TEST_LASER.beamPower) / (Math.PI * radius ** 2),
-        -2,
-      );
+      expect(hit?.intensity).toBeCloseTo(TEST_LASER.beamPower / (Math.PI * radius ** 2), -2);
     }
-    expect((near.hit?.intensity ?? 0) / (far.hit?.intensity ?? 1)).toBeCloseTo(4, 6);
-    // Damage per area follows: the nearer beam burns four times as deep in the same time.
-    expect(near.worn / far.worn).toBeCloseTo(4, 1);
+    const nearIntensity = near.hit?.intensity ?? 0;
+    const farIntensity = far.hit?.intensity ?? 1;
+    expect(nearIntensity / farIntensity).toBeCloseTo(4, 6);
+    // Damage per area follows what the armour cannot shed by glowing: the excess intensity.
+    const limit = radiativeLimit('ablative');
+    expect(near.worn / far.worn).toBeCloseTo((nearIntensity - limit) / (farIntensity - limit), 1);
   });
 
   it('reaches its target at light speed', () => {
@@ -74,8 +81,8 @@ describe('lasers', () => {
     fireAtRed(battle);
     let hit: BattleEvent | undefined;
     while (!hit) hit = hitsOn(battle.step(), 'red')[0];
-    expect(battle.time).toBeGreaterThanOrEqual(LASER_CHARGE_TIME + range / SPEED_OF_LIGHT);
-    expect(battle.time).toBeLessThan(LASER_CHARGE_TIME + range / SPEED_OF_LIGHT + 0.1 + 1e-9);
+    expect(battle.time).toBeGreaterThanOrEqual(range / SPEED_OF_LIGHT);
+    expect(battle.time).toBeLessThan(range / SPEED_OF_LIGHT + 0.1 + 1e-9);
   });
 
   it('holds fire beyond its effective range, or when ordered to', () => {
@@ -96,17 +103,14 @@ describe('lasers', () => {
   it('draws power and turns what does not leave in the beam into heat', () => {
     const battle = createBattle(duelSetup(armedTestDesign(), testDesign(), 30_000 * KM));
     fireAtRed(battle);
-    battle.advance(16);
+    battle.advance(1);
     const blue = own(battle, 'blue');
     const { delivered, beamEmitted } = blue.energyLedger;
     expect(blue.power.systems.weapons.supplied).toBeCloseTo(
       TEST_LASER.beamPower / TEST_LASER.efficiency,
       -3,
     );
-    expect(blue.weapons.lasers[0]?.beamPower).toBeCloseTo(
-      LASER_BURST_POWER * TEST_LASER.beamPower,
-      -3,
-    );
+    expect(blue.weapons.lasers[0]?.beamPower).toBeCloseTo(TEST_LASER.beamPower, -3);
     expect(beamEmitted).toBeCloseTo(delivered.weapons * TEST_LASER.efficiency, -3);
     // What landed on red is at most what blue sent out.
     const red = own(battle, 'red');
@@ -121,7 +125,6 @@ describe('lasers', () => {
     while (own(battle, 'blue').heat.temperature < (OVERHEAT_TEMPERATURE + CUTOFF_TEMPERATURE) / 2) {
       battle.advance(1);
     }
-    // Inspect an emitted slice: a long recharge can leave the laser idle at the heat threshold.
     let limitBefore = 1;
     for (let step = 0; step < 1000; step++) {
       limitBefore = own(battle, 'blue').heat.thermalLimit;
@@ -131,8 +134,8 @@ describe('lasers', () => {
     const blue = own(battle, 'blue');
     const beam = blue.weapons.lasers[0]?.beamPower ?? 0;
     expect(beam).toBeGreaterThan(0);
-    expect(beam).toBeCloseTo(LASER_BURST_POWER * TEST_LASER.beamPower * limitBefore, -3);
-    expect(beam).toBeLessThan(LASER_BURST_POWER * TEST_LASER.beamPower);
+    expect(beam).toBeCloseTo(TEST_LASER.beamPower * limitBefore, -3);
+    expect(beam).toBeLessThan(TEST_LASER.beamPower);
     expect(blue.heat.thermalLimit).toBeLessThan(1);
   });
 
@@ -228,14 +231,18 @@ describe('hits', () => {
     while (!events.some((e) => e.type === 'structural-failure') && battle.time < 3_600) {
       events.push(...battle.advance(1));
     }
-    const types = events.filter((e) => e.type !== 'hit').map((e) => e.type);
+    const failed = events.findIndex((e) => e.type === 'structural-failure');
+    const types = events
+      .slice(0, failed + 1)
+      .filter((e) => e.type !== 'hit')
+      .map((e) => e.type);
     expect(types).toEqual(['armour-breached', 'component-lost', 'structural-failure']);
     const forward = section(own(battle, 'red'), 'forward');
     expect(forward.structure).toBe(0);
     expect(forward.components[0]?.integrity).toBe(0);
     // With the forward section gone, the line of fire reaches the middle section.
-    const next = hitsOn(battle.advance(16), 'red');
-    expect(next.map((h) => h.section)).toEqual(['middle']);
+    const next = hitsOn([...events.slice(failed + 1), ...battle.advance(1)], 'red');
+    expect(next[0]?.section).toBe('middle');
   });
 });
 

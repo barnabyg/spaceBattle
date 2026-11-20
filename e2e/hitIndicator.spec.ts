@@ -38,7 +38,10 @@ test('unresolved enemy hit pulses the struck section even when a shot falls betw
     const outgoing = active();
     battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
     battle.giveOrder('red', { type: 'weapons', target: 'blue', mode: 'fire-freely' });
-    const events = battle.advance(16.5);
+    // A short shot, over before the next frame: its last light lands well within the second.
+    const shot = battle.advance(1);
+    battle.giveOrder('red', { type: 'weapons', target: 'blue', mode: 'hold-fire' });
+    const events = [...shot, ...battle.advance(1)];
     const observation = battle.observe('blue');
     indicator.update(observation, events, 2);
     const incoming = active();

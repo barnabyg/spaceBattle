@@ -116,10 +116,6 @@ describe('ship appearance', () => {
       const battle = createBattle(duelSetup(design, testDesign(), 1e6));
       battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
       battle.step();
-      if (kind === 'laser') {
-        expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
-        battle.advance(15);
-      }
       const own = battle.observe('blue').ownShip.appearance.firing;
       expect(own).toEqual([expect.objectContaining({ section: 'forward', mount: 0, kind })]);
       expect(contactOf(battle, 'red').appearance.firing).toEqual(own);
