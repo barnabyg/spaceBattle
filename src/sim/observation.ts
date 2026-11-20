@@ -6,6 +6,7 @@ import { intactShape } from './damage';
 import {
   designComponentsOfType,
   missileRole,
+  SECTION_KINDS,
   type ArmourDesign,
   type ArmourType,
   type ComponentType,
@@ -18,6 +19,7 @@ import {
 } from './design';
 import type { BattleEvent, BeamKind, HitEvent, MunitionKind, ParticleBeamKind } from './events';
 import {
+  BASE_TEMPERATURE,
   RADIATOR_DEPLOYMENT_TIME,
   thermalLimit,
   thermalProperties,
@@ -386,8 +388,31 @@ export interface SurfaceDamage {
   readonly size: Vec3;
 }
 
+/**
+ * Armour glowing where beams struck it: a section's surface temperature, or for a contact whose
+ * sections are not made out, the hottest anywhere on it (section null), as a hot spot shows to any
+ * sensor that sees the contact at all.
+ */
+export interface ArmourGlow {
+  readonly section: SectionKind | null;
+  /** K */
+  readonly temperature: number;
+}
+
+/** Armour glows visibly only this much above the ship's base temperature, K. */
+const VISIBLE_GLOW = 200;
+
+/** Each section's glowing armour, hotter than `VISIBLE_GLOW` above base, hottest first. */
+const observeArmourGlow = (ship: ShipState): ArmourGlow[] =>
+  SECTION_KINDS.flatMap((section) => {
+    const temperature = ship.sections[section].surfaceTemperature;
+    return temperature > BASE_TEMPERATURE + VISIBLE_GLOW ? [{ section, temperature }] : [];
+  }).sort((a, b) => b.temperature - a.temperature);
+
 export interface ShipAppearance {
   readonly damage?: readonly SurfaceDamage[];
+  /** Where its armour glows from beam hits. */
+  readonly armourGlow: readonly ArmourGlow[];
   readonly firing?: readonly WeaponFiring[];
   /** kg; with the design it sets the centre of mass, the origin of the body frame. */
   readonly propellantMass: number;
@@ -460,6 +485,11 @@ export interface OwnShipObservation {
 /** How a contact looks from outside, as far as the side's sensors make it out. */
 export interface ContactAppearance {
   readonly damage?: readonly SurfaceDamage[];
+  /**
+   * Where its armour glows from beam hits: by section once its sections are made out, otherwise
+   * only how hot its hottest spot is.
+   */
+  readonly armourGlow: readonly ArmourGlow[];
   readonly firing?: readonly WeaponFiring[];
   /** Drive thrust applied in the last step, N; its exhaust shows at any range. */
   readonly thrust: number;
@@ -821,6 +851,7 @@ const appearanceState = ({
   beamsLanding,
   impacts,
 }: ObservedShip): Omit<ShipAppearance, 'firing'> => ({
+  armourGlow: observeArmourGlow(ship),
   propellantMass: ship.propellantMass,
   ammunitionSpent: ship.ammunitionSpent,
   radiatorsDeployed: ship.radiatorsDeployed,
@@ -1035,6 +1066,7 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
         seen.parts.some((p) => p.section === d.section && p.mount === d.mount),
       ),
       firing,
+      armourGlow: contactGlow(ship, seen.parts),
       thrust: ship.thrust,
       temperature: temperatureOf(ship),
       radiatorsDeployed: ship.radiatorsDeployed,
@@ -1044,6 +1076,18 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
       impacts: contact.impacts,
     },
   };
+};
+
+/**
+ * A contact's glowing armour as the side's sensors see it: each glowing section they make out,
+ * or, while they make out none, its hottest glow with no section.
+ */
+const contactGlow = (ship: ShipState, parts: readonly ShapePart[]): ArmourGlow[] => {
+  const glow = observeArmourGlow(ship);
+  const made = glow.filter((g) => parts.some((p) => p.section === g.section && p.mount === null));
+  if (parts.some((p) => p.mount === null)) return made;
+  const hottest = glow[0];
+  return hottest ? [{ section: null, temperature: hottest.temperature }] : [];
 };
 
 /** Every munition in flight: slugs, then missiles, each in the order fired. */

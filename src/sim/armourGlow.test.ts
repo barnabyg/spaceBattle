@@ -134,4 +134,35 @@ describe('armour shedding a laser by glowing', () => {
     expect(near.intensity).toBeGreaterThan(radiativeLimit('ablative'));
     expect(nose(near.red).armour.remaining).toBeLessThan(nose(near.red).armour.thickness);
   });
+
+  it('shows in how the ship looks: by section on its own ship, hottest first', () => {
+    const { red } = fire('ablative', 0.7 * REACH, 30);
+    expect(red.appearance.armourGlow).toEqual([
+      { section: 'forward', temperature: nose(red).surfaceTemperature },
+    ]);
+  });
+
+  it('shows on a contact by section once made out, and as a hot spot anywhere before', () => {
+    // Close in, the sensors make out red's sections: its nose glows.
+    const near = fire('ablative', 0.1 * REACH, 5);
+    const seen = near.battle.observe('blue').contacts[0];
+    expect(seen?.sections.length).toBeGreaterThan(0);
+    expect(seen?.appearance.armourGlow).toEqual([
+      { section: 'forward', temperature: nose(near.red).surfaceTemperature },
+    ]);
+    // Far off, they make out no section, yet the hot spot shows: hottest, with no section.
+    const far = fire('ablative', 0.7 * REACH, 30);
+    const distant = far.battle.observe('blue').contacts[0];
+    expect(distant?.sections).toEqual([]);
+    expect(distant?.appearance.armourGlow).toEqual([
+      { section: null, temperature: nose(far.red).surfaceTemperature },
+    ]);
+  });
+
+  it('does not show armour that has cooled back towards the ship', () => {
+    const { battle } = fire('ablative', 0.7 * REACH, 30);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
+    battle.advance(10 * GLOW_COOLING_TIME);
+    expect(own(battle, 'red').appearance.armourGlow).toEqual([]);
+  });
 });
