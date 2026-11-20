@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { vec3 } from '../sim/vector';
-import { relativeMotion } from './relativeMotion';
+import { closestPass, relativeMotion, returnPassDeltaV } from './relativeMotion';
 
 const KM = 1_000;
 
@@ -60,5 +60,43 @@ describe('relative motion', () => {
     );
     expect(motion.closingSpeed).toBe(0);
     expect(motion.relativeSpeed).toBe(2_000);
+  });
+});
+
+describe('closest pass', () => {
+  it('finds when and how near two coasting ships pass', () => {
+    // The contact flies past 3,000 km off the own ship's track, 400,000 km away at 4 km/s.
+    const pass = closestPass(
+      { position: vec3(0, 0, 0), velocity: vec3(1_000, 0, 0) },
+      { position: vec3(400_000 * KM, 3_000 * KM, 0), velocity: vec3(-3_000, 0, 0) },
+    );
+    expect(pass?.time).toBeCloseTo(100_000);
+    expect(pass?.separation).toBeCloseTo(3_000 * KM);
+  });
+
+  it('meets head-on at zero separation', () => {
+    const pass = closestPass(
+      { position: vec3(0, 0, 0), velocity: vec3(0, 0, 0) },
+      { position: vec3(0, 0, 10_000 * KM), velocity: vec3(0, 0, -2_000) },
+    );
+    expect(pass).toEqual({ time: 5_000, separation: 0 });
+  });
+
+  it('has no pass ahead for ships drawing apart or keeping station', () => {
+    const own = { position: vec3(0, 0, 0), velocity: vec3(0, 0, 0) };
+    expect(
+      closestPass(own, { position: vec3(1_000 * KM, 0, 0), velocity: vec3(10, 0, 0) }),
+    ).toBeNull();
+    expect(
+      closestPass(own, { position: vec3(1_000 * KM, 0, 0), velocity: vec3(0, 0, 0) }),
+    ).toBeNull();
+  });
+
+  it('takes twice the relative speed to turn back for another pass', () => {
+    const motion = relativeMotion(
+      { position: vec3(0, 0, 0), velocity: vec3(0, 0, 0) },
+      { position: vec3(1_000 * KM, 0, 0), velocity: vec3(3_000, 4_000, 0) },
+    );
+    expect(returnPassDeltaV(motion)).toBeCloseTo(10_000);
   });
 });

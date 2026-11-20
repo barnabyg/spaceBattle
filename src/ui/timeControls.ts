@@ -4,7 +4,7 @@ import type { BattleEvent, SideId, SideSetup } from '../sim/battle';
 import { involves } from '../sim/events';
 import { COMPONENT_TEXT, SECTION_TEXT } from './damagePanel';
 import { el } from './el';
-import { formatBattleTime, formatKm } from './format';
+import { formatBattleTime, formatDuration, formatKm } from './format';
 
 /** How many time compressions have a number key: 1 to 5. */
 const NUMBERED = 5;
@@ -47,6 +47,7 @@ const ADVANCE_CHOICES = [
   ['own-reach', 'Enemy in our reach'],
   ['enemy-reach', 'Us in known enemy reach'],
   ['separation', 'Separation (km)'],
+  ['closest-pass', 'Closest pass'],
   ['launch', 'Next missile launch'],
   ['duration', '10 minutes'],
 ] as const;
@@ -61,6 +62,8 @@ const reachedText = (condition: AdvanceCondition): string => {
       return 'Paused: we are within known enemy reach';
     case 'separation':
       return `Paused at ${formatKm(condition.distance)} separation`;
+    case 'closest-pass':
+      return 'Paused at closest pass';
     case 'launch':
       return 'Paused: missile launched';
     case 'duration':
@@ -77,6 +80,8 @@ const advancingText = (condition: AdvanceCondition): string => {
       return 'Advancing until we are within known enemy reach…';
     case 'separation':
       return `Advancing to ${formatKm(condition.distance)} separation…`;
+    case 'closest-pass':
+      return 'Advancing to closest pass…';
     case 'launch':
       return 'Advancing until a missile is launched…';
     case 'duration':
@@ -130,6 +135,8 @@ const createAdvanceControl = (runner: BattleRunner, viewer: SideId) => {
           ? { type: 'separation', distance: value * 1_000 }
           : 'Enter a separation above 0 km';
       }
+      case 'closest-pass':
+        return { type: 'closest-pass' };
       case 'launch':
         return { type: 'launch' };
       case 'duration':
@@ -264,9 +271,12 @@ export const createTimeControls = (runner: BattleRunner, viewer: SideId) => {
   return {
     element,
     update() {
+      const pass = runner.slowdownPass;
       const message = runner.slowdownEvent
         ? `Slowed to 1×: ${slowdownReason(runner.slowdownEvent, runner.battle.sides, viewer)}`
-        : '';
+        : pass
+          ? `Slowed to ${String(runner.timeCompression)}×: pass within weapon reach in ${formatDuration(pass.time)}, ${formatKm(pass.separation)} apart`
+          : '';
       if (reason.textContent !== message) reason.textContent = message;
       advance.update();
       clock.textContent = formatBattleTime(runner.battle.time);

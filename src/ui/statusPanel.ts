@@ -1,4 +1,9 @@
-import { followedContact, relativeMotion } from '../game/relativeMotion';
+import {
+  closestPass,
+  followedContact,
+  relativeMotion,
+  returnPassDeltaV,
+} from '../game/relativeMotion';
 import type { MunitionObservation, SideObservation } from '../sim/battle';
 import { SECTION_KINDS, type MissileRole } from '../sim/design';
 import type { BeamKind } from '../sim/events';
@@ -9,6 +14,7 @@ import { BEAM_TEXT } from './damagePanel';
 import { el } from './el';
 import { hasEquipment } from './equipment';
 import {
+  formatDuration,
   formatGeV,
   formatGJ,
   formatKelvin,
@@ -105,6 +111,23 @@ const describeClosing = (closingSpeed: number): string => {
   return shown < 0 ? `${formatKmPerS(shown)} · opening` : formatKmPerS(shown);
 };
 
+/**
+ * The pass with the followed contact: while closing, when and how near it comes if neither
+ * burns; once past and drawing apart, the delta-v it takes to come back for another pass at the
+ * same speed, against the delta-v left above the reserve.
+ */
+const describePass = (observation: SideObservation): string => {
+  const contact = followedContact(observation);
+  if (!contact) return '—';
+  const { ownShip } = observation;
+  const pass = closestPass(ownShip, contact);
+  if (pass) return `Closest in ${formatDuration(pass.time)} · ${formatKm(pass.separation)}`;
+  const motion = relativeMotion(ownShip, contact);
+  if (motion.closingSpeed >= 0) return '—';
+  const spare = Math.max(0, ownShip.deltaV - ownShip.reserve);
+  return `Another: ${formatKmPerS(returnPassDeltaV(motion))} of ${formatKmPerS(spare)} above reserve`;
+};
+
 /** Each readout: its label and how to show it from the captain's observation. */
 const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] = [
   [
@@ -121,6 +144,7 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
       return contact ? formatKm(distance(o.ownShip.position, contact.position)) : '—';
     },
   ],
+  ['Pass', describePass],
   ['Own speed', (o) => formatKmPerS(length(o.ownShip.velocity))],
   [
     'Contact speed',
@@ -224,6 +248,7 @@ export const createStatusPanel = () => {
   const summaryLabels = [
     'Separation',
     'Closing speed',
+    'Pass',
     'Delta-v',
     'Temperature',
     'Incoming missiles',

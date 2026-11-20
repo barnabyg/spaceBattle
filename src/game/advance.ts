@@ -3,6 +3,7 @@ import { effectiveRange } from '../sim/beams';
 import { kineticGunRange } from '../sim/kinetic';
 import { targetsMissile } from '../sim/missile';
 import { distance } from '../sim/vector';
+import { closestPass, type ClosestPass } from './relativeMotion';
 
 /** What an advance runs the battle until: the captain's next decision point. */
 export type AdvanceCondition =
@@ -14,6 +15,8 @@ export type AdvanceCondition =
   | { readonly type: 'separation'; readonly distance: number }
   /** Either side launches a missile at a ship. */
   | { readonly type: 'launch' }
+  /** The ships pass closest and start drawing apart. */
+  | { readonly type: 'closest-pass' }
   /** This much battle time has passed, s. */
   | { readonly type: 'duration'; readonly seconds: number };
 
@@ -65,6 +68,23 @@ export const knownEnemyReach = (observation: SideObservation): number => {
   );
 };
 
+/** Where the side's ship and its contact pass closest if neither burns; null unless closing. */
+export const passAhead = (observation: SideObservation): ClosestPass | null => {
+  const contact = observation.contacts[0];
+  return contact ? closestPass(observation.ownShip, contact) : null;
+};
+
+/**
+ * The pass ahead, if the ships come within reach of a weapon either side is known to have: the
+ * side's own working weapons, or the enemy's its sensors make out. Null otherwise.
+ */
+export const passInReach = (observation: SideObservation): ClosestPass | null => {
+  const pass = passAhead(observation);
+  return pass && pass.separation <= Math.max(ownReach(observation), knownEnemyReach(observation))
+    ? pass
+    : null;
+};
+
 /**
  * The test for one advance, fixed when it starts: whether its condition holds given the side's
  * observation after a step and that step's events. A separation goal is met closing from above
@@ -111,6 +131,10 @@ export const advanceTest = (
         return range !== null && (closing ? range <= goal : range >= goal);
       };
     }
+    case 'closest-pass':
+      if (separation === null) return 'No contact';
+      if (!passAhead(observation)) return 'The ships are not closing';
+      return (next) => passAhead(next) === null;
     case 'launch':
       return (_, events) =>
         events.some((event) => event.type === 'launch' && !targetsMissile(event.target));

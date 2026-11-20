@@ -124,3 +124,39 @@ test('a new missile threat names the ship it was launched at', async ({ page }) 
     'Slowed to 1×: missiles launched at Blue',
   );
 });
+
+test('a pass within weapon reach slows time and says when and how near', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const { createBattle } = await import('../src/sim/battle');
+    const { armedTestDesign, testDesign, testSetup, testSides } =
+      await import('../src/sim/testing');
+    const { vec3 } = await import('../src/sim/vector');
+    const { createBattleRunner } = await import('../src/game/battleRunner');
+    const { createTimeControls } = await import('../src/ui/timeControls');
+    // Red flies past Blue's laser 5,000 km off at 2 km/s, closest 20 minutes from the start.
+    const setup = testSetup({
+      sides: testSides([armedTestDesign(), testDesign()]).map((side) => ({
+        ...side,
+        commander: 'player' as const,
+      })),
+      scenario: {
+        name: 'Passing',
+        starts: [
+          { position: vec3(0, 0, 0), velocity: vec3(0, 0, 0) },
+          { position: vec3(2_400e3, 5_000e3, 0), velocity: vec3(-2_000, 0, 0) },
+        ],
+      },
+    });
+    const runner = createBattleRunner(createBattle(setup));
+    const controls = createTimeControls(runner, 'blue');
+    document.body.replaceChildren(controls.element);
+    runner.setTimeCompression(1000);
+    while (runner.timeCompression === 1000) runner.update(0.25);
+    controls.update();
+  });
+  await expect(selectedTimeCompression(page)).toHaveText('10×');
+  await expect(page.getByRole('status', { name: 'Time compression change' })).toHaveText(
+    'Slowed to 10×: pass within weapon reach in 10 min 0 s, 5,000 km apart',
+  );
+});
