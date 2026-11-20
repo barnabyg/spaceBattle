@@ -206,6 +206,50 @@ button {
   display: block;
 }
 
+/* The battle's story, over the bottom of the instrument view, newest last. */
+.narration {
+  position: absolute;
+  left: 0.8rem;
+  right: 0.8rem;
+  bottom: 2.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.narration__line {
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 0.2rem 0.55rem;
+  border-left: 3px solid var(--muted);
+  border-radius: 4px;
+  background: rgb(5 10 20 / 80%);
+  font-size: 0.9rem;
+}
+
+.narration__line--own {
+  border-left-color: #ff8a65;
+}
+
+.narration__line--enemy {
+  border-left-color: var(--accent);
+}
+
+.narration__line--major {
+  font-weight: 600;
+}
+
+.narration-history {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}
+
 /* Two stacked halves over the one canvas: the own ship above, the contact below. */
 .instrument-view__pane {
   position: absolute;

@@ -11,6 +11,8 @@ import { createOrdersPanel } from './ordersPanel';
 import { createResultScreen } from './resultScreen';
 import { createShipSound } from './shipSound';
 import { createStatusPanel } from './statusPanel';
+import { createNarrationFeed } from './narration';
+import { createNarrator } from '../game/narration';
 import { createSalvoTimeline } from './salvoTimeline';
 import { createSalvoTracker } from '../game/salvos';
 import { formatDuration } from './format';
@@ -69,6 +71,9 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   );
   const map = createTacticalMap(ordered, colours);
   const instruments = createInstrumentView(ordered, colours);
+  const narrator = createNarrator(viewer.id, battle.sides);
+  const narration = createNarrationFeed();
+  instruments.element.append(narration.overlay);
   const salvos = createSalvoTracker(viewer.id);
   const salvoTimeline = createSalvoTimeline((ids) => {
     map.highlight(ids);
@@ -123,7 +128,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
         ...(!player ? [status.weaponsElement, status.powerElement] : []),
       ),
     },
-    { name: 'Damage', content: damage.element },
+    { name: 'Damage', content: el('div', {}, damage.element, narration.history) },
     ...(enemyPanel ? [{ name: 'Enemy', content: enemyPanel.element }] : []),
     ...(testLog ? [{ name: 'Log', content: testLog.element }] : []),
   ]);
@@ -181,6 +186,8 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     last = now;
     testLog?.add(events);
     const observation = battle.observe(viewer.id);
+    narration.add(narrator.narrate(observation, events), now / 1000);
+    narration.update(now / 1000);
     salvoTimeline.update(salvos.update(observation, events));
     timeControls.update();
     status.update(observation);
