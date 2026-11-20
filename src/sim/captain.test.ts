@@ -25,7 +25,7 @@ import {
   withComponent,
   withSection,
 } from './testing';
-import { distance } from './vector';
+import { distance, dot, normalize, sub } from './vector';
 import { effectiveRange } from './beams';
 
 const KM = 1000;
@@ -45,16 +45,6 @@ const computerDuel = (blue: string, red: string, range: number): BattleSetup => 
 /** A player who gives no orders in blue's `blue`, against the computer in `red`. */
 const againstIdlePlayer = (blue: Design, red: Design, range: number): Battle =>
   withComputerCaptains(createBattle(duelSetup(blue, red, range)));
-
-/** Runs the battle until it ends, failing if it has not within `limit` seconds. */
-const fightToTheEnd = (battle: Battle, limit: number): BattleEvent[] => {
-  const events: BattleEvent[] = [];
-  while (!battle.outcome) {
-    if (battle.time > limit) throw new Error('The battle never ended');
-    events.push(...battle.advance(60));
-  }
-  return events;
-};
 
 /** A copy of an observation that throws if anything tries to change it. */
 const frozen = <T>(value: T): T => {
@@ -156,32 +146,65 @@ describe('computer captain', () => {
     expect(lance.energyLedger.heatConducted).toBeGreaterThan(0);
   }, 20_000); // Simulates hours of battle; takes a few seconds.
 
-  it('outranged, closes in to fight, with the drive first on the way and the weapons first there', () => {
+  it('outranged, makes firing passes: drive first, no braking under fire, back only while it can afford it', () => {
+    // An idle Bastion, armoured so heavily that the passes cannot finish it.
+    let target = handMadeDesign('bastion');
+    for (const kind of ['forward', 'middle', 'engine'] as const) {
+      target = withSection(target, kind, { armour: { type: 'ablative', thickness: 2 } });
+    }
     const battle = againstIdlePlayer(
-      handMadeDesign('bastion'),
+      target,
       withComponent(handMadeDesign('lance'), 'sensor', { aperture: 6 }),
       200_000 * KM,
     );
     battle.advance(10);
     let red = battle.observe('red').ownShip;
-    // Its sensor makes out Bastion's laser even this far off, so it knows it is outranged.
-    expect(red.manoeuvre?.goal).toBe('close');
-    expect(red.manoeuvre?.range).toBeLessThan(LANCE_REACH);
+    // Its sensor makes out Bastion's laser even this far off, so it knows it is outranged: it
+    // builds speed for a pass instead of settling on a range, radiators in, drive first.
+    expect(red.manoeuvre).toBeNull();
+    expect(red.attitude?.mode).toBe('direction');
     expect(red.power.priorities[0]).toBe('drive');
     expect(red.heat.radiatorsDeployed).toBe(false);
+    // Turned towards the enemy, it burns.
+    battle.advance(300);
+    red = battle.observe('red').ownShip;
+    expect(red.thrust).toBeGreaterThan(0);
 
-    while (red.energyLedger.beamEmitted === 0) {
-      if (battle.outcome || battle.time > 12 * HOUR) throw new Error('Red never fired');
-      battle.advance(60);
+    const closingSpeed = () => {
+      const seen = battle.observe('red');
+      const contact = seen.contacts[0];
+      if (!contact) throw new Error('No contact');
+      const offset = sub(contact.position, seen.ownShip.position);
+      return dot(sub(seen.ownShip.velocity, contact.velocity), normalize(offset));
+    };
+    let passes = 0;
+    let closing = closingSpeed();
+    let entering: number | null = null;
+    let slowest = Infinity;
+    while (passes < 2 && !red.withdrawing) {
+      if (battle.outcome || battle.time > 12 * HOUR) throw new Error('The passes never ended');
+      battle.advance(10);
       red = battle.observe('red').ownShip;
+      const now = closingSpeed();
+      // Inside the Bastion's reach on the first approach, it never brakes.
+      if (passes === 0 && now > 0 && range(battle.observe('red')) < BASTION_REACH) {
+        entering ??= now;
+        slowest = Math.min(slowest, now);
+      }
+      if (closing > 0 && now <= 0) passes += 1;
+      closing = now;
     }
-    expect(red.power.priorities[0]).toBe('weapons');
-    expect(red.heat.radiatorsDeployed).toBe(true);
-
-    fightToTheEnd(battle, 12 * HOUR);
-    expect(battle.outcome?.winner).toBe('red');
-    expect(range(battle.observe('red'))).toBeLessThan(LANCE_REACH);
-  }, 20_000); // Simulates hours of battle; takes a few seconds.
+    expect(entering).not.toBeNull();
+    expect(slowest).toBeGreaterThan(0.9 * (entering ?? 0));
+    expect(red.energyLedger.beamEmitted).toBeGreaterThan(0);
+    // Delta-v to spare after its first pass took it back for a second...
+    expect(passes).toBe(2);
+    // ...but not for a third: it withdraws with its reserve intact.
+    battle.advance(60);
+    red = battle.observe('red').ownShip;
+    expect(red.withdrawing).toBe(true);
+    expect(red.deltaV).toBeGreaterThan(red.reserve);
+  }, 60_000); // Simulates hours of battle; takes a few seconds.
 
   it('holds its kinetic guns until the enemy is too close to dodge their slugs, then hits', () => {
     const battle = againstIdlePlayer(testDesign(), handMadeDesign('sling'), 5_000 * KM);

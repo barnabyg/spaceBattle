@@ -126,6 +126,21 @@ const APPROACH_FRACTION = 0.2;
 const ATTACK_RUN_RATIO = 10;
 /** Target closing speed: half the expendable delta-v, leaving room for braking and the reserve. */
 const ATTACK_RUN_FRACTION = 0.5;
+/**
+ * A ship reaching no further than this, m, is short-ranged: rather than settle at a range, it
+ * makes firing passes (see `firingPass`). It covers kinetic gunboats, charged particle beams and
+ * missile ships, against the longest beams' 90,000–165,000 km.
+ */
+const SHORT_REACH = 60_000e3;
+/** An enemy reaching this many times as far as the ship has it outranged: it makes passes. */
+const PASS_RATIO = 1.5;
+/**
+ * The closing speed a firing pass commits to: this fraction of the delta-v it has to spare above
+ * its reserve, enough to build it, turn back once at twice that and keep a little in hand.
+ */
+const PASS_FRACTION = 0.3;
+/** A firing pass coasts once its relative velocity is within this fraction of the pass speed. */
+const PASS_TOLERANCE = 0.05;
 /** Keep the last half of a section's armour for withdrawal from an exposed attack run. */
 const ATTACK_RUN_ARMOUR = 0.5;
 /** Maximum time a severely outranged ship will knowingly spend crossing beam fire. */
@@ -500,6 +515,8 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
   let pressing = false;
   /** Closing speed chosen on committing to an attack run, m/s; fixed as propellant is spent. */
   let attackSpeed: number | null = null;
+  /** Closing speed committed to for firing passes, m/s; null while not making them. */
+  let passSpeed: number | null = null;
   let damage: {
     time: number;
     sensor: number;
@@ -606,6 +623,38 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
     const throttle = error > 1 && dot(ship.nose, normalize(wanted)) >= ATTACK_RUN_ALIGNMENT ? 1 : 0;
     return [
       { type: 'attitude', mode: 'direction', direction: error > 1 ? wanted : ship.nose },
+      { type: 'burn', throttle, duration: 2 * profile.reconsider },
+    ];
+  };
+
+  /**
+   * A firing pass: rather than brake to a range under fire, turning its engine section to the
+   * enemy, the ship builds closing speed straight at the enemy, keeps its nose (and so its
+   * forward armour) on it and flies through the closest pass firing, never braking inside its
+   * reach. Past the enemy, it turns back nose first for another pass, but only while the delta-v
+   * it has to spare above `reserve` covers stopping and building the same speed again; otherwise
+   * it withdraws. Returns the orders, or 'withdraw'.
+   */
+  const firingPass = (
+    ship: OwnShipObservation,
+    enemy: ContactObservation,
+    reserve: number,
+  ): [AttitudeOrder, BurnOrder] | [AttitudeOrder] | 'withdraw' => {
+    const sight = normalize(sub(enemy.position, ship.position));
+    const relative = sub(ship.velocity, enemy.velocity);
+    const spare = Math.max(0, ship.deltaV - reserve);
+    passSpeed ??= PASS_FRACTION * spare;
+    const closing = dot(relative, sight);
+    const speed = Math.hypot(relative.x, relative.y, relative.z);
+    // Drawing apart after a pass, it turns back only if it can afford another.
+    if (closing < 0 && spare < speed + passSpeed) return 'withdraw';
+    const wanted = sub(scale(sight, passSpeed), relative);
+    const error = Math.hypot(wanted.x, wanted.y, wanted.z);
+    // Close enough to the pass speed, it coasts with its nose on the enemy.
+    if (error <= PASS_TOLERANCE * passSpeed) return [{ type: 'attitude', mode: 'enemy' }];
+    const throttle = dot(ship.nose, normalize(wanted)) >= ATTACK_RUN_ALIGNMENT ? 1 : 0;
+    return [
+      { type: 'attitude', mode: 'direction', direction: wanted },
       { type: 'burn', throttle, duration: 2 * profile.reconsider },
     ];
   };
@@ -750,9 +799,20 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         target: enemy.sideId,
         mode: holdSlugs ? 'hold-fire' : 'fire-freely',
       };
+      // Short-ranged or outranged, a captain who predicts makes firing passes when it must close;
+      // a highly skilled one makes them whenever it must close, rather than brake under fire.
+      const holding = profile.keepsRange && !pressing && STANDOFF_FRACTION * reach > enemyReach;
+      const passing =
+        profile.predicts &&
+        !lastResort &&
+        reach > 0 &&
+        !holding &&
+        (profile.turnsArmour || reach <= SHORT_REACH || enemyReach >= PASS_RATIO * reach);
+      if (!passing) passSpeed = null;
+      // Making passes, it keeps its radiators in, out of the enemy's fire, unless it runs hot.
       const radiators: RadiatorsOrder = {
         type: 'radiators',
-        deployed: ((profile.managesPower && fighting) || hot) && !nuclearClose,
+        deployed: ((profile.managesPower && fighting && !passing) || hot) && !nuclearClose,
       };
       const power: PowerOrder = {
         type: 'power',
@@ -783,15 +843,20 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         timeToClose(ship, enemy, enemyBeamReach - reach) > MAX_BEAM_EXPOSURE;
       const exposed =
         range > reach &&
-        attackSpeed !== null &&
+        (attackSpeed !== null || passSpeed !== null) &&
         (enemyReach > ATTACK_RUN_RATIO * reach || (enemyReach === 0 && underFire)) &&
         ship.sections.some(
           (section) =>
             section.armour.thickness > 0 &&
             section.armour.remaining <= ATTACK_RUN_ARMOUR * section.armour.thickness,
         );
+      const pass =
+        passing && !ship.withdrawing && !enemy.withdrawing
+          ? firingPass(ship, enemy, reserve)
+          : null;
       const leaving =
         ship.withdrawing ||
+        pass === 'withdraw' ||
         untenable ||
         failingApproach ||
         exposed ||
@@ -800,14 +865,21 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
       // A withdrawing ship takes no other course, and the rules forbid pursuing one.
       const moving = !leaving && !enemy.withdrawing;
       const dodge = moving && profile.predicts ? jink(observation, side, enemy) : null;
+      // Across a very large disadvantage, an attack run builds speed faster than a pass would;
+      // inside its own reach the pass takes over, and it does not brake.
       const attack = moving
         ? attackRun(ship, enemy, range, reach, enemyReach, enemyBeamReach)
         : null;
+      const passOrders = moving && Array.isArray(pass) ? pass : null;
       const goal = moving ? manoeuvre(ship, reach, enemyReach) : null;
       // A ship that stops steering is easy for missiles, so it turns its armour only when none is
       // on its way.
       const turning = profile.turnsArmour && threats.length === 0;
-      const course = dodge ?? attack ?? (goal && turning ? armourTowards(ship, enemy, goal) : goal);
+      const course =
+        dodge ??
+        attack ??
+        passOrders ??
+        (goal && turning ? armourTowards(ship, enemy, goal) : goal);
       const orders: Order[] = [
         ...(leaving ? [{ type: 'withdraw' } as const] : []),
         weapons,

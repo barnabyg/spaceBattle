@@ -13,8 +13,9 @@ Lance mirror match, the high-skill captain now loses all six sampled battles to 
 section towards the enemy, as it comes into laser range, and loses its drive. From 300,000 km it
 had finished the turn back before the first shot. Three changes to the captain's braking did not
 fix this: the low-skill captain keeps accelerating, so braking does not bring the closing speed
-down. The skill batch test keeps the 300,000 km start, and the fix belongs with the computer
-captains' firing-pass tactics in [#114](https://github.com/barnabyg/spaceBattle/issues/114).
+down. Firing passes ([#114](https://github.com/barnabyg/spaceBattle/issues/114)) fixed it: the
+high-skill captain no longer brakes inside its enemy's reach, and wins all six again from the new
+starts, so the skill batch test uses them too. See the [firing pass notes](firing-passes.md).
 
 The scripted range-balance results below still use the original 300,000 km scenarios.
 

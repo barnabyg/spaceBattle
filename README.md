@@ -153,6 +153,15 @@ The game opens on the main menu. Choose **Free battle**, pick a **Scenario** for
 
 A low-skill computer captain reconsiders its plan only every 20 seconds, does not dodge, leaves power and heat alone and always closes in; a medium one manages power and heat and keeps out of reach of an enemy it outranges; a high one also turns its best armour to the enemy and withdraws with some reserve to spare. Every computer captain knows the enemy only through its sensors, and withdraws once it has nothing left to fight with or reaches its reserve.
 
+Medium and high captains whose weapons reach no further than 60,000 km, or that are outranged
+by half again, make firing passes when they must close: they build closing speed straight at the
+enemy (three tenths of the delta-v they have to spare), keep their nose and radiators in, fly
+through the closest pass firing without braking, and turn back nose first for another pass only
+while their spare delta-v covers stopping and building the same speed again; otherwise they
+withdraw. A high captain makes passes whenever it must close, rather than brake with its engine
+section towards the enemy. A captain that outranges its enemy holds just inside its own reach,
+where its beams strip mounts and heat the enemy, and backs away from a pass rather than meet it.
+
 Medium and high captains prioritise the drive on approach. When they identify a
 beam that outranges them, they can build speed for a fast pass before entering its
 reach. They withdraw if a severely outranged approach would leave them exposed
