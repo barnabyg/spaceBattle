@@ -59,14 +59,21 @@ test('the chosen scenario sets where the ships start and is kept for the next ba
   await expect(scenario).toHaveValue('opening-pass');
   await scenario.selectOption({ label: 'Head-on' });
   await expect(page.getByText('The ships fly straight at each other, nose to nose.')).toBeVisible();
+  // Lance and Bastion start 1.3 times the Bastion's 165,451 km laser reach apart.
   await expect(page.getByLabel('Starting geometry')).toHaveText(
-    '300,000 km apart · relative speed 4.00 km/s · closing at 4.00 km/s',
+    '215,087 km apart · relative speed 4.00 km/s · closing at 4.00 km/s',
   );
+  // The separation follows the designs chosen: two Torches start at the 40,000 km minimum.
+  const sides = ['Blue', 'Red'].map((name) => page.getByRole('region', { name: `${name} side` }));
+  for (const side of sides) await side.getByLabel('Design').selectOption({ label: 'Torch' });
+  await expect(page.getByLabel('Starting geometry')).toContainText('40,000 km apart');
+  await sides[0]?.getByLabel('Design').selectOption({ label: 'Lance' });
+  await sides[1]?.getByLabel('Design').selectOption({ label: 'Bastion' });
   await page.getByRole('button', { name: 'Start battle' }).click();
 
-  // The ships start 300 000 km apart and close at 2 km/s each.
+  // The ships start that far apart and close at 2 km/s each.
   await expect(page.getByLabel('Separation', { exact: true })).toHaveText(
-    /^(300,000|299,\d{3}) km$/,
+    /^(215,0[0-8]\d|21[34],\d{3}) km$/,
   );
   await expect(page.getByLabel('Own speed')).toHaveText(/^2\.\d\d km\/s$/);
 

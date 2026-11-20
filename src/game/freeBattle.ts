@@ -1,5 +1,10 @@
 import { HAND_MADE_DESIGNS } from '../data/designs';
-import { OPENING_PASS, startingScenario, type StartingScenario } from '../data/scenarios';
+import {
+  OPENING_PASS,
+  scenarioFor,
+  startingScenario,
+  type StartingScenario,
+} from '../data/scenarios';
 import { createBattle, type CaptainSkill, type Commander, type SideSetup } from '../sim/battle';
 import type { Design } from '../sim/design';
 import type { BatchSetup } from './batch';
@@ -49,9 +54,18 @@ export const freeBattleSides = (
     return { ...side, commander, design, ...(skill && { skill }) };
   });
 
-/** The starting scenario a free battle's choices name. */
-export const freeBattleScenario = (setup: FreeBattleSetup): StartingScenario =>
-  startingScenario(setup.scenarioId ?? OPENING_PASS.id);
+/**
+ * The starting scenario a free battle's choices name, with the ships just out of reach of each
+ * other (see `scenarioFor`); their designs are found among `designs`.
+ */
+export const freeBattleScenario = (
+  setup: FreeBattleSetup,
+  designs: readonly Design[] = HAND_MADE_DESIGNS,
+): StartingScenario =>
+  scenarioFor(
+    startingScenario(setup.scenarioId ?? OPENING_PASS.id),
+    freeBattleSides(setup, designs).map((side) => side.design),
+  );
 
 /** What test mode adds to a free battle. */
 export interface FreeBattleTestMode {
@@ -79,7 +93,7 @@ export const startFreeBattle = (
   createBattleRunner(
     createBattle({
       seed,
-      scenario: freeBattleScenario(setup),
+      scenario: freeBattleScenario(setup, designs),
       sides: freeBattleSides(setup, designs),
       ...(testMode && { timeLimit: testMode.timeLimit }),
     }),
@@ -96,6 +110,6 @@ export const freeBattleBatch = (
   designs: readonly Design[] = HAND_MADE_DESIGNS,
 ): BatchSetup => ({
   sides: freeBattleSides(setup, designs),
-  scenario: freeBattleScenario(setup),
+  scenario: freeBattleScenario(setup, designs),
   ...options,
 });

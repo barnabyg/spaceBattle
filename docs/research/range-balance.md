@@ -1,5 +1,23 @@
 # Closing through a weapon-range disadvantage
 
+## Starting just out of reach
+
+Issue [#106](https://github.com/barnabyg/spaceBattle/issues/106) starts battles 1.3 times the
+longest reach of either design apart (at least 40,000 km, and never further than the scenario's
+own 300,000 km), instead of always 300,000 km. Lance against Bastion now starts 215,087 km apart.
+
+With the new starts, every pairing of hand-made designs still reaches a result, and tier 2 and
+tier 3 opponents still beat the tier below in the tier batches. One result changed: in a head-on
+Lance mirror match, the high-skill captain now loses all six sampled battles to the low-skill one
+(it won all six from 300,000 km). It builds more approach speed, then turns to brake, engine
+section towards the enemy, as it comes into laser range, and loses its drive. From 300,000 km it
+had finished the turn back before the first shot. Three changes to the captain's braking did not
+fix this: the low-skill captain keeps accelerating, so braking does not bring the closing speed
+down. The skill batch test keeps the 300,000 km start, and the fix belongs with the computer
+captains' firing-pass tactics in [#114](https://github.com/barnabyg/spaceBattle/issues/114).
+
+The scripted range-balance results below still use the original 300,000 km scenarios.
+
 ## Lance and Bastion follow-up
 
 Medium and high captains build closing speed before entering a known beam's
