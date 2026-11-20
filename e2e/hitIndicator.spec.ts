@@ -96,6 +96,8 @@ test('battle screen shows incoming nuclear exposures on the schematic', async ({
       sides: setup.sides.map((side) => ({ ...side, commander: 'player' })),
     });
     battle.giveOrder('red', { type: 'launch', target: 'blue', missiles: 1 });
+    // Launch before the runner takes over: a new missile threat would drop it to 1×.
+    battle.advance(1);
     const runner = createBattleRunner(battle);
     runner.setTimeCompression(1000);
     const screen = createBattleScreen(runner);

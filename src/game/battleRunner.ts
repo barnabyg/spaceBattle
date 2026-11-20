@@ -1,5 +1,6 @@
-import { TIME_STEP, type Battle, type BattleEvent } from '../sim/battle';
+import { TIME_STEP, type Battle, type BattleEvent, type SideId } from '../sim/battle';
 import { withComputerCaptains } from '../sim/command';
+import { targetsMissile } from '../sim/missile';
 import { withOrderLog, type RecordedAction } from './orderLog';
 
 /** The time compression settings the captain can choose between. */
@@ -9,22 +10,48 @@ export const TEST_TIME_COMPRESSIONS = [...TIME_COMPRESSIONS, 2000, 5000, 10_000]
 export type TimeCompression = (typeof TEST_TIME_COMPRESSIONS)[number];
 
 /**
- * Whether each kind of event drops time compression back to real time, so the captain can
- * respond. A record, so a new kind of event cannot be added without deciding.
+ * Whether an event needs a watched side's captain, so time compression drops back to real time
+ * for them to respond. Watched sides are the player's, or every side when the computer commands
+ * them all. Damage a watched side does to an enemy does not: the hit indicator and battle log
+ * report it while the battle runs on. A missile launched at a watched ship does, but only when it
+ * opens a new threat, not for each further launch while enemy missiles already fly at that ship.
+ * `launched` lists the ids of the missiles launched in the same step.
  */
-const SIGNIFICANT: Readonly<Record<BattleEvent['type'], boolean>> = {
-  hit: false,
-  impact: false,
-  launch: false,
-  intercept: false,
-  miss: false,
-  detonation: true,
-  'magazine-explosion': true,
-  'armour-breached': true,
-  'component-lost': true,
-  'structural-failure': true,
-  withdrawal: true,
-  'battle-ended': true,
+const needsCaptain = (
+  event: BattleEvent,
+  watched: ReadonlySet<SideId>,
+  battle: Battle,
+  launched: ReadonlySet<number>,
+): boolean => {
+  switch (event.type) {
+    case 'hit':
+    case 'impact':
+    case 'intercept':
+    case 'miss':
+      return false;
+    case 'launch': {
+      const { target } = event;
+      if (targetsMissile(target) || !watched.has(target)) return false;
+      return !battle
+        .observe(target)
+        .munitions.some(
+          (m) =>
+            m.kind === 'missile' &&
+            m.target === target &&
+            m.attacker !== target &&
+            !launched.has(m.id),
+        );
+    }
+    case 'armour-breached':
+    case 'component-lost':
+    case 'structural-failure':
+      return watched.has(event.side);
+    case 'detonation':
+    case 'magazine-explosion':
+    case 'withdrawal':
+    case 'battle-ended':
+      return true;
+  }
 };
 
 /** Real time longer than this between updates (e.g. a background tab) is not caught up. */
@@ -73,9 +100,10 @@ export interface BattleRunner {
   /** Steps to the previous time compression offered, stopping at 1×. */
   slower(): void;
   /**
-   * Runs the battle forward by `realSeconds` of real time, returning what happened. A
-   * significant event, such as an armour breach or a component lost, drops time compression to 1× and
-   * ends the update there. Once the battle has ended, updates do nothing.
+   * Runs the battle forward by `realSeconds` of real time, returning what happened. An event
+   * that needs the player's captain, such as an armour breach or a component lost on their own
+   * ship or a new missile threat to it, drops time compression to 1× and ends the update there.
+   * Once the battle has ended, updates do nothing.
    */
   update(realSeconds: number): readonly BattleEvent[];
 }
@@ -92,6 +120,8 @@ export const createBattleRunner = (
   let compressionIndex = 0;
   let owed = 0;
   let slowdownEvent: BattleEvent | null = null;
+  const players = battle.sides.filter((side) => side.commander === 'player');
+  const watched = new Set((players.length > 0 ? players : battle.sides).map((side) => side.id));
 
   const compression = (): TimeCompression => compressions[compressionIndex] ?? 1;
 
@@ -138,7 +168,12 @@ export const createBattleRunner = (
       for (let i = 0; i < steps; i++) {
         const happened = battle.step();
         events.push(...happened);
-        const significant = happened.find((event) => SIGNIFICANT[event.type]);
+        const launched = new Set(
+          happened.flatMap((e) => (e.type === 'launch' ? [e.munition] : [])),
+        );
+        const significant = happened.find((event) =>
+          needsCaptain(event, watched, battle, launched),
+        );
         if (significant) {
           if (compression() > 1) slowdownEvent = significant;
           compressionIndex = 0;
