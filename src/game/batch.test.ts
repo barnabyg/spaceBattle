@@ -22,8 +22,11 @@ const noResultSetup: BatchSetup = {
 };
 
 /** Blue's laser against unarmed red, which shows blue its unarmoured engine section. */
+/** Red's captain is of low skill, so it does not roll to spread blue's beam (see `RollOrder`). */
 const rout: BatchSetup = {
-  sides: testSides([armedTestDesign(), testDesign()]),
+  sides: testSides([armedTestDesign(), testDesign()]).map((side) =>
+    side.id === 'red' ? { ...side, skill: 'low' as const } : side,
+  ),
   scenario: duelSetup(armedTestDesign(), testDesign(), 20_000 * KM, IDENTITY).scenario,
   battles: 2,
   seed: 5,

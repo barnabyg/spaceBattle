@@ -2,7 +2,7 @@ import { ARMOUR, beamResistance } from './armour';
 import type { SideId } from './battle';
 import { spotRadius } from './beams';
 import { componentSlots } from './components';
-import { SECTION_KINDS, type ArmourType, type SectionKind } from './design';
+import { SECTION_KINDS, type ArmourType, type Design, type SectionKind } from './design';
 import type { BattleEvent } from './events';
 import {
   BASE_TEMPERATURE,
@@ -281,7 +281,9 @@ const damageMount = (ship: ShipState, part: ShapePart, energy: number, ctx: Dama
  * A beam below the limit, as long-range fire on ablative armour is, only heats the ship; mounts,
  * outside the armour, take it all. A particle beam heats the armour through its depth rather than
  * at its surface, but the armour can still only lose that heat by radiating from its surface, so
- * the same limit holds.
+ * the same limit holds. A rolling ship spreads a beam around a section (see `rollShare`): each
+ * patch wears and glows for only its share of the time, and the rest of the beam spreads over
+ * armour around the section that the model does not wear.
  */
 export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike | null => {
   const direction = normalize(sub(ship.position, beam.origin));
@@ -314,20 +316,35 @@ export const strike = (ship: ShipState, beam: Beam, ctx: DamageContext): Strike 
   };
   if (hit.part.mount === null) {
     const armour = ship.design.sections.find((s) => s.kind === section)?.armour.type ?? 'heavy';
+    // Rolling, the beam sweeps round the section: each patch is lit only part of each turn.
+    const share = ship.rolling ? rollShare(ship.design, section, radius) : 1;
     const lit = intensity * burning;
     // Armour left glows to shed a beam; once broken through, nothing does.
     const glowing = ship.sections[section].armour > 0;
     const shed = glowing ? Math.min(lit, radiativeLimit(armour)) : 0;
     const ablating = lit > 0 ? (lit - shed) / lit : 0;
-    if (glowing) glowAt(ship, section, glowTemperature(armour, lit), energy * (1 - ablating));
+    if (glowing) {
+      glowAt(ship, section, glowTemperature(armour, share * lit), energy * (1 - ablating));
+    }
     const depthIn = (type: ArmourType) =>
-      ((lit - shed) * TIME_STEP) / beamResistance(type, beam.attack);
-    damageSection(ship, section, energy * ablating, depthIn, ctx);
+      (share * (lit - shed) * TIME_STEP) / beamResistance(type, beam.attack);
+    damageSection(ship, section, share * energy * ablating, depthIn, ctx);
   } else {
     damageMount(ship, hit.part, energy, ctx);
   }
   const point = add(through, scale(body, hit.distance - RAY_START));
   return { part: hit.part, power, deflected, absorbed, intensity, spotRadius: radius, point };
+};
+
+/**
+ * The share of each turn a patch of a rolling ship's section, of `design`, is lit by a beam of spot radius
+ * `radius`, m: the spot's width over the section's girth, its four sides around the long axis.
+ * One, no help, once the spot is as wide as the girth, as long-range fire is.
+ */
+export const rollShare = (design: Design, kind: SectionKind, radius: number): number => {
+  const shape = HULLS[design.hullSize].sections.find((s) => s.kind === kind);
+  if (!shape) return 1;
+  return Math.min(1, (2 * radius) / (2 * (shape.width + shape.height)));
 };
 
 /**

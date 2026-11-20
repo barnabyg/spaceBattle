@@ -50,6 +50,7 @@ import {
   fireDrive,
   noseOf,
   steer,
+  thrusterTorque,
   type ShipCondition,
   type ShipState,
 } from './ship';
@@ -292,6 +293,7 @@ const checkOrder = (order: Order): Order => {
     }
     case 'anti-missile':
     case 'radiators':
+    case 'roll':
     case 'shields':
     case 'withdraw':
       return order;
@@ -633,6 +635,8 @@ export const createBattle = (setup: BattleSetup): Battle => {
     settlePowerAndHeat(ship, TIME_STEP);
     // Struck armour cools before this step's beams land on it again.
     coolArmour(ship, TIME_STEP);
+    // Without working thrusters a ship stops rolling.
+    if (ship.rolling && !(thrusterTorque(ship) > 0)) ship.rolling = false;
   };
 
   /**
@@ -882,6 +886,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
           break;
         case 'shields':
           ship.shieldsRaised = checked.raised;
+          break;
+        case 'roll':
+          if (checked.rolling && !(thrusterTorque(ship) > 0)) {
+            throw new Error('The thrusters are wrecked: the ship cannot roll');
+          }
+          ship.rolling = checked.rolling;
           break;
         case 'weapons': {
           const target = checked.target === null ? null : combatantOf(checked.target);

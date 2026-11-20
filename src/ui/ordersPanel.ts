@@ -273,6 +273,10 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   const elevation = numberInput('Elevation °', 0, { min: '-90', max: '90', step: '1' });
   const pointCustom = button('Point along');
   const attitudeState = el('p', { className: 'order-state' });
+  // Rolling spreads incoming beams around the armour; the button toggles it.
+  const roll = button('Roll');
+  let rolling = false;
+  const rollState = el('p', { className: 'order-state', attrs: { 'aria-label': 'Roll state' } });
 
   const throttle = numberInput('Throttle %', 100, { min: '0', max: '100', step: '1' });
   const duration = numberInput('Duration s', 60, { min: '0', step: '1' });
@@ -504,6 +508,9 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   pointAtEnemy.addEventListener('click', () => {
     giveOrder({ type: 'attitude', mode: 'enemy' });
   });
+  roll.addEventListener('click', () => {
+    giveOrder({ type: 'roll', rolling: !rolling });
+  });
   pointAway.addEventListener('click', () => {
     giveOrder({ type: 'attitude', mode: 'away' });
   });
@@ -605,6 +612,8 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     el('div', { className: 'order-row' }, pointAtEnemy, pointAway),
     el('div', { className: 'order-row' }, azimuth.element, elevation.element, pointCustom),
     attitudeState,
+    el('div', { className: 'order-row' }, roll),
+    rollState,
     el('h3', { text: 'Burn' }),
     el('div', { className: 'order-row' }, throttle.element, duration.element),
     el('div', { className: 'order-row' }, startBurn, cutDrive),
@@ -682,6 +691,11 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
       setPressed(pointAtEnemy, attitude?.mode === 'enemy');
       setPressed(pointAway, attitude?.mode === 'away');
       setPressed(pointCustom, attitude?.mode === 'direction');
+      rolling = ship.rolling;
+      setPressed(roll, rolling);
+      rollState.textContent = rolling
+        ? 'Rolling: beams spread around the armour; own beams fire at half power'
+        : 'Not rolling';
       burnState.textContent = ship.burn
         ? `Burning at ${Math.round(ship.burn.throttle * 100)}% · ${Math.ceil(ship.burn.remaining)} s left`
         : manoeuvre

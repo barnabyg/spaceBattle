@@ -100,6 +100,12 @@ export const workingReach = (ship: ShipState): number => {
   );
 };
 
+/**
+ * The share of its power a beam weapon fires at while its ship rolls (see `RollOrder`): its mount
+ * faces the target for only part of each turn.
+ */
+export const ROLL_FIRING_SHARE = 0.5;
+
 /** One beam weapon's state: a laser's or a particle beam's. */
 export interface BeamWeaponState {
   /** Its place in the ship's component slots. */
@@ -404,7 +410,9 @@ export const aimWeapons = (
     const integrity = ship.integrity[state.slot] ?? 0;
     const firing =
       weaponFireBlocker(ship, state.slot, range, effectiveRange(state.weapon)) === null;
-    const wanted = firing ? beamWeaponPower(state.weapon) * integrity * limit : 0;
+    // Rolling, a mount faces the target for only part of each turn.
+    const facing = ship.rolling ? ROLL_FIRING_SHARE : 1;
+    const wanted = firing ? beamWeaponPower(state.weapon) * integrity * limit * facing : 0;
     demand += wanted;
     return { ...state, firing, demand: wanted };
   });
