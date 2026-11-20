@@ -22,10 +22,21 @@ export type ShipLook = Pick<
   ShipAppearance,
   'propellantMass' | 'radiatorsDeployed' | 'temperature' | 'thrust'
 > &
-  Partial<Pick<ShipAppearance, 'ammunitionSpent'>> & {
+  Partial<Pick<ShipAppearance, 'ammunitionSpent' | 'driveFalter'>> & {
     /** The parts still there; the rest are hidden. All of them if left out. */
     readonly parts?: readonly ShapePart[];
   };
+
+/**
+ * How much of its length a faltering drive's plume keeps this frame (0–1): a sound drive's all of
+ * it, a damaged one's flickering down by as much as it falls short of working order.
+ */
+export const plumeFlicker = (falter: number, time: number): number => {
+  if (!(falter > 0)) return 1;
+  // Two beating waves give an irregular stutter rather than a steady pulse.
+  const noise = 0.5 + 0.25 * Math.sin(37 * time) + 0.25 * Math.sin(91 * time + 1.3);
+  return Math.max(0, 1 - Math.min(1, falter) * noise);
+};
 
 /** A nozzle is this many times longer than its exit radius. */
 const NOZZLE_LENGTH = 1.6;
@@ -434,6 +445,7 @@ export const updateShipModel = (model: THREE.Group, look: ShipLook): void => {
     parts: look.parts ?? shape,
     temperature: look.temperature,
     throttle: Math.min(1, Math.max(0, look.thrust / (parts.fullThrust ?? 1))),
+    falter: look.driveFalter ?? 0,
   });
   const intact = look.parts;
   for (const child of parts.hull.children) {
@@ -449,7 +461,10 @@ export const updateShipModel = (model: THREE.Group, look: ShipLook): void => {
 /** Updates a detailed contact from the current, restricted exterior observation. */
 export const updateResolvedShipModel = (
   model: THREE.Group,
-  look: Pick<ResolvedShipAppearance, 'parts' | 'temperature' | 'throttle'>,
+  look: Pick<ResolvedShipAppearance, 'parts' | 'temperature' | 'throttle'> & {
+    /** How far its drive falls short of working order (0–1): its plume flickers by as much. */
+    readonly falter?: number;
+  },
 ): void => {
   const parts = models.get(model);
   if (!parts) return;
@@ -476,7 +491,8 @@ export const updateResolvedShipModel = (
   const engine = look.parts.some((p) => p.section === 'engine' && p.mount === null);
   parts.plume.visible = throttle > 0 && engine;
   parts.glow.visible = throttle > 0 && engine;
-  parts.plume.scale.x = Math.max(1e-3, throttle * PLUME_LENGTH * parts.nozzleRadius);
+  const flicker = plumeFlicker(look.falter ?? 0, performance.now() / 1000);
+  parts.plume.scale.x = Math.max(1e-3, flicker * throttle * PLUME_LENGTH * parts.nozzleRadius);
   parts.plume.material.opacity = 0.25 + 0.45 * throttle;
   parts.glow.material.opacity = 0.5 + 0.5 * throttle;
   for (const child of parts.hull.children) {

@@ -1,7 +1,7 @@
 import type { SideId, SideSetup } from './battle';
 import { resolvedShipAppearance, type ResolvedShipAppearance } from './exterior';
 import { effectiveRange } from './beams';
-import { componentSlots } from './components';
+import { componentSlots, integrityOfType } from './components';
 import { intactShape } from './damage';
 import { repairState } from './repair';
 import {
@@ -384,6 +384,8 @@ export interface SurfaceDamage {
   /** Combined armour and exterior integrity loss (0–2), never internal component state. */
   readonly wear: number;
   readonly destroyed: boolean;
+  /** For a section, whether its armour has been broken through; false for a mount. */
+  readonly breached: boolean;
   readonly point: Vec3;
   /** Size of the affected part, m. */
   readonly size: Vec3;
@@ -400,6 +402,10 @@ export interface ArmourGlow {
   readonly temperature: number;
 }
 
+/** How far a ship's drive falls short of working order, 0 sound to 1 wrecked. */
+const driveFalter = (ship: ShipState): number =>
+  1 - integrityOfType(ship.design, ship.integrity, 'drive');
+
 /** Armour glows visibly only this much above the ship's base temperature, K. */
 const VISIBLE_GLOW = 200;
 
@@ -412,6 +418,8 @@ const observeArmourGlow = (ship: ShipState): ArmourGlow[] =>
 
 export interface ShipAppearance {
   readonly damage?: readonly SurfaceDamage[];
+  /** How far its drive falls short of working order (0–1): its plume falters by as much. */
+  readonly driveFalter: number;
   /** Where its armour glows from beam hits. */
   readonly armourGlow: readonly ArmourGlow[];
   readonly firing?: readonly WeaponFiring[];
@@ -494,6 +502,8 @@ export interface OwnShipObservation {
 /** How a contact looks from outside, as far as the side's sensors make it out. */
 export interface ContactAppearance {
   readonly damage?: readonly SurfaceDamage[];
+  /** How far its drive falls short of working order (0–1): its plume shows it at any range. */
+  readonly driveFalter: number;
   /**
    * Where its armour glows from beam hits: by section once its sections are made out, otherwise
    * only how hot its hottest spot is.
@@ -860,6 +870,7 @@ const appearanceState = ({
   beamsLanding,
   impacts,
 }: ObservedShip): Omit<ShipAppearance, 'firing'> => ({
+  driveFalter: driveFalter(ship),
   armourGlow: observeArmourGlow(ship),
   propellantMass: ship.propellantMass,
   ammunitionSpent: ship.ammunitionSpent,
@@ -1014,6 +1025,7 @@ const observeSurfaceDamage = (ship: ShipState): SurfaceDamage[] => {
         mount: part.mount,
         wear,
         destroyed: integrity <= 0 || section.structure <= 0,
+        breached: part.mount === null && designed > 0 && section.armour <= 0,
         point: {
           x: (part.min.x + part.max.x) / 2,
           y: (part.min.y + part.max.y) / 2,
@@ -1092,6 +1104,7 @@ export const observeContact = (viewer: ShipState, contact: ObservedShip): Contac
         seen.parts.some((p) => p.section === d.section && p.mount === d.mount),
       ),
       firing,
+      driveFalter: driveFalter(ship),
       armourGlow: contactGlow(ship, seen.parts),
       thrust: ship.thrust,
       temperature: temperatureOf(ship),

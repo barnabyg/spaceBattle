@@ -165,4 +165,24 @@ describe('armour shedding a laser by glowing', () => {
     battle.advance(10 * GLOW_COOLING_TIME);
     expect(own(battle, 'red').appearance.armourGlow).toEqual([]);
   });
+
+  it('shows a breach in how the ship looks, and a damaged drive as faltering', () => {
+    // A thin nose burned through close in.
+    const thin = withSection(testDesign(), 'forward', {
+      armour: { type: 'ablative', thickness: 0.002 },
+    });
+    const battle = createBattle(duelSetup(armedTestDesign(), thin, 0.1 * REACH));
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.advance(30);
+    const red = own(battle, 'red');
+    expect(
+      red.appearance.damage?.find((d) => d.section === 'forward' && d.mount === null)?.breached,
+    ).toBe(true);
+    // Seen from blue, the contact's breach shows on a section the sensors make out.
+    const seen = battle.observe('blue').contacts[0];
+    expect(
+      seen?.appearance.damage?.find((d) => d.section === 'forward' && d.mount === null)?.breached,
+    ).toBe(true);
+    expect(red.appearance.driveFalter).toBe(0);
+  });
 });
