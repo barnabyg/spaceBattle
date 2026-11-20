@@ -65,6 +65,18 @@ battle log. Test mode adds **Enemy** and **Log** tabs. Only the selected panel s
 values and each panel's scroll position survive switching. Focus a tab and use Left/Right,
 Home or End to switch with the keyboard. Withdrawal and refused-order messages stay visible.
 
+The battle tells its story as it happens: short lines over the bottom of the instrument view, such
+as "Our radiator lost (middle) — our heat will rise.", "Salvo of 2 missiles launched at us. Impact in
+about 3 min 20 s." or "The enemy is now within reach of our weapons.", fade after six seconds, or
+fifteen for those that need the captain (in bold). Lines about your ship, the enemy and the battle
+are marked in different colours. Every event that slows time compression gets a line, and so does
+each crossing into or out of reach of your weapons and of the enemy weapons your sensors have made
+out. Of the enemy, a line names only what the sensors made out; anything else is "Enemy combat
+damage." The **Damage** tab keeps the latest 40 lines, timed, under **Battle story**. To check, start a
+free battle as Bastion against a computer Lance and **Advance until** **Enemy in our reach**: "The
+enemy is now within reach of our weapons." should appear over the instrument view and stay in the
+**Damage** tab.
+
 **Damage control**: in the **Damage** tab, each damaged component that a field repair can help has a
 **Repair** button. The crew then restore it at 0.2% integrity a second up to 75%, one component at a
 time; the row shows "repairing", or "repair paused under fire" for 30 seconds after its section is
