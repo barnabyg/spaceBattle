@@ -12,6 +12,8 @@ import { createResultScreen } from './resultScreen';
 import { createShipSound } from './shipSound';
 import type { Order } from '../sim/orders';
 import { createStatusPanel } from './statusPanel';
+import { createSalvoTimeline } from './salvoTimeline';
+import { createSalvoTracker } from '../game/salvos';
 import { formatDuration } from './format';
 import { SIDE_COLOURS } from './mapStyle';
 import { createTacticalMap } from './tacticalMap';
@@ -68,6 +70,10 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   );
   const map = createTacticalMap(ordered, colours);
   const instruments = createInstrumentView(ordered, colours);
+  const salvos = createSalvoTracker(viewer.id);
+  const salvoTimeline = createSalvoTimeline((ids) => {
+    map.highlight(ids);
+  });
   const status = createStatusPanel();
   const hits = createHitIndicator();
   const giveOrder = (order: Order) => {
@@ -165,6 +171,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
       { className: 'side-panel' },
       status.summaryElement,
       hits.element,
+      salvoTimeline.element,
       // Only a player side takes orders from the screen; a computer side's captain gives its own.
       viewer.commander === 'player'
         ? orders.messagesElement
@@ -185,6 +192,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     last = now;
     testLog?.add(events);
     const observation = battle.observe(viewer.id);
+    salvoTimeline.update(salvos.update(observation, events));
     timeControls.update();
     status.update(observation);
     hits.update(observation, events, now / 1000);
