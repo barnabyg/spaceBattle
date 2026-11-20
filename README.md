@@ -65,6 +65,16 @@ battle log. Test mode adds **Enemy** and **Log** tabs. Only the selected panel s
 values and each panel's scroll position survive switching. Focus a tab and use Left/Right,
 Home or End to switch with the keyboard. Withdrawal and refused-order messages stay visible.
 
+Below the **Incoming hits** schematic, **Incoming salvos** lists each enemy salvo aimed at your
+ship while it is in flight (missiles launched within two minutes of each other count as one salvo):
+how many of its missiles are left and their warhead, the time to impact at their present closing
+speed (sooner while they still boost), when your point defence can engage, how many of your
+anti-missile missiles are on their way, and how many have been shot down. Once none is left in
+flight the entry reads "defeated" or how many struck you, for 30 seconds of battle time, then goes.
+Hovering over or focusing an entry picks out its missiles on the tactical map. To check, start a free
+battle as Lance against a computer Quiver and **Advance until** **Next missile launch**: the salvo
+should appear and count down, faster at higher time compression.
+
 The right sidebar's **Incoming hits** schematic stays visible above every tab. Its forward,
 middle and engine sections turn red and show **Hit** for 1.5 real seconds when struck,
 including hits on their mounts and sections exposed to nuclear bursts. Repeated hits renew

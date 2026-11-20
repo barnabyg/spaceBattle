@@ -1330,3 +1330,43 @@ h3 {
 .intelligence-report {
   width: 50rem;
 }
+
+/* Enemy salvos aimed at the ship, counting down; hidden while there is none. */
+.salvo-timeline h2 {
+  margin: 0.4rem 0 0.2rem;
+  font-size: 0.9rem;
+  color: #ffb347;
+}
+
+.salvo-timeline__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.salvo-timeline__entry {
+  padding: 0.25rem 0.5rem;
+  border-left: 3px solid #ffb347;
+  border-radius: 4px;
+  background: #16223a;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.salvo-timeline__entry:hover,
+.salvo-timeline__entry:focus {
+  outline: 1px solid var(--accent);
+}
+
+.salvo-timeline__entry--defeated {
+  border-left-color: var(--accent);
+  color: var(--muted);
+}
+
+.salvo-timeline__entry--struck {
+  border-left-color: #ff6b6b;
+}
