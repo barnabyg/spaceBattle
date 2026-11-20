@@ -6,5 +6,5 @@ describe('test mode batch runs between opponents of tiers 2 and 1', () => {
   it('see the higher tier win most of the time', () => {
     const { wins, losses } = tierBatch(2);
     expect(wins).toBeGreaterThan(2 * losses);
-  }, 300_000); // Simulates a few days of battles; takes about half a minute.
+  }, 600_000); // Simulates a few days of battles; takes up to about 90 s under full-suite load.
 });

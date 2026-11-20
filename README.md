@@ -43,8 +43,11 @@ Restoring time compression uses the ordinary UI assertion limit for the click. I
 dialog opens between the visibility check and that click, the test accepts the completed
 battle rather than waiting behind its modal until the whole test expires.
 
-Vitest's default is 15 s. Longer headless simulation tests retain their existing explicit
-20–300 s limits, already several times their documented runtimes. The browser suite has a
+Vitest's default is 15 s. Longer headless simulation tests have explicit 20–600 s limits,
+several times their documented runtimes. Battles between beam-armed ships got about twice as long
+when armour began shedding beams by glowing (#111), so the hand-made batches now allow 120 s, the
+tier batches 600 s and the longest computer-captain battles 60 s, each at least three times their
+runtime under full-suite load. The browser suite has a
 20 min hard limit, nested within the CI job's 30 min limit. CI still stops at the first failure;
 local runs report all failures, with no automatic retries.
 

@@ -581,7 +581,7 @@ describe('two computer captains', () => {
       { maxTime: 24 * HOUR },
     );
     expectDecided(battle);
-  }, 30_000); // Simulates most of a day of battle; takes a few seconds.
+  }, 60_000); // Simulates most of a day of battle; takes about 12 s under full-suite load.
 
   it.each(['lance', 'bastion', 'quiver', 'torch', 'needle', 'rampart', 'bulwark'])(
     'fight %s against its own design to a result',
@@ -604,10 +604,11 @@ describe('two computer captains', () => {
     expect(first.filter((e) => e.type === 'hit').length).toBeGreaterThan(0);
     expect(first.at(-1)?.type).toBe('battle-ended');
     expect(eventLog()).toStrictEqual(first);
-  }, 20_000);
+  }, 60_000); // Simulates hours of battle; takes up to about 14 s under full-suite load.
 
   it('fight the same battle every time from the same seed', () => {
-    const setup = computerDuel('bastion', 'lance', 140_000 * KM);
+    // Close enough that both lasers burn armour from the start, keeping the battle short.
+    const setup = computerDuel('bastion', 'lance', 60_000 * KM);
     const first = runBattle(setup, { maxTime: 6 * HOUR });
     const second = runBattle(setup, { maxTime: 6 * HOUR });
     expectDecided(first);

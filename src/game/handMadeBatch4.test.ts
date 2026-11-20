@@ -8,6 +8,6 @@ describe('test mode batch runs of the hand-made designs, part 4', () => {
     (blue, red) => {
       expect(handMadeBatch(blue, red).noResults).toBe(0);
     },
-    60_000, // Simulates hours of battle; takes a few seconds.
+    120_000, // Simulates hours of battle; takes up to about 12 s under full-suite load.
   );
 });
