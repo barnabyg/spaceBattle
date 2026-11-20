@@ -48,7 +48,9 @@ several times their documented runtimes. Battles between beam-armed ships got ab
 when armour began shedding beams by glowing (#111), so the hand-made batches now allow 120 s, the
 tier batches 600 s and the longest computer-captain battles 60 s, each at least three times their
 runtime under full-suite load. The browser suite has a
-20 min hard limit, nested within the CI job's 30 min limit. CI still stops at the first failure;
+20 min hard limit, nested within the CI job's 30 min limit. CI caches Playwright's Firefox between runs,
+keyed by the Playwright version, after one slow runner spent 12 minutes downloading it and ran out of
+time. CI still stops at the first failure;
 local runs report all failures, with no automatic retries.
 
 These are test-runner changes; manual game verification does not apply. From the repository
