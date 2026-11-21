@@ -1,3 +1,5 @@
+import { HULLS } from './hull';
+
 export const HULL_SIZES = ['frigate', 'cruiser', 'battleship'] as const;
 export type HullSize = (typeof HULL_SIZES)[number];
 
@@ -489,14 +491,67 @@ export const designComponentsOfType = <T extends ComponentType>(
   return found as readonly Extract<ComponentDesign, { type: T }>[];
 };
 
-/** The design's single component of a type that every design has exactly one of. */
+const wholeDrives = new WeakMap<Design, DriveDesign>();
+
+/** The whole drive its units make up: their mass, thrust and power together. */
+const wholeDrive = (design: Design): DriveDesign => {
+  const cached = wholeDrives.get(design);
+  if (cached) return cached;
+  const units = designComponentsOfType(design, 'drive');
+  const [first] = units;
+  if (!first) throw new Error(`Design "${design.id}" has no drive`);
+  const sum = (value: (unit: DriveDesign) => number) =>
+    units.reduce((total, unit) => total + value(unit), 0);
+  const drive: DriveDesign = {
+    ...first,
+    mass: sum((u) => u.mass),
+    thrust: sum((u) => u.thrust),
+    power: sum((u) => u.power),
+  };
+  wholeDrives.set(design, drive);
+  return drive;
+};
+
+/**
+ * The design's single component of a type that every design has exactly one of. For the drive,
+ * that is the whole drive its units make up (see `HULLS`).
+ */
 export const designComponent = <T extends 'drive' | 'thrusters' | 'reactor'>(
   design: Design,
   type: T,
 ): Extract<ComponentDesign, { type: T }> => {
+  if (type === 'drive') return wholeDrive(design) as Extract<ComponentDesign, { type: T }>;
   const found = designComponentsOfType(design, type)[0];
   if (!found) throw new Error(`Design "${design.id}" has no ${type}`);
   return found;
+};
+
+/** One of `units` equal shares of a whole drive. */
+const driveUnit = (drive: DriveDesign, units: number): DriveDesign => ({
+  ...drive,
+  mass: drive.mass / units,
+  thrust: drive.thrust / units,
+  power: drive.power / units,
+});
+
+/**
+ * The design with its drive split into its hull's drive units, each an equal share of it, in
+ * the drive's place. A design whose drive is already in units, or not one drive, is unchanged.
+ */
+export const inDriveUnits = (design: Design): Design => {
+  const units = HULLS[design.hullSize].driveUnits;
+  const drives = designComponentsOfType(design, 'drive');
+  const [drive] = drives;
+  if (!drive || drives.length !== 1 || units === 1) return design;
+  return {
+    ...design,
+    sections: design.sections.map((section) => ({
+      ...section,
+      components: section.components.flatMap((c) =>
+        c === drive ? Array.from({ length: units }, () => driveUnit(drive, units)) : [c],
+      ),
+    })),
+  };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -827,13 +882,19 @@ export const parseDesign = (data: unknown): Design => {
       throw new Error(`${where}: this laser needs a ${minimumHullSize} hull or larger`);
     }
   }
-  for (const type of ['drive', 'thrusters', 'reactor'] as const) {
+  for (const type of ['thrusters', 'reactor'] as const) {
     const count = designComponentsOfType(design, type).length;
     if (count !== 1) throw new Error(`${where}: needs exactly one ${type}, has ${count}`);
   }
-  if (
-    !designComponents(design).some((c) => c.component.type === 'drive' && c.section === 'engine')
-  ) {
+  // A drive is saved whole, as designs were before drive units, or in its hull's units.
+  const units = HULLS[hullSize].driveUnits;
+  const drives = designComponents(design).filter((c) => c.component.type === 'drive');
+  if (drives.length !== 1 && drives.length !== units) {
+    throw new Error(
+      `${where}: needs exactly one drive, or ${units} drive units, has ${drives.length}`,
+    );
+  }
+  if (drives.some((c) => c.section !== 'engine')) {
     throw new Error(`${where}: the drive must be in the engine section`);
   }
   const magazines = designComponentsOfType(design, 'magazine');
@@ -870,5 +931,5 @@ export const parseDesign = (data: unknown): Design => {
     }
     missiles.set(missile.name, JSON.stringify(missile));
   }
-  return design;
+  return inDriveUnits(design);
 };

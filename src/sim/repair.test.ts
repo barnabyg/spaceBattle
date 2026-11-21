@@ -137,8 +137,9 @@ describe('damage control', () => {
 
   it('shows a damaged drive as a faltering plume, to its own captain and to the enemy', () => {
     const design = testDesign();
+    // One of its two drive units down to 0.4 leaves the drive at 0.7 of its thrust.
     const battle = battleWith(design, damaged(design, { drive: 0.4 }));
-    expect(own(battle).appearance.driveFalter).toBeCloseTo(0.6);
-    expect(battle.observe('red').contacts[0]?.appearance.driveFalter).toBeCloseTo(0.6);
+    expect(own(battle).appearance.driveFalter).toBeCloseTo(0.3);
+    expect(battle.observe('red').contacts[0]?.appearance.driveFalter).toBeCloseTo(0.3);
   });
 });

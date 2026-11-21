@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { effectiveRange } from '../sim/beams';
 import {
+  designComponent,
   designComponentsOfType,
   KILOTON,
   missileRole,
@@ -29,6 +30,11 @@ describe('hand-made designs', () => {
         true,
       );
     }
+  });
+
+  it('carry their drive as two units on a frigate and four on a cruiser', () => {
+    expect(designComponentsOfType(handMadeDesign('lance'), 'drive')).toHaveLength(2);
+    expect(designComponentsOfType(handMadeDesign('bastion'), 'drive')).toHaveLength(4);
   });
 
   it('armour the engine section at least as thickly as the middle section', () => {
@@ -188,6 +194,38 @@ describe('parseDesign', () => {
     expect(() => parseDesign({ ...valid, propellantMass: -1 })).toThrow(/propellantMass/);
     expect(() => parseDesign({ ...valid, reserve: undefined })).toThrow(/reserve/);
     expect(() => parseDesign({ ...valid, reserve: -1 })).toThrow(/reserve/);
+  });
+
+  it('splits a single drive into the hull’s drive units, each an equal share of it', () => {
+    const drive = {
+      type: 'drive',
+      mass: 80,
+      thrust: 2e6,
+      exhaustVelocity: 150e3,
+      power: 1.5e9,
+      wasteHeatFraction: 0.1,
+    };
+    const unit = { ...drive, mass: 40, thrust: 1e6, power: 0.75e9 };
+    const withDrive = (hullSize: string) => ({
+      ...valid,
+      hullSize,
+      sections: [forward, middle, { ...engine, components: [drive] }],
+    });
+    const frigate = parseDesign(withDrive('frigate'));
+    expect(frigate.sections[2]?.components).toEqual([unit, unit]);
+    expect(designComponent(frigate, 'drive')).toEqual(drive);
+    const cruiser = parseDesign(withDrive('cruiser'));
+    expect(designComponentsOfType(cruiser, 'drive')).toHaveLength(4);
+    expect(designComponent(cruiser, 'drive')).toEqual(drive);
+    // Saved with its units, it reads back as it was.
+    expect(parseDesign(JSON.parse(JSON.stringify(frigate)))).toEqual(frigate);
+    // Any other number of drives is refused.
+    expect(() =>
+      parseDesign({
+        ...valid,
+        sections: [forward, middle, { ...engine, components: [drive, drive, drive] }],
+      }),
+    ).toThrow(/drive/);
   });
 
   it('needs every section in order and exactly one drive, in the engine section', () => {

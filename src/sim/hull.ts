@@ -15,6 +15,8 @@ export interface Hull {
   readonly structureMass: number;
   /** Sections from nose to tail. */
   readonly sections: readonly SectionShape[];
+  /** How many drive units its drive is split into, each taking damage on its own. */
+  readonly driveUnits: number;
 }
 
 const box = (width: number, height: number, lengths: readonly [number, number, number]) =>
@@ -26,9 +28,24 @@ const box = (width: number, height: number, lengths: readonly [number, number, n
   }));
 
 export const HULLS: Readonly<Record<HullSize, Hull>> = {
-  frigate: { size: 'frigate', structureMass: 300e3, sections: box(12, 12, [20, 40, 20]) },
-  cruiser: { size: 'cruiser', structureMass: 1_200e3, sections: box(20, 20, [35, 70, 35]) },
-  battleship: { size: 'battleship', structureMass: 4_000e3, sections: box(30, 30, [50, 100, 50]) },
+  frigate: {
+    size: 'frigate',
+    structureMass: 300e3,
+    sections: box(12, 12, [20, 40, 20]),
+    driveUnits: 2,
+  },
+  cruiser: {
+    size: 'cruiser',
+    structureMass: 1_200e3,
+    sections: box(20, 20, [35, 70, 35]),
+    driveUnits: 4,
+  },
+  battleship: {
+    size: 'battleship',
+    structureMass: 4_000e3,
+    sections: box(30, 30, [50, 100, 50]),
+    driveUnits: 4,
+  },
 };
 
 export const hullLength = (hull: Hull): number =>

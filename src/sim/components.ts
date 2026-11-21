@@ -1,4 +1,10 @@
-import type { ComponentDesign, ComponentType, Design, SectionKind } from './design';
+import {
+  designComponent,
+  type ComponentDesign,
+  type ComponentType,
+  type Design,
+  type SectionKind,
+} from './design';
 
 /** Where a component sits: inside a section's armour or on one of its mounts. */
 export interface ComponentSlot {
@@ -40,12 +46,19 @@ export const componentSlots = (design: Design): readonly ComponentSlot[] => {
 export const slotOfType = (design: Design, type: ComponentType): number =>
   componentSlots(design).findIndex((slot) => slot.component.type === type);
 
-/** The integrity (0–1) of the design's single component of a type. */
+/**
+ * The integrity (0–1) of the design's single component of a type. For the drive, that is the
+ * share of its full thrust its units still give: zero only once every unit is wrecked.
+ */
 export const integrityOfType = (
   design: Design,
   integrity: readonly number[],
   type: 'drive' | 'thrusters' | 'reactor',
-): number => integrity[slotOfType(design, type)] ?? 0;
+): number =>
+  type === 'drive'
+    ? workingTotal(design, integrity, 'drive', (unit) => unit.thrust) /
+      designComponent(design, 'drive').thrust
+    : (integrity[slotOfType(design, type)] ?? 0);
 
 /**
  * What a design's components of one type give together, each scaled by its integrity: a

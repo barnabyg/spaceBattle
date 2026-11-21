@@ -1,4 +1,5 @@
-import { parseDesign, type Design } from '../sim/design';
+import { componentSlots } from '../sim/components';
+import { designComponentsOfType, parseDesign, type Design } from '../sim/design';
 import { IDENTITY } from '../sim/quaternion';
 import { createShip, fullCondition, type ShipCondition } from '../sim/ship';
 import { ZERO } from '../sim/vector';
@@ -44,12 +45,51 @@ const design = (value: unknown): Design => {
   }
 };
 
+/**
+ * A condition saved for a design with its drive whole, before drive units, as it is for the
+ * design in units: each unit as damaged as the whole drive was. Any other condition is unchanged.
+ */
+const inDriveUnits = (
+  saved: unknown,
+  built: Design,
+  condition: ShipCondition | undefined,
+): ShipCondition | undefined => {
+  const units = designComponentsOfType(built, 'drive').length;
+  const savedDrives =
+    isRecord(saved) && Array.isArray(saved.sections)
+      ? saved.sections
+          .flatMap((s: unknown) =>
+            isRecord(s) && Array.isArray(s.components) ? (s.components as unknown[]) : [],
+          )
+          .filter((c) => isRecord(c) && c.type === 'drive').length
+      : units;
+  // Read from a file, the integrity is unchecked until the ship is built from it.
+  const integrity: unknown = condition?.integrity;
+  if (!condition || !Array.isArray(integrity) || savedDrives !== 1 || units === 1) {
+    return condition;
+  }
+  const values = integrity as readonly unknown[];
+  const first = componentSlots(built).findIndex((slot) => slot.component.type === 'drive');
+  const drive = values[first];
+  if (typeof drive !== 'number') return condition;
+  return {
+    ...condition,
+    integrity: [
+      ...values.slice(0, first),
+      ...Array.from({ length: units }, () => drive),
+      ...values.slice(first + 1),
+    ] as number[],
+  };
+};
+
 /** A ship as a file holds it; a version 1 ship has no condition and comes as built. */
 const ship = (value: unknown, version: number): CampaignShip => {
   if (!isRecord(value)) throw damaged();
   const built = design(value.design);
   const condition =
-    version === 1 ? fullCondition(built) : (value.condition as ShipCondition | undefined);
+    version === 1
+      ? fullCondition(built)
+      : inDriveUnits(value.design, built, value.condition as ShipCondition | undefined);
   try {
     // A ship of the design in this condition must be one a battle would take.
     if (!condition) throw damaged();

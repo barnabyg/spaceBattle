@@ -692,12 +692,11 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         section.mounts.filter((mount) => mount.type === 'sensor').map((mount) => mount.integrity),
       ),
     );
-    const drive = Math.max(
-      0,
-      ...ship.sections.flatMap((section) =>
-        section.components.filter((part) => part.type === 'drive').map((part) => part.integrity),
-      ),
+    // Its drive's units share its thrust equally, so what is left of it is their mean integrity.
+    const units = ship.sections.flatMap((section) =>
+      section.components.filter((part) => part.type === 'drive').map((part) => part.integrity),
     );
+    const drive = units.reduce((total, integrity) => total + integrity, 0) / (units.length || 1);
     const previous = damage;
     const window = previous
       ? Math.max(DAMAGE_RATE_WINDOW, time - previous.time)

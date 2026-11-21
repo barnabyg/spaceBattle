@@ -16,7 +16,7 @@ export const SECTION_TEXT: Readonly<Record<SectionKind, string>> = {
 };
 
 export const COMPONENT_TEXT: Readonly<Record<ComponentType, string>> = {
-  drive: 'Drive',
+  drive: 'Drive unit',
   thrusters: 'Thrusters',
   reactor: 'Reactor',
   capacitor: 'Capacitor',
