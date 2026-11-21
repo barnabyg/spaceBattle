@@ -127,14 +127,14 @@ test('a nuclear warhead going off near the enemy strips the mounts facing it', a
   await chooseSide(page, 'Red', { design: 'Lance' });
   await page.getByRole('button', { name: 'Start battle' }).click();
   await page.keyboard.press(' ');
-  await expect(page.getByLabel('Ammunition')).toHaveText('8 of 8 missiles');
+  await expect(
+    page.getByRole('meter', { name: 'Missiles left', exact: true, includeHidden: true }),
+  ).toHaveAttribute('aria-valuetext', '8 of 8 missiles');
   await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByLabel('Missiles', { exact: true }).fill('1');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await page.getByRole('button', { name: 'Resume' }).click();
-  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
-    '1 ours · 0 incoming',
-  );
+  await expect(page.getByLabel('Our missiles in flight')).toHaveText('1');
   await fastest(page);
 
   // A near miss: the warhead goes off by its proximity fuse 1 km from the Lance, and its X-rays
@@ -167,17 +167,13 @@ test('anti-missile missiles intercept a salvo', async ({ page }) => {
   await page.getByLabel('Missiles', { exact: true }).fill('2');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await page.getByRole('button', { name: 'Resume' }).click();
-  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
-    '2 ours · 0 incoming',
-  );
+  await expect(page.getByLabel('Our missiles in flight')).toHaveText('2');
 
   // The Bulwark's automatic defence meets each missile with an anti-missile missile.
   const testLog = page.getByRole('region', { name: 'Test log', includeHidden: true });
   await expect(testLog).toContainText(/Red launched anti-missile missile \d+ at missile 1 /);
   await expect(testLog).toContainText(/Red launched anti-missile missile \d+ at missile 2 /);
-  await expect(page.getByLabel('Anti-missile missiles in flight')).toHaveText(
-    '0 ours · 2 incoming',
-  );
+  await expect(page.getByLabel('Incoming anti-missile missiles')).toHaveText('2');
   // Slow enough that the interception is still among the battle log's latest entries when
   // checked, before the ships close to laser range and hits crowd it out.
   await timeCompressionButton(page, '100×').click();

@@ -20,7 +20,10 @@ test('Lance hides unfitted equipment and keeps incoming munition readouts', asyn
   for (const label of ['Shields', 'Shields priority', 'Point defence', 'Ammunition']) {
     await expect(page.getByLabel(label, { exact: true })).toBeHidden();
   }
-  await expect(page.getByLabel('Missiles in flight', { exact: true })).toBeVisible();
+  // Incoming munitions are counted on every design; its own missiles only on one that has them.
+  await expect(page.getByLabel('Incoming missiles', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Incoming slugs', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Our missiles in flight')).toBeHidden();
 });
 
 for (const { design, first, second } of [

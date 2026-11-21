@@ -131,7 +131,11 @@ then start as **Lance** and check those controls are absent.
 Battle power controls show a supply bar for each system and a priority selector (1 is first).
 Equipment absent from the design has no controls, status row or power row. Fitted equipment
 remains visible when damaged, destroyed or depleted, so its loss can still be understood.
-Incoming munition readouts remain available on every design. To check, start with **Lance**:
+Incoming munition readouts remain available on every design; counts of the ship's own missiles
+in flight appear only on a design that carries them. The **Weapons** tab shows a gauge for each
+kind of ammunition the ship carries (slugs, point defence rounds, missiles, anti-missile
+missiles): a bar of what is left of a full load, amber at a quarter or less and marked
+**Empty** when gone. A Sling shows only its slug gauge. To check, start with **Lance**:
 there should be no shields, missile launch or point defence controls. Start another battle
 with **Rime** to see shields, **Bulwark** for anti-missile missiles or **Rampart** for point defence.
 Selecting a priority moves that system and shifts the others. Systems before **Capacitors** can

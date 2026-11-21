@@ -212,7 +212,14 @@ test('End battle asks first, then shows the player forfeited', async ({ page }) 
 test('a ship with kinetic guns shows its guns, magazine and ammunition', async ({ page }) => {
   await startFreeBattle(page, { blue: { design: 'Sling' } });
   await page.keyboard.press(' ');
-  await expect(page.getByLabel('Ammunition')).toHaveText('600 of 600 slugs');
+  await expect(
+    page.getByRole('meter', { name: 'Slugs left', exact: true, includeHidden: true }),
+  ).toHaveAttribute('aria-valuetext', '600 of 600 slugs');
+  // A Sling carries no missiles: neither a gauge nor a count of its own missiles in flight.
+  await expect(
+    page.getByRole('meter', { name: 'Missiles left', exact: true, includeHidden: true }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel('Our missiles in flight')).toBeHidden();
   await expect(page.getByLabel('Our slugs')).toHaveText('None fired');
   await expect(page.getByLabel('Incoming slugs')).toHaveText('0');
   await page.getByRole('tab', { name: 'Damage', exact: true }).click();
@@ -259,10 +266,10 @@ test('a ship with launchers launches missiles by order, preserving time compress
 }) => {
   await startFreeBattle(page, { blue: { design: 'Quiver' } });
   await page.keyboard.press(' ');
-  await expect(page.getByLabel('Ammunition')).toHaveText('12 of 12 missiles');
-  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
-    '0 ours · 0 incoming',
-  );
+  await expect(
+    page.getByRole('meter', { name: 'Missiles left', exact: true, includeHidden: true }),
+  ).toHaveAttribute('aria-valuetext', '12 of 12 missiles');
+  await expect(page.getByLabel('Our missiles in flight')).toHaveText('0');
   await page.getByRole('tab', { name: 'Damage', exact: true }).click();
   await expect(
     page.getByRole('region', { name: 'Damage' }).getByText('Launcher (mount)'),
@@ -277,11 +284,11 @@ test('a ship with launchers launches missiles by order, preserving time compress
   await expect(launch).toHaveText('Launching · 2 to go · 12 missiles left');
   await timeCompressionButton(page, '10×').click();
   await page.getByRole('button', { name: 'Resume' }).click();
-  await expect(page.getByLabel('Missiles in flight', { exact: true })).toHaveText(
-    '2 ours · 0 incoming',
-  );
+  await expect(page.getByLabel('Our missiles in flight')).toHaveText('2');
   await expect(selectedTimeCompression(page)).toHaveText('10×');
-  await expect(page.getByLabel('Ammunition')).toHaveText('10 of 12 missiles');
+  await expect(
+    page.getByRole('meter', { name: 'Missiles left', exact: true, includeHidden: true }),
+  ).toHaveAttribute('aria-valuetext', '10 of 12 missiles');
   await page.getByRole('tab', { name: 'Damage', exact: true }).click();
   await expect(page.getByRole('list', { name: 'Battle log', includeHidden: true })).toContainText(
     'Missile launched',
@@ -293,12 +300,17 @@ test('a ship with anti-missile missiles shows them apart, and takes missile defe
 }) => {
   await startFreeBattle(page, { blue: { design: 'Bulwark' }, red: { design: 'Quiver' } });
   await page.keyboard.press(' ');
-  await expect(page.getByLabel('Ammunition')).toHaveText(
-    '6 of 6 missiles · 16 of 16 anti-missile missiles',
-  );
-  await expect(page.getByLabel('Anti-missile missiles in flight')).toHaveText(
-    '0 ours · 0 incoming',
-  );
+  await expect(
+    page.getByRole('meter', { name: 'Missiles left', exact: true, includeHidden: true }),
+  ).toHaveAttribute('aria-valuetext', '6 of 6 missiles');
+  await expect(
+    page.getByRole('meter', {
+      name: 'Anti-missile missiles left',
+      exact: true,
+      includeHidden: true,
+    }),
+  ).toHaveAttribute('aria-valuetext', '16 of 16 anti-missile missiles');
+  await expect(page.getByLabel('Our anti-missile missiles in flight')).toHaveText('0');
   await expect(page.getByLabel('Launch state')).toContainText('6 missiles ready · reach');
   await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   const state = page.getByLabel('Anti-missile state');
@@ -320,7 +332,13 @@ test('a ship with point defence shows its guns and rounds, and takes priority or
 }) => {
   await startFreeBattle(page, { blue: { design: 'Rampart' }, red: { design: 'Quiver' } });
   await page.keyboard.press(' ');
-  await expect(page.getByLabel('Ammunition')).toHaveText('40,000 of 40,000 rounds');
+  await expect(
+    page.getByRole('meter', {
+      name: 'Point defence rounds left',
+      exact: true,
+      includeHidden: true,
+    }),
+  ).toHaveAttribute('aria-valuetext', '40,000 of 40,000 rounds');
   await expect(page.getByLabel('Point defence', { exact: true })).toHaveText(
     '0 of 2 firing · 0 shot down',
   );

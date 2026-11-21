@@ -13,6 +13,7 @@ import { distance, length } from '../sim/vector';
 import { BEAM_TEXT } from './damagePanel';
 import { el } from './el';
 import type { OutgoingSlugs } from '../game/outgoingSlugs';
+import { ammunitionStocks, type AmmunitionStock } from '../game/ammunition';
 import { hasEquipment } from './equipment';
 import {
   formatDuration,
@@ -30,33 +31,21 @@ const formatMN = (newtons: number) =>
 
 const count = (n: number) => n.toLocaleString('en-GB');
 
-/** How many munitions of a kind are in flight, ours and the enemy's. */
-const inFlight = (
+/** How many of the side's own munitions of a kind are in flight. */
+const ours = (
   { munitions, ownShip }: SideObservation,
   kind: (munition: MunitionObservation) => boolean,
-): string => {
-  const flying = munitions.filter(kind);
-  const ours = flying.filter((m) => m.attacker === ownShip.sideId).length;
-  return `${ours} ours · ${flying.length - ours} incoming`;
-};
+): number => munitions.filter((m) => kind(m) && m.attacker === ownShip.sideId).length;
+
+/** Whether the ship carries missiles in a role, whether or not any are left. */
+const carries = ({ ownShip }: SideObservation, role: MissileRole): boolean =>
+  ownShip.weapons.ammunition.missileDesigns.some((d) => d.role === role);
 
 /** Whether a munition is a missile in a role. */
 const missileIn =
   (role: MissileRole) =>
   (munition: MunitionObservation): boolean =>
     munition.kind === 'missile' && munition.role === role;
-
-/** Missiles of a role left and held when full, e.g. "10 of 12 missiles". */
-const missilesHeld = (
-  { ownShip: { weapons } }: SideObservation,
-  role: MissileRole,
-  name: string,
-): readonly string[] => {
-  const designs = weapons.ammunition.missileDesigns.filter((d) => d.role === role);
-  const capacity = designs.reduce((n, d) => n + d.capacity, 0);
-  const left = designs.reduce((n, d) => n + d.missiles, 0);
-  return capacity > 0 ? [`${count(left)} of ${count(capacity)} ${name}`] : [];
-};
 
 /**
  * The power going out in the ship's beams now, by kind, for each kind of beam weapon it carries,
@@ -211,25 +200,20 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
   ['Shields', describeShields],
   ['Beam power', beamPower],
   [
-    'Ammunition',
-    (o) => {
-      const { slugs, slugCapacity, rounds, roundCapacity } = o.ownShip.weapons.ammunition;
-      const held = [
-        ...(slugCapacity > 0 ? [`${count(slugs)} of ${count(slugCapacity)} slugs`] : []),
-        ...(roundCapacity > 0 ? [`${count(rounds)} of ${count(roundCapacity)} rounds`] : []),
-        ...missilesHeld(o, 'anti-ship', 'missiles'),
-        ...missilesHeld(o, 'anti-missile', 'anti-missile missiles'),
-      ];
-      return held.length > 0 ? held.join(' · ') : '—';
-    },
-  ],
-  [
     'Incoming slugs',
     ({ munitions, ownShip }) =>
       count(munitions.filter((m) => m.kind === 'slug' && m.target === ownShip.sideId).length),
   ],
-  ['Missiles in flight', (o) => inFlight(o, missileIn('anti-ship'))],
-  ['Anti-missile missiles in flight', (o) => inFlight(o, missileIn('anti-missile'))],
+  ['Our missiles in flight', (o) => count(ours(o, missileIn('anti-ship')))],
+  ['Our anti-missile missiles in flight', (o) => count(ours(o, missileIn('anti-missile')))],
+  [
+    'Incoming anti-missile missiles',
+    (o) =>
+      count(
+        o.munitions.filter((m) => missileIn('anti-missile')(m) && m.attacker !== o.ownShip.sideId)
+          .length,
+      ),
+  ],
   [
     'Point defence',
     ({ ownShip: { weapons } }) => {
@@ -263,6 +247,71 @@ export const describeOurSlugs = (slugs: OutgoingSlugs | null): string => {
   return `${count(slugs.inFlight)} in flight · ${arrival} · ${tally}`;
 };
 
+/**
+ * A gauge for each kind of ammunition the ship carries: a bar of what is left of a full load, in
+ * a warning colour once low and empty, with the count beside it.
+ */
+const createAmmunitionGauges = () => {
+  const element = el('div', {
+    className: 'ammo-gauges',
+    attrs: { role: 'group', 'aria-label': 'Ammunition' },
+  });
+  let names = '';
+  let rows: { fill: HTMLElement; meter: HTMLElement; left: HTMLElement }[] = [];
+  return {
+    element,
+    update(stocks: readonly AmmunitionStock[]) {
+      element.hidden = stocks.length === 0;
+      const next = stocks.map((stock) => stock.name).join('\n');
+      if (next !== names) {
+        names = next;
+        rows = stocks.map((stock) => {
+          const fill = el('div', { className: 'ammo-gauge__fill' });
+          const meter = el(
+            'div',
+            {
+              className: 'ammo-gauge__track',
+              attrs: {
+                role: 'meter',
+                'aria-label': `${stock.name} left`,
+                'aria-valuemin': '0',
+                'aria-valuemax': String(stock.capacity),
+              },
+            },
+            fill,
+          );
+          const left = el('span', { className: 'ammo-gauge__count' });
+          return { fill, meter, left };
+        });
+        element.replaceChildren(
+          ...stocks.flatMap((stock, i) => {
+            const row = rows[i];
+            return row
+              ? [
+                  el('span', { className: 'ammo-gauge__name', text: stock.name }),
+                  row.meter,
+                  row.left,
+                ]
+              : [];
+          }),
+        );
+      }
+      stocks.forEach((stock, i) => {
+        const row = rows[i];
+        if (!row) return;
+        const text = `${count(stock.left)} of ${count(stock.capacity)} ${stock.noun}`;
+        row.fill.style.width = `${(100 * stock.left) / Math.max(1, stock.capacity)}%`;
+        row.meter.setAttribute('aria-valuenow', String(stock.left));
+        row.meter.setAttribute('aria-valuetext', text);
+        row.meter.dataset.level = stock.level;
+        row.left.dataset.level = stock.level;
+        row.left.textContent =
+          stock.level === 'empty' ? 'Empty' : `${count(stock.left)} of ${count(stock.capacity)}`;
+      });
+    },
+  };
+};
+
 /** Numbers about the captain's ship and its contact, in real units. */
 export const createStatusPanel = () => {
   const values = READOUTS.map(([label]) => el('dd', { attrs: { 'aria-label': label } }));
@@ -286,10 +335,10 @@ export const createStatusPanel = () => {
   const weaponsLabels = [
     'Shields',
     'Beam power',
-    'Ammunition',
     'Incoming slugs',
-    'Missiles in flight',
-    'Anti-missile missiles in flight',
+    'Our missiles in flight',
+    'Incoming anti-missile missiles',
+    'Our anti-missile missiles in flight',
     'Point defence',
   ];
   const makeList = (included: (label: string) => boolean) =>
@@ -306,10 +355,12 @@ export const createStatusPanel = () => {
     makeList((label) => summaryLabels.includes(label)),
   );
   const powerElement = makeList((label) => powerLabels.includes(label));
-  const weaponsElement = makeList((label) => weaponsLabels.includes(label));
+  const weaponsList = makeList((label) => weaponsLabels.includes(label));
   const ourSlugsLabel = el('dt', { text: 'Our slugs' });
   const ourSlugs = el('dd', { attrs: { 'aria-label': 'Our slugs' } });
-  weaponsElement.prepend(ourSlugsLabel, ourSlugs);
+  weaponsList.prepend(ourSlugsLabel, ourSlugs);
+  const gauges = createAmmunitionGauges();
+  const weaponsElement = el('div', {}, gauges.element, weaponsList);
   const element = el(
     'section',
     { className: 'panel', attrs: { 'aria-label': 'Ship status' } },
@@ -328,6 +379,7 @@ export const createStatusPanel = () => {
       ourSlugsLabel.hidden = !gunned;
       ourSlugs.hidden = !gunned;
       ourSlugs.textContent = describeOurSlugs(slugs);
+      gauges.update(ammunitionStocks(observation.ownShip));
       READOUTS.forEach(([label, show], i) => {
         const value = values[i];
         const ship = observation.ownShip;
@@ -342,9 +394,12 @@ export const createStatusPanel = () => {
                   ? !hasEquipment(ship, 'laser', 'charged-particle-beam', 'neutral-particle-beam')
                   : label === 'Point defence'
                     ? ship.weapons.pointDefence.length === 0
-                    : label === 'Ammunition'
-                      ? !hasEquipment(ship, 'magazine')
-                      : false;
+                    : label === 'Our missiles in flight' ||
+                        label === 'Incoming anti-missile missiles'
+                      ? !carries(observation, 'anti-ship')
+                      : label === 'Our anti-missile missiles in flight'
+                        ? !carries(observation, 'anti-missile')
+                        : false;
         const heading = labels[i];
         if (heading) heading.hidden = absent;
         if (value) {
