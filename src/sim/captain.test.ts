@@ -12,7 +12,7 @@ import {
 } from './battle';
 import { createComputerCaptain } from './captain';
 import { DECISION_INTERVAL, runBattle, withComputerCaptains } from './command';
-import { designComponentsOfType, type Design } from './design';
+import { designComponent, designComponentsOfType, type Design } from './design';
 import type { Order } from './orders';
 import {
   antiMissileTestDesign,
@@ -28,6 +28,7 @@ import {
 } from './testing';
 import { distance, dot, normalize, sub } from './vector';
 import { effectiveRange } from './beams';
+import { sureRange } from './kinetic';
 
 const KM = 1000;
 const HOUR = 3_600;
@@ -207,6 +208,46 @@ describe('computer captain', () => {
     expect(red.withdrawing).toBe(true);
     expect(events.find((e) => e.type === 'withdrawal')).toMatchObject({ reason: 'no-pass' });
     expect(red.deltaV).toBeGreaterThan(red.reserve);
+  }, 60_000); // Simulates hours of battle; takes a few seconds.
+
+  it('makes firing passes no faster than it can turn back from inside the reach of its guns', () => {
+    // A player in a Sling closes to 500 km on the computer's Sling, which makes firing passes.
+    // Rather than fly through so fast that it coasts tens of thousands of kilometres out of the
+    // fight before it can turn back, it slows outside its guns' reach to a speed it can turn
+    // round from within it, and does not brake once inside.
+    const sling = handMadeDesign('sling');
+    const setup = duelSetup(sling, sling, 0);
+    const battle = withComputerCaptains(
+      createBattle({ ...setup, scenario: scenarioFor(OPENING_PASS, [sling, sling]) }),
+    );
+    battle.giveOrder('blue', { type: 'manoeuvre', goal: 'close', range: 500 * KM });
+    const reach = Math.max(...designComponentsOfType(sling, 'kinetic-gun').map(sureRange));
+    const closingSpeed = () => {
+      const seen = battle.observe('red');
+      const contact = seen.contacts[0];
+      if (!contact) throw new Error('No contact');
+      const offset = sub(contact.position, seen.ownShip.position);
+      return dot(sub(seen.ownShip.velocity, contact.velocity), normalize(offset));
+    };
+    while (range(battle.observe('red')) > reach) {
+      if (battle.outcome || battle.time > 12 * HOUR) throw new Error('Red never came in reach');
+      battle.advance(10);
+    }
+    const red = battle.observe('red').ownShip;
+    const entering = closingSpeed();
+    const acceleration = designComponent(sling, 'drive').thrust / red.mass;
+    // Coasting while it turns round, then braking at full thrust.
+    const turnBack = entering * red.turnRoundTime + entering ** 2 / (2 * acceleration);
+    expect(entering).toBeGreaterThan(0);
+    expect(turnBack).toBeLessThan(reach);
+    let slowest = entering;
+    let closing = entering;
+    while (closing > 0 && !battle.outcome) {
+      battle.advance(10);
+      closing = closingSpeed();
+      if (closing > 0) slowest = Math.min(slowest, closing);
+    }
+    expect(slowest).toBeGreaterThan(0.9 * entering);
   }, 60_000); // Simulates hours of battle; takes a few seconds.
 
   it('holds its kinetic guns until the enemy is too close to dodge their slugs, then hits', () => {

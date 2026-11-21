@@ -54,6 +54,7 @@ import {
   noseOf,
   shipMassProperties,
   temperatureOf,
+  turnTime,
   type AmmunitionSpent,
   type BurnState,
   type ShipCondition,
@@ -460,6 +461,8 @@ export interface OwnShipObservation {
   readonly nose: Vec3;
   /** World frame, rad/s. */
   readonly angularVelocity: Vec3;
+  /** How long its thrusters take to turn it end over end from rest, s; infinite without them. */
+  readonly turnRoundTime: number;
   /** kg */
   readonly mass: number;
   /** kg */
@@ -936,6 +939,7 @@ export const observeOwnShip = (
     orientation: ship.orientation,
     nose: noseOf(ship),
     angularVelocity: rotate(ship.orientation, ship.angularVelocity),
+    turnRoundTime: turnTime(ship, Math.PI),
     mass: shipMassProperties(ship).mass,
     propellantMass: ship.propellantMass,
     deltaV: deltaVOf(ship),
