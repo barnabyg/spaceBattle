@@ -44,12 +44,15 @@ const cheapest = (campaign: Campaign) => Math.min(...campaign.designs.map(design
 const disabled = (campaign: Campaign): Campaign => ({
   ...campaign,
   hangar: campaign.hangar.map((ship) => {
-    const drive = componentSlots(ship.design).findIndex((s) => s.component.type === 'drive');
+    // Every one of its drive units wrecked.
+    const slots = componentSlots(ship.design);
     return {
       ...ship,
       condition: {
         ...ship.condition,
-        integrity: ship.condition.integrity.map((v, i) => (i === drive ? 0 : v)),
+        integrity: ship.condition.integrity.map((v, i) =>
+          slots[i]?.component.type === 'drive' ? 0 : v,
+        ),
       },
     };
   }),

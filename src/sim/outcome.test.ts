@@ -285,6 +285,34 @@ describe('a ship with no working drive', () => {
   });
 });
 
+describe('drive units', () => {
+  it('lose a share of the thrust each, leaving the ship under way until every one is wrecked', () => {
+    // Red faces away from blue, so blue's beam burns into its engine section.
+    const battle = createBattle(duelSetup(armedTestDesign(), testDesign(), 20_000 * KM, IDENTITY));
+    fireAtRed(battle);
+    let lost: BattleEvent[] = [];
+    while (lost.length === 0) {
+      if (battle.outcome || battle.time > 3_600) throw new Error('No drive unit was lost');
+      lost = battle
+        .advance(1)
+        .filter((e) => e.type === 'component-lost' && e.side === 'red' && e.component === 'drive');
+    }
+    expect(lost).toHaveLength(1);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
+    const red = battle.observe('red').ownShip;
+    expect(red.adrift).toBe(false);
+    const units = red.sections
+      .find((s) => s.kind === 'engine')
+      ?.components.filter((c) => c.type === 'drive')
+      .map((c) => c.integrity);
+    expect([...(units ?? [])].sort()).toEqual([0, 1]);
+    battle.giveOrder('red', { type: 'burn', throttle: 1, duration: 10 });
+    battle.advance(2);
+    const half = designComponent(testDesign(), 'drive').thrust / 2;
+    expect(battle.observe('red').ownShip.thrust / half).toBeCloseTo(1, 2);
+  });
+});
+
 describe('a battle time limit (test mode)', () => {
   it('ends the battle with no result once the time limit is reached', () => {
     const battle = createBattle(testSetup({ timeLimit: 60 }));

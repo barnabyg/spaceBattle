@@ -30,7 +30,7 @@ const SECTION: Readonly<Record<SectionKind, string>> = {
 };
 
 const COMPONENT: Readonly<Record<ComponentType, string>> = {
-  drive: 'drive',
+  drive: 'drive unit',
   thrusters: 'thrusters',
   reactor: 'reactor',
   capacitor: 'capacitor',
@@ -53,7 +53,7 @@ const COMPONENT: Readonly<Record<ComponentType, string>> = {
 const CONSEQUENCE: Partial<Readonly<Record<ComponentType, { own: string; enemy: string }>>> = {
   radiator: { own: 'our heat will rise', enemy: 'its heat will rise' },
   sensor: { own: 'we see less of the enemy', enemy: 'it sees less of us' },
-  drive: { own: 'we cannot manoeuvre', enemy: 'it cannot manoeuvre' },
+  drive: { own: 'our thrust is down', enemy: 'its thrust is down' },
   thrusters: { own: 'we cannot turn', enemy: 'it cannot turn' },
   laser: { own: 'one weapon fewer', enemy: 'one weapon fewer' },
   'charged-particle-beam': { own: 'one weapon fewer', enemy: 'one weapon fewer' },

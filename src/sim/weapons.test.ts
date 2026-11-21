@@ -247,7 +247,7 @@ describe('hits', () => {
 });
 
 describe('integrity', () => {
-  it("scales a drive's thrust with its integrity until it is lost", () => {
+  it("scales a drive's thrust with its units' integrity until every one is lost", () => {
     // Red flies away from blue, so blue's beam lands on its unarmoured engine section.
     const battle = createBattle(
       duelSetup(armedTestDesign(), testDesign(), 20_000 * KM, fromAxisAngle(vec3(0, 0, 1), 0)),
@@ -259,9 +259,10 @@ describe('integrity', () => {
     for (let i = 0; i < 100; i++) {
       battle.advance(16);
       const red = own(battle, 'red');
-      const drive = section(red, 'engine').components[0];
-      expect(drive?.type).toBe('drive');
-      const integrity = drive?.integrity ?? 0;
+      // Its two drive units share the thrust equally.
+      const units = section(red, 'engine').components.filter((c) => c.type === 'drive');
+      expect(units).toHaveLength(2);
+      const integrity = units.reduce((total, unit) => total + unit.integrity, 0) / units.length;
       seen.push(integrity);
       if (integrity === 0) break;
       expect(red.thrust / thrust).toBeCloseTo(integrity, 2);

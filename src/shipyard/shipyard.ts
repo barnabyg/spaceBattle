@@ -2,6 +2,8 @@ import { HULLS } from '../sim/hull';
 import { deltaVWith, massProperties } from '../sim/ship';
 import { designCost } from './cost';
 import {
+  designComponent,
+  inDriveUnits,
   parseDesign,
   SECTION_KINDS,
   type ArmourDesign,
@@ -196,8 +198,15 @@ export const specificationOf = (design: Design): ShipSpecification => ({
     ? design.name.slice(0, -CLASS_SUFFIX.length)
     : design.name,
   hullSize: design.hullSize,
+  // The drive is specified whole, in the place of its first unit (see `inDriveUnits`).
   components: design.sections.flatMap((s) =>
-    [...s.components, ...s.mounts].map((component) => ({ component, section: s.kind })),
+    [...s.components, ...s.mounts].flatMap((component, i, all): SpecifiedComponent[] =>
+      component.type !== 'drive'
+        ? [{ component, section: s.kind }]
+        : all.findIndex((c) => c.type === 'drive') === i
+          ? [{ component: designComponent(design, 'drive'), section: s.kind }]
+          : [],
+    ),
   ),
   armour: Object.fromEntries(design.sections.map((s) => [s.kind, s.armour])) as Record<
     SectionKind,
@@ -332,14 +341,15 @@ export const buildDesign = (spec: ShipSpecification): ShipyardResult => {
       mounts: here.filter(isMounted),
     };
   });
-  const design: Design = {
+  // A drive placed whole goes in as its hull's drive units; any other count is left to refuse.
+  const design: Design = inDriveUnits({
     id: designIdFor(spec.name),
     name: `${spec.name.trim()} class`,
     hullSize: spec.hullSize,
     sections,
     propellantMass: spec.propellantMass,
     reserve: spec.reserve,
-  };
+  });
   const loads = SECTION_KINDS.map((kind) => ({
     kind,
     volume: sectionVolume(spec.hullSize, kind),

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import lance from '../data/designs/lance.json';
 import { componentSlots } from '../sim/components';
+import { parseDesign } from '../sim/design';
 import { fullCondition } from '../sim/ship';
 import { buildShip, newCampaign, repairShip, type Campaign } from './campaign';
 import { loadCampaign, saveCampaign } from './campaignFile';
@@ -51,6 +53,33 @@ describe('campaign files', () => {
     expect(loaded.battles).toBe(3);
     expect(loaded.hangar.map((s) => s.name)).toEqual(['Ship 1', 'Ship 2']);
     for (const ship of loaded.hangar) expect(ship.condition).toEqual(fullCondition(ship.design));
+  });
+
+  it('load a ship saved before drives came in units, with its drive’s damage on every unit', () => {
+    // As saved then: one drive, and the condition's integrity one entry for each component.
+    const legacy = lance.sections.flatMap((s) => [...s.components, ...(s.mounts ?? [])]);
+    const drive = legacy.findIndex((c) => c.type === 'drive');
+    const integrity = legacy.map((_, i) => (i === drive ? 0.5 : i === legacy.length - 1 ? 0.3 : 1));
+    const built = fullCondition(parseDesign(lance));
+    const file = JSON.stringify({
+      format: 'space-battle-campaign',
+      version: 2,
+      campaign: {
+        ...newCampaign(21),
+        hangar: [
+          { id: 'ship-1', name: 'Ship 1', design: lance, condition: { ...built, integrity } },
+        ],
+      },
+    });
+    const ship = loadCampaign(file).hangar[0];
+    if (!ship) throw new Error('No ship');
+    const slots = componentSlots(ship.design);
+    expect(ship.condition.integrity).toHaveLength(slots.length);
+    slots.forEach((slot, i) => {
+      const expected = slot.component.type === 'drive' ? 0.5 : i === slots.length - 1 ? 0.3 : 1;
+      expect(ship.condition.integrity[i], `slot ${i}`).toBe(expected);
+    });
+    expect(slots.filter((s) => s.component.type === 'drive')).toHaveLength(2);
   });
 
   it('refuse a file that is not a campaign, is damaged, or comes from a newer version', () => {

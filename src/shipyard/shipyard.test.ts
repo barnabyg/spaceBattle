@@ -42,7 +42,8 @@ describe('the shipyard', () => {
     expect(design.name).toBe('Kestrel class');
     expect(design.hullSize).toBe('frigate');
     const placed = design.sections.flatMap((s) => [...s.components, ...s.mounts]);
-    expect(placed).toHaveLength(laserFrigate.components.length);
+    // The frigate's drive goes in as two units.
+    expect(placed).toHaveLength(laserFrigate.components.length + 1);
     for (const kind of SECTION_KINDS) {
       const section = design.sections.find((s) => s.kind === kind);
       const used = [...(section?.components ?? []), ...(section?.mounts ?? [])].reduce(
@@ -163,6 +164,10 @@ describe('the shipyard', () => {
 
   it('fits every hand-made design, rebuilt from its specification, within its hull', () => {
     for (const design of HAND_MADE_DESIGNS) {
+      // The specification names the drive once, however many units the hull splits it into.
+      expect(
+        specificationOf(design).components.filter((c) => c.component.type === 'drive'),
+      ).toHaveLength(1);
       const { errors, design: rebuilt } = buildDesign(specificationOf(design));
       expect(errors, design.id).toEqual([]);
       expect(rebuilt.sections).toEqual(design.sections);

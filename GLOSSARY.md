@@ -67,8 +67,12 @@ A component that stores power for later use.
 _Avoid_: Battery, power store
 
 **Drive**:
-The main engine, fixed along the ship's long axis; it uses power and propellant to accelerate the ship.
+The main engine, fixed along the ship's long axis; it uses power and propellant to accelerate the ship. It is built as several drive units.
 _Avoid_: Thrust, engine, main thruster
+
+**Drive unit**:
+One of the equal parts a drive is built as in the engine section: two on a frigate, four on a cruiser or battleship. Each takes damage on its own and gives its share of the drive's thrust; the drive is wrecked only once every unit is.
+_Avoid_: Engine, nozzle
 
 **Thrusters**:
 Small jets that rotate the ship; the ship must turn before its drive can push in a new direction.
@@ -268,7 +272,7 @@ The end of a battle in which no side lost, so nobody wins: a battle between comp
 _Avoid_: Stalemate, timeout
 
 **Adrift**:
-A ship whose drive is wrecked. It drifts on its momentum and fights on: its thrusters still turn it and its weapons still fire, but it cannot change course or withdraw.
+A ship whose drive is wrecked, every one of its drive units. It drifts on its momentum and fights on: its thrusters still turn it and its weapons still fire, but it cannot change course or withdraw.
 _Avoid_: Dead in the water, immobilised
 
 **Disabled**:
