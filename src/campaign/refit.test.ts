@@ -34,9 +34,9 @@ describe('refitting and selling ships', () => {
     if (!ship) throw new Error('No ship');
     expect(BALANCE.refitLabourShare).toBe(0.2);
     // Two 25 t lasers at 40 cr/kg are new; the 500 MW laser goes for nothing. Labour is a fifth
-    // of everything the new design is fitted with: 7,040,000 cr of components and 1,130,112 cr
+    // of everything the new design is fitted with: 7,040,000 cr of components and 1,249,344 cr
     // of ablative armour.
-    const expected = 2 * 25e3 * 40 + 0.2 * (7_040_000 + 1_130_112);
+    const expected = 2 * 25e3 * 40 + 0.2 * (7_040_000 + 1_249_344);
     expect(refitCost(ship, twinLaser(lance))).toBeCloseTo(expected, 3);
 
     const refitted = refitShip(campaign, ship.id, twinLaser(lance));
@@ -84,11 +84,11 @@ describe('refitting and selling ships', () => {
     const { campaign } = withLance();
     const ship = campaign.hangar[0];
     if (!ship) throw new Error('No ship');
-    // A quarter of the 8,050,112 cr an undamaged, fully stocked Lance costs.
+    // A quarter of the 8,169,344 cr an undamaged, fully stocked Lance costs.
     expect(BALANCE.saleShare).toBe(0.25);
-    expect(saleValue(ship)).toBeCloseTo(0.25 * 8_050_112, 3);
+    expect(saleValue(ship)).toBeCloseTo(0.25 * 8_169_344, 3);
     const sold = sellShip(campaign, ship.id);
-    expect(sold.credits).toBeCloseTo(campaign.credits + 0.25 * 8_050_112, 3);
+    expect(sold.credits).toBeCloseTo(campaign.credits + 0.25 * 8_169_344, 3);
     expect(sold.hangar).toEqual([]);
   });
 });

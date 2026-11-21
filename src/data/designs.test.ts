@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { effectiveRange } from '../sim/beams';
-import { designComponentsOfType, KILOTON, missileRole, parseDesign } from '../sim/design';
+import {
+  designComponentsOfType,
+  KILOTON,
+  missileRole,
+  parseDesign,
+  type Design,
+  type SectionKind,
+} from '../sim/design';
 import { designBeamWeapons } from '../sim/weapons';
-import { handMadeDesign, HAND_MADE_DESIGNS } from './designs';
+import { buildDesign } from '../shipyard/shipyard';
+import { handMadeDesign, HAND_MADE_DESIGNS, NEW_SPECIFICATION } from './designs';
+
+/** A design's armour thickness on a section, m. */
+const thicknessOf = (design: Design, kind: SectionKind): number =>
+  design.sections.find((s) => s.kind === kind)?.armour.thickness ?? 0;
 
 describe('hand-made designs', () => {
   it('are valid designs with unique ids', () => {
@@ -15,6 +27,14 @@ describe('hand-made designs', () => {
       for (const section of design.sections) expect(section.armour.thickness).toBeGreaterThan(0);
       expect(design.sections.flatMap((s) => s.mounts).some((m) => m.type !== 'radiator')).toBe(
         true,
+      );
+    }
+  });
+
+  it('armour the engine section at least as thickly as the middle section', () => {
+    for (const design of HAND_MADE_DESIGNS) {
+      expect(thicknessOf(design, 'engine'), design.id).toBeGreaterThanOrEqual(
+        thicknessOf(design, 'middle'),
       );
     }
   });
@@ -103,6 +123,15 @@ describe('hand-made designs', () => {
     // A magazine of nuclear missiles that blows up takes its section with it.
     const middle = nuclear?.sections.find((s) => s.kind === 'middle');
     expect(middle?.components.some((c) => c.type === 'magazine')).toBe(false);
+  });
+});
+
+describe('a new design in the shipyard', () => {
+  it('builds, with its engine section armoured as thickly as its middle section', () => {
+    const { design, errors } = buildDesign({ ...NEW_SPECIFICATION, name: 'New' });
+    expect(errors).toEqual([]);
+    expect(NEW_SPECIFICATION.armour.engine).toEqual({ type: 'ablative', thickness: 0.02 });
+    expect(thicknessOf(design, 'engine')).toBeGreaterThanOrEqual(thicknessOf(design, 'middle'));
   });
 });
 

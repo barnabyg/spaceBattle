@@ -1,4 +1,5 @@
 import { catalogueComponent, catalogueEntryOf, COMPONENT_CATALOGUE } from '../data/components';
+import { NEW_SPECIFICATION } from '../data/designs';
 import {
   ARMOUR_TYPES,
   HULL_SIZES,
@@ -27,29 +28,6 @@ import { designSummary } from './designSummary';
 import { el } from './el';
 import { downloadText, textFilePicker } from './files';
 import { capitalise, formatCredits, formatKmPerS, formatTonnes } from './format';
-
-/** What a new design starts from: a modest laser frigate, waiting for a name. */
-const NEW_SPECIFICATION: ShipSpecification = {
-  name: '',
-  hullSize: 'frigate',
-  components: [
-    'drive-light',
-    'thrusters-light',
-    'reactor-light',
-    'capacitor-light',
-    'sensor-4',
-    'radiator-light',
-    'radiator-light',
-    'laser-500',
-  ].map((id) => ({ component: catalogueComponent(id) })),
-  armour: {
-    forward: { type: 'ablative', thickness: 0.05 },
-    middle: { type: 'ablative', thickness: 0.02 },
-    engine: { type: 'ablative', thickness: 0.01 },
-  },
-  propellantMass: 400e3,
-  reserve: 10e3,
-};
 
 /** A component's catalogue name, or what type it is for one not in the catalogue. */
 export const componentName = (component: ComponentDesign): string =>
