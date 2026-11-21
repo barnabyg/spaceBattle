@@ -22,6 +22,7 @@ import { WITHDRAWAL_TIME } from './engagement';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE, radiativeLimit } from './heat';
 import { missileReach, reachOfDeltaV } from './missile';
 import { HULLS, hullLength } from './hull';
+import { DODGE_TIME, sureRange } from './kinetic';
 import { REPAIR_CAP } from './repair';
 import { TIME_STEP } from './time';
 import type {
@@ -187,12 +188,6 @@ const RANGE_TOLERANCE = 0.01;
 /** Ordered speeds within this fraction of each other count as the same order. */
 const SPEED_TOLERANCE = 0.1;
 /**
- * A slug that takes longer than this to arrive can be dodged: the target has time to turn and
- * push itself out of the slug's path, s. So the captain fires its kinetic guns only at a target
- * close enough for its slugs to arrive sooner, and dodges enemy slugs that will arrive later.
- */
-const DODGE_TIME = 20;
-/**
  * The captain dodges a slug that would hit only once it is this close to arriving, s: soon
  * enough to turn across its path and push clear before `DODGE_TIME`.
  */
@@ -233,9 +228,6 @@ const counteredBy = (own: Design): ReadonlySet<'laser' | 'charged-particle-beam'
     ),
   );
 
-/** How far a kinetic gun's slugs fly before they could be dodged, m. */
-const sureRange = (muzzleVelocity: number): number => muzzleVelocity * DODGE_TIME;
-
 /**
  * How far the ship's anti-ship missiles reach while it has a working launcher and some of them
  * left, m. Anti-missile missiles are left out: they are kept for missiles.
@@ -262,9 +254,7 @@ const beamReach = ({ weapons }: OwnShipObservation): number =>
 
 /** How close its working kinetic guns need the enemy to hit it for sure while it has slugs, m. */
 const gunReach = ({ weapons }: OwnShipObservation): number =>
-  weapons.ammunition.slugs > 0
-    ? reachOf(weapons.kineticGuns, (gun) => sureRange(gun.muzzleVelocity))
-    : 0;
+  weapons.ammunition.slugs > 0 ? reachOf(weapons.kineticGuns, sureRange) : 0;
 
 /**
  * The furthest the ship's working weapons fight from, m: its lasers and particle beams, its
@@ -397,7 +387,7 @@ const enemyArsenal = () => {
       beam,
       longest: Math.max(
         beam,
-        ...known.map((c) => (c.type === 'kinetic-gun' ? sureRange(c.muzzleVelocity) : 0)),
+        ...known.map((c) => (c.type === 'kinetic-gun' ? sureRange(c) : 0)),
         launcher || !launcherSeen ? missileReachSeen : 0,
         launcher && missileReachSeen === 0 ? presumedMissileReach : 0,
       ),

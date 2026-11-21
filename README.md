@@ -200,6 +200,17 @@ sides computer captains, a Sling against a Lance, and raise time compression. Th
 laser fire for hours on the way in, then disable or destroy the Lance within a few slugs once
 inside about 600 km.
 
+Kinetic guns under **Fire freely** hold their slugs until the enemy is close enough that they
+arrive within 20 seconds, 600 km for the Sling's guns: a ship that moves can dodge anything
+slower, and computer captains do. **Long-range slugs** in the **Weapons** tab fires them out to
+fire control's full range, a 1,000 s flight, for an enemy that is not dodging; the tab says which
+reach applies and why the guns are holding. Computer captains dodge only slugs that would hit
+them, once they are within a minute of arriving. To check, start a free battle as Sling against
+a computer Sling, select **Fire freely** and raise time compression: the guns should report
+"Holding slugs" until about 600 km, then fire. Select **Long-range slugs** in another battle and
+the guns should fire from 30,000 km, while the computer Sling keeps closing between short
+sideways pushes rather than spinning.
+
 To check manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from
 `C:/docs/git/spaceBattle` in PowerShell 7. Switch on **Test mode**, then start a free battle with
 Blue's Bastion as the player and Red's Lance as the computer in **Head-on**. Target the enemy,

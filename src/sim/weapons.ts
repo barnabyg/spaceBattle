@@ -24,6 +24,7 @@ import {
   firingSolution,
   kineticGunPower,
   kineticGunRange,
+  slugReach,
   shotEnergy,
   type Motion,
   type Slug,
@@ -180,6 +181,11 @@ export interface WeaponsState {
   readonly mode: FireMode;
   /** The part of the target the captain has the weapons aim at; null for the whole ship. */
   readonly aim: AimPoint | null;
+  /**
+   * Whether the kinetic guns fire out to their full range, where a target that moves could dodge
+   * their slugs, rather than only within their sure range (see `slugReach`).
+   */
+  readonly longRangeSlugs: boolean;
   /** Lasers and particle beams, in the order of the ship's component slots. */
   readonly beamWeapons: readonly BeamWeaponState[];
   readonly kineticGuns: readonly KineticGunState[];
@@ -318,6 +324,7 @@ export const initialWeapons = (design: Design): WeaponsState => ({
   target: null,
   mode: 'hold-fire',
   aim: null,
+  longRangeSlugs: false,
   beamWeapons: componentSlots(design).flatMap((slot, i) =>
     slot.component.type === 'laser' ||
     slot.component.type === 'charged-particle-beam' ||
@@ -420,7 +427,9 @@ export const aimWeapons = (
   const kineticGuns = weapons.kineticGuns.map((state) => {
     const integrity = ship.integrity[state.slot] ?? 0;
     const firing =
-      loaded && weaponFireBlocker(ship, state.slot, range, kineticGunRange(state.gun)) === null;
+      loaded &&
+      weaponFireBlocker(ship, state.slot, range, slugReach(state.gun, weapons.longRangeSlugs)) ===
+        null;
     const needed = Math.max(0, shotEnergy(state.gun) - state.charge) / TIME_STEP;
     const wanted = firing ? Math.min(kineticGunPower(state.gun) * integrity * limit, needed) : 0;
     demand += wanted;

@@ -205,7 +205,12 @@ describe('sensors and contacts', () => {
       const blue = withSensor(gunnedTestDesign(100), { trackingError });
       // Armoured to outlast every slug, so each one that hits counts.
       const battle = createBattle(duelSetup(blue, armouredAllOver(testDesign()), 15_000 * KM));
-      battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+      battle.giveOrder('blue', {
+        type: 'weapons',
+        target: 'red',
+        mode: 'fire-freely',
+        longRangeSlugs: true,
+      });
       const hits = battle
         .advance(1_200)
         .filter((e) => e.type === 'impact' && e.munition === 'slug').length;

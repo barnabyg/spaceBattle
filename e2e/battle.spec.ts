@@ -221,7 +221,17 @@ test('a ship with kinetic guns shows its guns, magazine and ammunition', async (
 
   await page.getByRole('tab', { name: 'Weapons', exact: true }).click();
   await page.getByRole('button', { name: 'Fire freely' }).click();
-  // The opening pass starts beyond the guns' reach.
+  // Fire control holds the slugs until the enemy is too close to dodge them...
+  await expect(page.getByLabel('Weapons state')).toHaveText('Out of range · reach 600 km');
+  await expect(page.getByLabel('Slug reach')).toHaveText(
+    'Slugs are held until the enemy is within 600 km, too close to dodge them',
+  );
+  // ...unless ordered to fire at long range. The opening pass starts beyond even that.
+  await page.getByRole('button', { name: 'Long-range slugs' }).click();
+  await expect(page.getByRole('button', { name: 'Long-range slugs' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
   await expect(page.getByLabel('Weapons state')).toHaveText('Out of range · reach 30,000 km');
 });
 

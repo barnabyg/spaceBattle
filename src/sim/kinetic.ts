@@ -29,6 +29,24 @@ export const kineticGunPower = (gun: KineticGunDesign): number => shotEnergy(gun
 export const kineticGunRange = (gun: KineticGunDesign): number =>
   gun.muzzleVelocity * MAX_FLIGHT_TIME;
 
+/**
+ * A slug that takes longer than this to arrive can be dodged: the target has time to turn and
+ * push itself out of the slug's path, s. So fire control, unless ordered to fire at long range,
+ * fires only at a target close enough for its slugs to arrive sooner.
+ */
+export const DODGE_TIME = 20;
+
+/** How far a gun's slugs fly before a target that moves could dodge them, m. */
+export const sureRange = (gun: Pick<KineticGunDesign, 'muzzleVelocity'>): number =>
+  gun.muzzleVelocity * DODGE_TIME;
+
+/**
+ * How far fire control fires a gun: out to where its slugs could still be dodged
+ * (`sureRange`), or with `longRange` out to its full range (`kineticGunRange`), m.
+ */
+export const slugReach = (gun: KineticGunDesign, longRange: boolean): number =>
+  longRange ? kineticGunRange(gun) : sureRange(gun);
+
 /** Where a ship is and how it is moving. */
 export interface Motion {
   readonly position: Vec3;

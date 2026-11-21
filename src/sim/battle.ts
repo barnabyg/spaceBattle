@@ -929,7 +929,13 @@ export const createBattle = (setup: BattleSetup): Battle => {
               );
             }
           }
-          ship.weapons = { ...ship.weapons, target: checked.target, mode: checked.mode, aim };
+          ship.weapons = {
+            ...ship.weapons,
+            target: checked.target,
+            mode: checked.mode,
+            aim,
+            longRangeSlugs: checked.longRangeSlugs ?? ship.weapons.longRangeSlugs,
+          };
           break;
         }
         case 'point-defence':

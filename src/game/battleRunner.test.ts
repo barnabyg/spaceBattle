@@ -259,7 +259,12 @@ describe('battle runner', () => {
       ...setup,
       sides: setup.sides.map((side) => ({ ...side, commander: 'player' })),
     });
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     const r = createBattleRunner(battle);
     r.setTimeCompression(1000);
     const events = r.update(0.1);

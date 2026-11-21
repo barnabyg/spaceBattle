@@ -26,7 +26,7 @@ import {
   thermalProperties,
   workingRadiators,
 } from './heat';
-import { kineticGunRange, shotEnergy, type Motion, type Slug } from './kinetic';
+import { kineticGunRange, shotEnergy, sureRange, type Motion, type Slug } from './kinetic';
 import { observeWeaponReadiness, type WeaponReadiness } from './weaponReadiness';
 import { observeManoeuvre, type ContactMotion, type ManoeuvreObservation } from './manoeuvre';
 import {
@@ -214,8 +214,10 @@ export interface KineticGunObservation {
   readonly slugMass: number;
   /** Shots per second, given full power. */
   readonly rateOfFire: number;
-  /** How far it fires: out to the longest flight fire control allows a slug, m. */
+  /** How far it fires with long-range slugs: out to the longest flight fire control allows, m. */
   readonly effectiveRange: number;
+  /** How far its slugs fly before a target that moves could dodge them, m (see `sureRange`). */
+  readonly sureRange: number;
 }
 
 /** One point defence gun and what it is doing. */
@@ -326,6 +328,8 @@ export interface WeaponsObservation {
   readonly mode: FireMode;
   /** The part of the target the weapons are ordered to aim at; null for the whole ship. */
   readonly aim: AimPoint | null;
+  /** Whether the kinetic guns fire out to their full range (see `WeaponsOrder`). */
+  readonly longRangeSlugs: boolean;
   readonly lasers: readonly LaserObservation[];
   /** Charged and neutral particle beams. */
   readonly particleBeams: readonly ParticleBeamObservation[];
@@ -747,6 +751,7 @@ const observeWeapons = (
     target: weapons.target,
     mode: weapons.mode,
     aim: weapons.aim,
+    longRangeSlugs: weapons.longRangeSlugs,
     lasers: weapons.beamWeapons.filter((w) => w.attack === 'laser').map(observeBeamWeapon),
     particleBeams: weapons.beamWeapons.flatMap((state) =>
       state.attack === 'laser' ? [] : [{ ...observeBeamWeapon(state), kind: state.attack }],
@@ -772,6 +777,7 @@ const observeWeapons = (
       slugMass: state.gun.slugMass,
       rateOfFire: state.gun.rateOfFire,
       effectiveRange: kineticGunRange(state.gun),
+      sureRange: sureRange(state.gun),
     })),
     pointDefence: weapons.pointDefence.map((state) => ({
       section: slots[state.slot]?.section ?? 'forward',

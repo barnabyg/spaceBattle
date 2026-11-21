@@ -123,6 +123,12 @@ export interface WeaponsOrder {
   readonly target: SideId | null;
   readonly mode: FireMode;
   readonly aim?: AimPoint;
+  /**
+   * Whether the kinetic guns fire out to their full range, where a target that moves could dodge
+   * their slugs; otherwise they fire only at a target their slugs reach within `DODGE_TIME`.
+   * Left out, the ship keeps its present choice.
+   */
+  readonly longRangeSlugs?: boolean;
 }
 
 /**

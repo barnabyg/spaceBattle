@@ -234,7 +234,12 @@ describe('computer captain', () => {
   it('dodges slugs fired from too far off to hit a ship that moves', () => {
     // A player in the Sling fires at the computer's Torch from 25,000 km, inside its guns' reach.
     const battle = againstIdlePlayer(handMadeDesign('sling'), handMadeDesign('torch'), 25_000 * KM);
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     const events = battle.advance(1_800);
     const blue = battle.observe('blue').ownShip;
     const fired = blue.weapons.ammunition.slugCapacity - blue.weapons.ammunition.slugs;
@@ -252,7 +257,12 @@ describe('computer captain', () => {
     const battle = withComputerCaptains(
       createBattle({ ...setup, scenario: scenarioFor(OPENING_PASS, [sling, sling]) }),
     );
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     let red = battle.observe('red').ownShip;
     const start = red.deltaV;
     while (red.weapons.ammunition.slugs === red.weapons.ammunition.slugCapacity) {

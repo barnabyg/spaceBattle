@@ -107,7 +107,12 @@ describe('the sound cues derive from battle events for the player ship only', ()
   it('thump for each of the own kinetic gun shots, and hit the enemy hull without a sound', () => {
     // Red is left idle, so every slug hits.
     const battle = duel(gunnedTestDesign(5), testDesign(), 1_000 * KM);
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     const { blue, red } = framesUntil(battle, 120);
     expect(total(blue, 'gunShots')).toBe(5);
     expect(hits(blue)).toEqual([]);
@@ -122,7 +127,12 @@ describe('the sound cues derive from battle events for the player ship only', ()
   it('say nothing of an enemy slug that misses', () => {
     const heardByRed = (dodge: boolean) => {
       const battle = duel(gunnedTestDesign(1), testDesign(), 15_000 * KM, ACROSS);
-      battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+      battle.giveOrder('blue', {
+        type: 'weapons',
+        target: 'red',
+        mode: 'fire-freely',
+        longRangeSlugs: true,
+      });
       const red = listen(battle, 'red');
       const frames: SoundCues[] = [];
       while (battle.observe('red').munitions.length === 0) frames.push(red.frame());
@@ -240,7 +250,12 @@ describe('the sound cues derive from battle events for the player ship only', ()
 
   it('never repeat a cue faster than the ear can follow under time compression', () => {
     const battle = duel(gunnedTestDesign(1_000), testDesign(), 1_000 * KM);
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     const blue = listen(battle, 'blue');
     // A minute of battle a second: the gun fires 60 times while one second passes.
     const frames = Array.from({ length: 60 }, () => blue.frame(1, 1 / 60));
