@@ -87,6 +87,13 @@ free battle as Bastion against a computer Lance and **Advance until** **Enemy in
 enemy is now within reach of our weapons." should appear over the instrument view and stay in the
 **Damage** tab.
 
+The battle story also says when a kind of ammunition runs low (a quarter of a load left) and when
+it runs out. Once the ship has nothing left that can reach the enemy, every weapon lost or out of
+ammunition, and none of its own slugs or missiles is still on its way, a bold line says "We have
+nothing left to fight with. Withdraw, or end the battle." and time compression drops to 1×. To
+check, start a free battle as Sling against a computer Lance in **Head-on**, select **Fire
+freely** and **Long-range slugs**, and raise time compression until the magazine is empty.
+
 **Damage control**: in the **Damage** tab, each damaged component that a field repair can help has a
 **Repair** button. The crew then restore it at 0.2% integrity a second up to 75%, one component at a
 time; the row shows "repairing", or "repair paused under fire" for 30 seconds after its section is
@@ -139,7 +146,11 @@ then start as **Lance** and check those controls are absent.
 Battle power controls show a supply bar for each system and a priority selector (1 is first).
 Equipment absent from the design has no controls, status row or power row. Fitted equipment
 remains visible when damaged, destroyed or depleted, so its loss can still be understood.
-Incoming munition readouts remain available on every design. To check, start with **Lance**:
+Incoming munition readouts remain available on every design; counts of the ship's own missiles
+in flight appear only on a design that carries them. The **Weapons** tab shows a gauge for each
+kind of ammunition the ship carries (slugs, point defence rounds, missiles, anti-missile
+missiles): a bar of what is left of a full load, amber at a quarter or less and marked
+**Empty** when gone. A Sling shows only its slug gauge. To check, start with **Lance**:
 there should be no shields, missile launch or point defence controls. Start another battle
 with **Rime** to see shields, **Bulwark** for anti-missile missiles or **Rampart** for point defence.
 Selecting a priority moves that system and shifts the others. Systems before **Capacitors** can
@@ -207,6 +218,23 @@ Further out, it withdraws as before. To check it, start a free battle in **Head-
 sides computer captains, a Sling against a Lance, and raise time compression. The Sling should take
 laser fire for hours on the way in, then disable or destroy the Lance within a few slugs once
 inside about 600 km.
+
+Kinetic guns under **Fire freely** hold their slugs until the enemy is close enough that they
+arrive within 20 seconds, 600 km for the Sling's guns: a ship that moves can dodge anything
+slower, and computer captains do. **Long-range slugs** in the **Weapons** tab fires them out to
+fire control's full range, a 1,000 s flight, for an enemy that is not dodging; the tab says which
+reach applies and why the guns are holding. Computer captains dodge only slugs that would hit
+them, once they are within a minute of arriving. To check, start a free battle as Sling against
+a computer Sling, select **Fire freely** and raise time compression: the guns should report
+"Holding slugs" until about 600 km, then fire. Select **Long-range slugs** in another battle and
+the guns should fire from 30,000 km, while the computer Sling keeps closing between short
+sideways pushes rather than spinning.
+
+**Our slugs** in the **Weapons** tab counts the ship's slugs in flight, when the first and the
+last will reach the enemy at their present closing speed, and how many have hit and missed; the
+battle story says "Our guns open fire" with when the first slug arrives. **Incoming slugs** counts
+the enemy's on their way. To check, fire long-range slugs as a Sling: **Our slugs** should count
+down to the first arrival, and the hits and misses should add up as the slugs arrive.
 
 To check manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from
 `C:/docs/git/spaceBattle` in PowerShell 7. Switch on **Test mode**, then start a free battle with
@@ -316,7 +344,7 @@ in the legend. Zoom and rotate, comparing heading with motion: the circle and di
 remain identifiable independently of the arrow tips.
 The [map position review](docs/research/map-positions.png) shows both symbols and their motion arrows.
 
-Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** in the top bar beside **End battle** (click twice to confirm; moving focus away cancels confirmation) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost.
+Each design holds back a **reserve** of delta-v; the status panel and the manoeuvre plan warn as the delta-v left comes down towards it. **Withdraw** in the top bar beside **End battle** (click twice to confirm; moving focus away cancels confirmation) spends it to leave: the ship turns away and burns, and is gone once out of reach of every enemy weapon or after 30 minutes, a loss in which the ship survives. The enemy may keep firing but may not pursue: orders to close on, hold a range to or match velocity with a withdrawing ship are refused. A ship that runs out of propellant without withdrawing is stranded and lost. The battle story, the **Damage** tab's battle log and the test log say why a ship withdraws: a computer captain gives its reason (its delta-v down to its reserve, nothing left to fight with, no delta-v for another firing pass, armour worn too thin on an attack run, a damaged sensor or drive about to fail, or an enemy that outranges it too far), for example "Red is withdrawing: it cannot afford another firing pass." To check, start a free battle as Lance against a computer Bastion in **Crossing** and raise time compression until the Bastion withdraws.
 
 To check withdrawal manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }`
 from `C:/docs/git/spaceBattle` in PowerShell 7. Start a free battle in Firefox. Click **Withdraw**

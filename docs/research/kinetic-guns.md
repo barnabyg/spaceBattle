@@ -83,3 +83,31 @@ Sling before it closes.
 The outcomes are deterministic for one seed, so each matchup comes out the same way in all four
 scenarios. The Sling now beats the beam frigates it can reach and loses to the cruiser and the
 missile ships.
+
+## Dodging only what would hit (#133)
+
+In playtesting, a computer Sling facing a player Sling that fired freely from the start
+"just spun". The captain dodged while any enemy slug more than 20 s from its closest approach
+was on its way: full thrust across the line of sight, turning a quarter turn every 15 s. A
+player Sling's fire control fires out to a 1,000 s flight (30,000 km), so about 100 slugs were
+in flight at once, and the computer Sling turned back and forth for hours. Its attack run had to
+turn it back each time, so it rarely burned, and the slugs fired at it while it turned were aimed
+at a ship that was not accelerating.
+
+The captain now dodges only a slug that would pass within its hull's length of its centre,
+whether it coasts or keeps up its present burn, and only once that slug is within 60 s of
+arriving. It turns across the slug's path the way nearest its nose and pushes for twice the
+change of velocity that clears it. One push clears every slug fired before it. Slugs fired
+during the push lead on an acceleration that stops. So a stream fired from far off costs a
+short push about once per slug flight, and the ship keeps its course in between.
+
+The same headless battle (seed 1, player Sling firing freely, computer Sling at medium skill):
+
+| Scenario     | Before                                          | After                                              |
+| ------------ | ----------------------------------------------- | -------------------------------------------------- |
+| Opening pass | No slug fired; withdrew 3,412 km off at 351 min | Fired from 584 km at 281 min; withdrew, player won |
+| Crossing     | No slug fired; withdrew 1,883 km off at 364 min | Fired from 440 km at 295 min; withdrew, player won |
+| Head-on      | Destroyed the player's Sling at 99 min          | Destroyed it at 81 min                             |
+| Pursuit      | Destroyed the player's Sling at 119 min         | Destroyed it at 95 min                             |
+
+The hand-made, tier, skill and range-balance batches keep the same decided outcomes.

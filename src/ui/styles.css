@@ -1425,3 +1425,52 @@ h3 {
 .salvo-timeline__entry--struck {
   border-left-color: #ff6b6b;
 }
+
+/* Ammunition gauges in the Weapons tab: what is left of a full load of each kind carried. */
+.ammo-gauges {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.4rem 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.ammo-gauge__name {
+  color: var(--muted);
+}
+
+.ammo-gauge__track {
+  height: 0.8rem;
+  min-width: 6rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.2rem;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.ammo-gauge__fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.ammo-gauge__track[data-level='low'] .ammo-gauge__fill {
+  background: #ffb347;
+}
+
+.ammo-gauge__track[data-level='empty'] {
+  border-color: #ff5a4f;
+}
+
+.ammo-gauge__count {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ammo-gauge__count[data-level='low'] {
+  color: #ffb347;
+}
+
+.ammo-gauge__count[data-level='empty'] {
+  color: #ff5a4f;
+  font-weight: 600;
+}

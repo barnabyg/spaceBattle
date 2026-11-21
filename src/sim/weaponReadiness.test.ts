@@ -39,7 +39,12 @@ describe('weapon range information', () => {
   it('keeps an empty gun in range and reports its missing ammunition', () => {
     const design = withComponent(mixedDesign(), 'magazine', { slugs: 0 });
     const battle = createBattle(duelSetup(design, testDesign(), 10_000e3));
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     expect(battle.observe('blue').ownShip.weapons.readiness[1]).toMatchObject({
       inRange: true,
       status: 'no-ammunition',
@@ -87,7 +92,12 @@ describe('weapon range information', () => {
         ),
       },
     });
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     expect(battle.observe('blue').ownShip.weapons.readiness[1]).toMatchObject({
       inRange: true,
       status: 'no-solution',
@@ -121,7 +131,12 @@ describe('weapon range information', () => {
         ),
       },
     });
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'hold-fire' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'hold-fire',
+      longRangeSlugs: true,
+    });
     expect(battle.observe('blue').ownShip.weapons.readiness[1]?.inRange).toBe(false);
     battle.advance(200);
     expect(battle.observe('blue').ownShip.weapons.targetRange).toBeCloseTo(19_000e3, 0);

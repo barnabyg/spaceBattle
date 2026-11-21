@@ -6,6 +6,7 @@ import {
   type OwnShipObservation,
   type SectionObservation,
 } from './battle';
+import { DODGE_TIME } from './kinetic';
 import { COMPONENT_WRECK_ENERGY, IMPACT_WRECK_ENERGY, STRUCTURE_SHARE } from './damage';
 import type { ArmourDesign, Design } from './design';
 import { fromAxisAngle } from './quaternion';
@@ -27,8 +28,14 @@ const { slugMass, muzzleVelocity, efficiency } = TEST_KINETIC_GUN;
 const SLUG_ENERGY = 0.5 * slugMass * muzzleVelocity ** 2;
 const SHOT_ENERGY = SLUG_ENERGY / efficiency;
 
+/** Fires freely at red out to the guns' full range, as these tests fire from far off. */
 const fireAtRed = (battle: Battle) => {
-  battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+  battle.giveOrder('blue', {
+    type: 'weapons',
+    target: 'red',
+    mode: 'fire-freely',
+    longRangeSlugs: true,
+  });
 };
 
 const own = (battle: Battle, side: string): OwnShipObservation => battle.observe(side).ownShip;
@@ -257,5 +264,72 @@ describe('kinetic guns', () => {
     }
     expect(lost).toBe(true);
     expect(own(battle, 'red').weapons.ammunition).toMatchObject({ slugs: 0, slugCapacity: 50 });
+  });
+});
+
+describe('fire control', () => {
+  const sure = muzzleVelocity * DODGE_TIME;
+  const slugsLeft = (battle: Battle) => own(battle, 'blue').weapons.ammunition.slugs;
+  const fireFreely = (battle: Battle) => {
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+  };
+
+  it('holds slugs a target that moves could dodge, and fires once it is closer', () => {
+    const far = createBattle(duelSetup(gunnedTestDesign(10), testDesign(), 2 * sure));
+    fireFreely(far);
+    far.advance(10);
+    expect(slugsLeft(far)).toBe(10);
+    expect(own(far, 'blue').weapons.readiness[0]).toMatchObject({
+      kind: 'kinetic-gun',
+      range: sure,
+      inRange: false,
+      status: 'waiting-range',
+    });
+
+    const near = createBattle(duelSetup(gunnedTestDesign(10), testDesign(), 0.5 * sure));
+    fireFreely(near);
+    near.advance(10);
+    expect(slugsLeft(near)).toBeLessThan(10);
+  });
+
+  it('fires out to its full range when ordered to fire long-range slugs', () => {
+    const battle = createBattle(duelSetup(gunnedTestDesign(10), testDesign(), 2 * sure));
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
+    battle.advance(10);
+    expect(slugsLeft(battle)).toBeLessThan(10);
+    expect(own(battle, 'blue').weapons.longRangeSlugs).toBe(true);
+    // A later weapons order that leaves the choice out keeps it.
+    fireFreely(battle);
+    expect(own(battle, 'blue').weapons.longRangeSlugs).toBe(true);
+  });
+});
+
+describe('running out', () => {
+  /** Blue's events while it fires freely at red 100 km off for `seconds`. */
+  const firing = (design: Design, seconds: number) => {
+    const battle = createBattle(duelSetup(design, testDesign(), 100 * KM));
+    fireAtRed(battle);
+    return { battle, events: battle.advance(seconds) };
+  };
+
+  it("tells a ship's side once it has nothing left to fight with", () => {
+    const { battle, events } = firing(gunnedTestDesign(3), 30);
+    expect(own(battle, 'blue').weapons.ammunition.slugs).toBe(0);
+    const disarmed = events.filter((e) => e.type === 'disarmed');
+    expect(disarmed).toHaveLength(1);
+    expect(disarmed[0]).toMatchObject({ type: 'disarmed', side: 'blue' });
+    // It concerns only its own side.
+    expect(battle.observe('red').events.some((e) => e.type === 'disarmed')).toBe(false);
+    expect(battle.observe('blue').events.some((e) => e.type === 'disarmed')).toBe(true);
+  });
+
+  it('never tells a ship that still has a working beam weapon, or one built unarmed', () => {
+    expect(firing(armedTestDesign(), 30).events.some((e) => e.type === 'disarmed')).toBe(false);
+    expect(firing(testDesign(), 30).events.some((e) => e.type === 'disarmed')).toBe(false);
   });
 });

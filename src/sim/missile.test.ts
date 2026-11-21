@@ -212,7 +212,12 @@ describe('ammunition mass', () => {
   it('leaves the ship with each slug fired', () => {
     const battle = createBattle(duelSetup(gunnedTestDesign(5), testDesign(), 1_000 * KM));
     const before = own(battle, 'blue').mass;
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     battle.advance(10);
     expect(own(battle, 'blue').weapons.ammunition.slugs).toBe(0);
     expect(before - own(battle, 'blue').mass).toBeCloseTo(5 * TEST_KINETIC_GUN.slugMass, 6);

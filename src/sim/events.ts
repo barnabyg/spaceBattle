@@ -1,6 +1,7 @@
 import type { SideId } from './battle';
 import type { ComponentType, SectionKind, WarheadType } from './design';
 import type { MissileTarget } from './missile';
+import type { WithdrawalReason } from './orders';
 import type { BattleOutcome } from './outcome';
 import type { Vec3 } from './vector';
 
@@ -96,6 +97,8 @@ export interface WithdrawalEvent {
   readonly type: 'withdrawal';
   readonly time: number;
   readonly side: SideId;
+  /** Why it withdraws (see `WithdrawalReason`). */
+  readonly reason: WithdrawalReason;
 }
 
 /** A side's weapon shot down an enemy missile in flight; it leaves the battle. */
@@ -227,6 +230,17 @@ export interface ComponentLostEvent {
   readonly component: ComponentType;
 }
 
+/**
+ * A ship built to fight has nothing left that can reach the enemy: every weapon lost, or out of
+ * the ammunition it fires, and none of its slugs or missiles still on its way. Only its own side
+ * hears of it.
+ */
+export interface DisarmedEvent {
+  readonly type: 'disarmed';
+  readonly time: number;
+  readonly side: SideId;
+}
+
 /** A section's own structure was broken through: it and everything in it are lost. */
 export interface StructuralFailureEvent {
   readonly type: 'structural-failure';
@@ -255,6 +269,7 @@ export type BattleEvent =
   | ComponentLostEvent
   | StructuralFailureEvent
   | WithdrawalEvent
+  | DisarmedEvent
   | BattleEndedEvent;
 
 /**

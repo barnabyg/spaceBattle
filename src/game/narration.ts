@@ -9,6 +9,8 @@ import type { ComponentType, SectionKind } from '../sim/design';
 import { targetsMissile } from '../sim/missile';
 import { dot, length, sub } from '../sim/vector';
 import { knownEnemyReach, ownReach, separationOf } from './advance';
+import { ammunitionStocks, type AmmunitionStock } from './ammunition';
+import { withdrawalReasonText } from './withdrawal';
 
 /** One line of the battle's story, as the viewing side's captain hears it. */
 export interface NarrationLine {
@@ -81,6 +83,9 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
   let lastContact: ContactObservation | undefined;
   let inOwnReach: boolean | null = null;
   let inEnemyReach: boolean | null = null;
+  let slugsFlying = false;
+  /** Each kind of ammunition's level as last told, by name; empty until the first update. */
+  const ammunition = new Map<string, AmmunitionStock['level']>();
   const name = (id: string) => sides.find((side) => side.id === id)?.name ?? id;
 
   /** Whether the sensors had made out a part of the contact: a section, or one of its mounts. */
@@ -134,10 +139,16 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
         return event.target === viewer
           ? at(`Nuclear warhead went off ${km(event.distance)} from us!`, 'own', true)
           : at(`Our nuclear warhead went off ${km(event.distance)} from the enemy.`, 'enemy', true);
-      case 'withdrawal':
+      case 'withdrawal': {
+        const own = event.side === viewer;
+        const why = withdrawalReasonText(event.reason, own);
+        const who = own ? 'We are' : `${name(event.side)} is`;
+        return at(`${who} withdrawing${why ? `: ${why}` : ''}.`, own ? 'own' : 'enemy', true);
+      }
+      case 'disarmed':
         return event.side === viewer
-          ? at('We are withdrawing.', 'own', true)
-          : at(`${name(event.side)} is withdrawing.`, 'enemy', true);
+          ? at('We have nothing left to fight with. Withdraw, or end the battle.', 'own', true)
+          : null;
       case 'battle-ended': {
         const winner = event.outcome.winner;
         return at(
@@ -201,6 +212,53 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
     return lines;
   };
 
+  /** Each kind of our ammunition running low, and running out. */
+  const stocks = (observation: SideObservation): NarrationLine[] => {
+    const lines: NarrationLine[] = [];
+    for (const stock of ammunitionStocks(observation.ownShip)) {
+      const was = ammunition.get(stock.name);
+      ammunition.set(stock.name, stock.level);
+      if (was === undefined || was === stock.level) continue;
+      const text =
+        stock.level === 'empty'
+          ? `Out of ${stock.noun}.`
+          : stock.level === 'low' && was === 'ok'
+            ? `${stock.name} running low: ${stock.left.toLocaleString('en-GB')} of ${stock.capacity.toLocaleString('en-GB')} left.`
+            : null;
+      if (text) lines.push({ time: observation.time, text, about: 'own', major: false });
+    }
+    return lines;
+  };
+
+  /** Our guns opening fire after a spell with none of our slugs in flight, and when they arrive. */
+  const volleys = (observation: SideObservation): NarrationLine[] => {
+    const slugs = observation.munitions.filter((m) => m.kind === 'slug' && m.attacker === viewer);
+    const opened = !slugsFlying && slugs.length > 0;
+    slugsFlying = slugs.length > 0;
+    if (!opened) return [];
+    const soonest = Math.min(
+      ...slugs.flatMap((slug) => {
+        const target = observation.contacts.find((c) => c.sideId === slug.target);
+        if (!target) return [];
+        const offset = sub(target.position, slug.position);
+        const drift = sub(target.velocity, slug.velocity);
+        const time = -dot(offset, drift) / dot(drift, drift);
+        return time > 0 ? [time] : [];
+      }),
+    );
+    const when = Number.isFinite(soonest)
+      ? ` First slug arrives in about ${duration(soonest)}.`
+      : '';
+    return [
+      {
+        time: observation.time,
+        text: `Our guns open fire.${when}`,
+        about: 'enemy',
+        major: false,
+      },
+    ];
+  };
+
   /** Coming into or out of reach of the own weapons, and of the enemy's made out. */
   const reaches = (observation: SideObservation): NarrationLine[] => {
     const separation = separationOf(observation);
@@ -246,7 +304,14 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
         const line = describe(event);
         return line ? [line] : [];
       });
-      const lines = [...told, ...launches(events, observation), ...reaches(observation)];
+      // What ran low or out comes before what follows from it, such as having nothing left.
+      const lines = [
+        ...stocks(observation),
+        ...told,
+        ...launches(events, observation),
+        ...volleys(observation),
+        ...reaches(observation),
+      ];
       lastContact = observation.contacts[0];
       // The same line twice in one update, such as several unseen enemy parts lost, is told once.
       return lines.filter((line, i) => lines.findIndex((other) => other.text === line.text) === i);

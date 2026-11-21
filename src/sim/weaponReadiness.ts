@@ -1,7 +1,7 @@
 import { componentSlots } from './components';
 import { effectiveRange } from './beams';
 import { missileRole, type SectionKind } from './design';
-import { firingSolution, kineticGunRange, shotEnergy, type Motion } from './kinetic';
+import { firingSolution, slugReach, shotEnergy, type Motion } from './kinetic';
 import { TIME_STEP } from './time';
 import { temperatureOf, type ShipState } from './ship';
 import { thermalLimit } from './heat';
@@ -81,7 +81,7 @@ export const observeWeaponReadiness = (
       };
     }),
     ...ship.weapons.kineticGuns.map((state): WeaponReadiness => {
-      const reach = kineticGunRange(state.gun);
+      const reach = slugReach(state.gun, ship.weapons.longRangeSlugs);
       const available = status(state.slot, reach);
       const gunStatus: WeaponReadiness['status'] =
         available !== 'awaiting-step'

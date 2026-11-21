@@ -141,7 +141,12 @@ describe('ship appearance', () => {
   });
   it('shows source cues only for actual discharges, at their firing mount', () => {
     const battle = createBattle(duelSetup(gunnedTestDesign(10), testDesign(), 1e6));
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     battle.step();
     expect(battle.observe('blue').ownShip.appearance.firing).toEqual([]);
     let fired = false;

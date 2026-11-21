@@ -163,7 +163,7 @@ const WEAPON_STATUS_TEXT: Readonly<Record<WeaponReadiness['status'], string>> = 
 };
 
 /** The simulation supplies reach and eligibility; this only formats what the captain knows. */
-const describeWeaponRange = (weapon: WeaponReadiness): string => {
+const describeWeaponRange = (weapon: WeaponReadiness, longRangeSlugs: boolean): string => {
   const name = `${COMPONENT_TEXT[weapon.kind]} · ${SECTION_TEXT[weapon.section]} mount ${weapon.mount + 1}${weapon.missile ? ` · ${weapon.missile}` : ''}`;
   const range =
     weapon.range === null
@@ -172,8 +172,12 @@ const describeWeaponRange = (weapon: WeaponReadiness): string => {
         ? `Defensive · interception reach ${formatKm(weapon.range)}`
         : weapon.rangeKind === 'estimate'
           ? `${weapon.inRange === null ? 'No target' : weapon.inRange ? 'Within estimated reach' : 'Beyond estimated reach'} · estimate ${formatKm(weapon.range)}`
-          : `${weapon.inRange === null ? 'No target' : weapon.inRange ? 'In range' : 'Out of range'} · effective ${formatKm(weapon.range)}`;
-  return `${name} · ${range} · ${WEAPON_STATUS_TEXT[weapon.status]}`;
+          : `${weapon.inRange === null ? 'No target' : weapon.inRange ? 'In range' : 'Out of range'} · ${weapon.kind === 'kinetic-gun' && !longRangeSlugs ? 'sure hits within' : 'effective'} ${formatKm(weapon.range)}`;
+  const status =
+    weapon.kind === 'kinetic-gun' && weapon.status === 'waiting-range' && !longRangeSlugs
+      ? 'Holding slugs: the enemy could dodge them from further off'
+      : WEAPON_STATUS_TEXT[weapon.status];
+  return `${name} · ${range} · ${status}`;
 };
 
 /** The missile designs the ship carries in a role, and how many of them are left. */
@@ -409,6 +413,11 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   const noTarget = button('No target');
   const fireFreely = button('Fire freely');
   const holdFire = button('Hold fire');
+  const longRangeSlugs = button('Long-range slugs');
+  const slugReachState = el('p', {
+    className: 'order-state',
+    attrs: { 'aria-label': 'Slug reach' },
+  });
   const weaponsState = el('p', {
     className: 'order-state',
     attrs: { 'aria-label': 'Weapons state' },
@@ -463,10 +472,16 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     attrs: { 'aria-label': 'Point defence state' },
   });
   // The latest weapons order and contact, so each button changes only its own part.
-  let weapons: { target: string | null; mode: FireMode; aim: AimPoint | null } = {
+  let weapons: {
+    target: string | null;
+    mode: FireMode;
+    aim: AimPoint | null;
+    longRangeSlugs: boolean;
+  } = {
     target: null,
     mode: 'hold-fire',
     aim: null,
+    longRangeSlugs: false,
   };
   let enemy: string | null = null;
   /** A weapons order, keeping the aim ordered while the sensors still make that part out. */
@@ -485,6 +500,19 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
   });
   holdFire.addEventListener('click', () => {
     giveWeapons(weapons.target, 'hold-fire');
+  });
+  longRangeSlugs.addEventListener('click', () => {
+    const kept =
+      weapons.target !== null && weapons.aim !== null && aims.has(aimValue(weapons.aim))
+        ? { aim: weapons.aim }
+        : {};
+    giveOrder({
+      type: 'weapons',
+      target: weapons.target,
+      mode: weapons.mode,
+      longRangeSlugs: !weapons.longRangeSlugs,
+      ...kept,
+    });
   });
   aimSelect.addEventListener('change', () => {
     giveWeapons(weapons.target ?? enemy, weapons.mode, aims.get(aimSelect.value) ?? null);
@@ -588,6 +616,12 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     ),
     pointDefenceState,
   );
+  const slugControls = el(
+    'div',
+    {},
+    el('div', { className: 'order-row' }, longRangeSlugs),
+    slugReachState,
+  );
   const weaponsSection = el(
     'div',
     {},
@@ -600,6 +634,7 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
     }),
     el('div', { className: 'order-row' }, targetEnemy, noTarget),
     el('div', { className: 'order-row' }, fireFreely, holdFire),
+    slugControls,
     el('div', { className: 'order-row' }, aimField),
     weaponsState,
     missilesSection,
@@ -771,7 +806,21 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
         ? `Protection last step: ${formatPercent(ship.shields.powered)} power${damagedShields ? ' · damaged shields' : ''}`
         : 'No protection while lowered';
 
-      weapons = { target: ship.weapons.target, mode: ship.weapons.mode, aim: ship.weapons.aim };
+      weapons = {
+        target: ship.weapons.target,
+        mode: ship.weapons.mode,
+        aim: ship.weapons.aim,
+        longRangeSlugs: ship.weapons.longRangeSlugs,
+      };
+      const guns = ship.weapons.kineticGuns;
+      slugControls.hidden = guns.length === 0;
+      setPressed(longRangeSlugs, weapons.longRangeSlugs);
+      if (guns.length > 0) {
+        const sure = formatKm(Math.max(...guns.map((gun) => gun.sureRange)));
+        slugReachState.textContent = weapons.longRangeSlugs
+          ? `Slugs fire out to ${formatKm(Math.max(...guns.map((gun) => gun.effectiveRange)))}; a moving enemy can dodge any fired from beyond ${sure}`
+          : `Slugs are held until the enemy is within ${sure}, too close to dodge them`;
+      }
       enemy = observation.contacts[0]?.sideId ?? null;
       // Offer the parts the sensors make out, rebuilding the list only when it changes.
       const offered = aimOptions(observation.contacts[0]);
@@ -796,7 +845,9 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
         ship.weapons.targetRange === null
           ? 'No target selected'
           : `Separation to ${ship.weapons.target}: ${formatKm(ship.weapons.targetRange)}`;
-      const lines = ship.weapons.readiness.map(describeWeaponRange);
+      const lines = ship.weapons.readiness.map((weapon) =>
+        describeWeaponRange(weapon, weapons.longRangeSlugs),
+      );
       const nextLines = lines.join('\n');
       if (nextLines !== rangeLines) {
         rangeLines = nextLines;

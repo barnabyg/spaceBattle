@@ -4,6 +4,7 @@ import { effectiveRange } from '../sim/beams';
 import {
   armedTestDesign,
   duelSetup,
+  gunnedTestDesign,
   launchingTestDesign,
   TEST_LASER,
   testDesign,
@@ -106,7 +107,7 @@ describe('battle narration', () => {
         energy: 1e12,
       },
     ],
-    ['a withdrawal', { type: 'withdrawal', time: 1, side: 'red' }],
+    ['a withdrawal', { type: 'withdrawal', time: 1, side: 'red', reason: 'reserve' }],
     [
       'the battle ending',
       { type: 'battle-ended', time: 1, outcome: { time: 1, winner: 'blue', sides: [] } },
@@ -132,6 +133,60 @@ describe('battle narration', () => {
       expect.stringMatching(/^A missile launched at us\. Impact in about \d+ min \d+ s\.$/),
     ]);
     expect(lines[0]?.major).toBe(true);
+  });
+
+  it('tells our ammunition running low and out, then that we have nothing left', () => {
+    // Eight slugs: low at two left, then out, then the gun is no use.
+    const battle = createBattle(duelSetup(gunnedTestDesign(8), testDesign(), 100e3));
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    const narrator = createNarrator('blue', sides);
+    const lines = [];
+    while (battle.time < 30) {
+      const events = battle.advance(1);
+      lines.push(...narrator.narrate(battle.observe('blue'), events));
+    }
+    const own = lines.filter((line) => line.about === 'own');
+    expect(own.map((line) => [line.text, line.major])).toEqual([
+      ['Slugs running low: 2 of 8 left.', false],
+      ['Out of slugs.', false],
+      ['We have nothing left to fight with. Withdraw, or end the battle.', true],
+    ]);
+  });
+
+  it('says why a ship withdraws', () => {
+    const narrator = createNarrator('blue', sides);
+    const told = narrator
+      .narrate(observe(), [
+        { type: 'withdrawal', time: 1, side: 'red', reason: 'no-pass' },
+        { type: 'withdrawal', time: 1, side: 'blue', reason: 'ordered' },
+      ])
+      .map((line) => line.text);
+    expect(told).toEqual([
+      'Red is withdrawing: it cannot afford another firing pass.',
+      'We are withdrawing.',
+    ]);
+  });
+
+  it('tells our guns opening fire, with when the first slug arrives, once per volley', () => {
+    // The test gun fires 20 km/s slugs: from 1,000 km the first takes about 50 s.
+    const battle = createBattle(duelSetup(gunnedTestDesign(2), testDesign(), 1_000e3));
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
+    const narrator = createNarrator('blue', sides);
+    const told: string[] = [];
+    while (battle.time < 200) {
+      const events = battle.advance(1);
+      told.push(...narrator.narrate(battle.observe('blue'), events).map((line) => line.text));
+    }
+    const opened = told.filter((text) => text.startsWith('Our guns open fire.'));
+    expect(opened).toHaveLength(1);
+    const seconds = Number(/arrives in about (\d+) s/.exec(opened[0] ?? '')?.[1]);
+    expect(seconds).toBeGreaterThan(40);
+    expect(seconds).toBeLessThan(55);
   });
 
   it('tells each time the ships come into or out of reach, either way', () => {

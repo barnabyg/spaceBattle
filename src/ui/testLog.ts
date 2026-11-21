@@ -87,8 +87,10 @@ export const describeTestEvent = (event: BattleEvent, sides: readonly SideSetup[
     }
     case 'structural-failure':
       return `${time} ${nameOf(event.side)} ${SECTION_TEXT[event.section].toLowerCase()} section structural failure`;
+    case 'disarmed':
+      return `${time} ${nameOf(event.side)} has nothing left to fight with`;
     case 'withdrawal':
-      return `${time} ${nameOf(event.side)} withdrawing`;
+      return `${time} ${nameOf(event.side)} withdrawing (${event.reason})`;
     case 'battle-ended':
       return `${time} Battle over: ${outcomeHeadline(event.outcome, sides)} · ${outcomeDetails(event.outcome, sides).join(' · ')}`;
   }

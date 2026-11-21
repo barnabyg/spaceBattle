@@ -53,6 +53,7 @@ const needsCaptain = (
     case 'armour-breached':
     case 'component-lost':
     case 'structural-failure':
+    case 'disarmed':
       return watched.has(event.side);
     case 'detonation':
     case 'magazine-explosion':

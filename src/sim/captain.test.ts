@@ -1,6 +1,7 @@
 import { radiativeLimit } from './heat';
 import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
+import { OPENING_PASS, scenarioFor } from '../data/scenarios';
 import {
   createBattle,
   type Battle,
@@ -181,9 +182,10 @@ describe('computer captain', () => {
     let closing = closingSpeed();
     let entering: number | null = null;
     let slowest = Infinity;
+    const events: BattleEvent[] = [];
     while (passes < 2 && !red.withdrawing) {
       if (battle.outcome || battle.time > 12 * HOUR) throw new Error('The passes never ended');
-      battle.advance(10);
+      events.push(...battle.advance(10));
       red = battle.observe('red').ownShip;
       const now = closingSpeed();
       // Inside the Bastion's reach on the first approach, it never brakes.
@@ -199,10 +201,11 @@ describe('computer captain', () => {
     expect(red.energyLedger.beamEmitted).toBeGreaterThan(0);
     // Delta-v to spare after its first pass took it back for a second...
     expect(passes).toBe(2);
-    // ...but not for a third: it withdraws with its reserve intact.
-    battle.advance(60);
+    // ...but not for a third: it withdraws with its reserve intact, and says why.
+    events.push(...battle.advance(60));
     red = battle.observe('red').ownShip;
     expect(red.withdrawing).toBe(true);
+    expect(events.find((e) => e.type === 'withdrawal')).toMatchObject({ reason: 'no-pass' });
     expect(red.deltaV).toBeGreaterThan(red.reserve);
   }, 60_000); // Simulates hours of battle; takes a few seconds.
 
@@ -233,7 +236,12 @@ describe('computer captain', () => {
   it('dodges slugs fired from too far off to hit a ship that moves', () => {
     // A player in the Sling fires at the computer's Torch from 25,000 km, inside its guns' reach.
     const battle = againstIdlePlayer(handMadeDesign('sling'), handMadeDesign('torch'), 25_000 * KM);
-    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
     const events = battle.advance(1_800);
     const blue = battle.observe('blue').ownShip;
     const fired = blue.weapons.ammunition.slugCapacity - blue.weapons.ammunition.slugs;
@@ -241,6 +249,32 @@ describe('computer captain', () => {
     const hits = events.filter((e) => e.type === 'impact' && e.munition === 'slug').length;
     expect(hits).toBeLessThan(0.1 * fired);
   }, 20_000);
+
+  it('keeps closing under a stream of slugs from far off, and fires its own guns', () => {
+    // A player in a Sling fires freely from the start of an opening pass, as far off as its fire
+    // control allows. Dodging only what would hit, the computer's Sling keeps to its course
+    // between pushes rather than turning back and forth, and comes within its own guns' reach.
+    const sling = handMadeDesign('sling');
+    const setup = duelSetup(sling, sling, 0);
+    const battle = withComputerCaptains(
+      createBattle({ ...setup, scenario: scenarioFor(OPENING_PASS, [sling, sling]) }),
+    );
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
+    let red = battle.observe('red').ownShip;
+    const start = red.deltaV;
+    while (red.weapons.ammunition.slugs === red.weapons.ammunition.slugCapacity) {
+      if (battle.outcome || red.withdrawing) throw new Error('Red never fired');
+      battle.advance(60);
+      red = battle.observe('red').ownShip;
+    }
+    // ...with well over a third of its delta-v to spare above its reserve.
+    expect(red.deltaV - red.reserve).toBeGreaterThan(0.35 * (start - red.reserve));
+  }, 60_000); // Simulates hours of battle; takes a few seconds.
 
   it('closes within the short reach of its charged particle beam and fires it', () => {
     const battle = againstIdlePlayer(testDesign(), handMadeDesign('torch'), 60_000 * KM);
