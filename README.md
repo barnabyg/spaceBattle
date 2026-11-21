@@ -268,7 +268,9 @@ by half again, make firing passes when they must close: they build closing speed
 enemy (three tenths of the delta-v they have to spare), keep their nose and radiators in, fly
 through the closest pass firing without braking, and turn back nose first for another pass only
 while their spare delta-v covers stopping and building the same speed again; otherwise they
-withdraw. A high captain makes passes whenever it must close, rather than brake with its engine
+withdraw. Unless outranged, they slow before either ship can fire to a speed from which they can
+turn back before leaving the longer reach, rather than coast far out of the fight and spend hours
+coming back. A high captain makes passes whenever it must close, rather than brake with its engine
 section towards the enemy. A captain that outranges its enemy holds just inside its own reach,
 where its beams strip mounts and heat the enemy, and backs away from a pass rather than meet it.
 

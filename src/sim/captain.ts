@@ -161,6 +161,11 @@ const PASS_RATIO = 1.5;
 const PASS_FRACTION = 0.3;
 /** A firing pass coasts once its relative velocity is within this fraction of the pass speed. */
 const PASS_TOLERANCE = 0.05;
+/**
+ * Fraction of the drive's acceleration a firing pass plans to turn back with: the slack keeps the
+ * turn well inside the fight.
+ */
+const PASS_BRAKING = 0.5;
 /** Keep the last half of a section's armour for withdrawal from an exposed attack run. */
 const ATTACK_RUN_ARMOUR = 0.5;
 /** Maximum time a severely outranged ship will knowingly spend crossing beam fire. */
@@ -557,6 +562,28 @@ const jink = (
 };
 
 /**
+ * The closing speed a firing pass wants `outside` metres outside the fight (negative inside it).
+ * Inside, the fastest from which it can turn back before it leaves the fight: it coasts while it
+ * turns round (v·t), then brakes (v²/2a), so v = a(√(t² + 2d/a) − t). Outside, the fastest from
+ * which it can still slow to that by the time it enters. Unlimited for a ship that cannot turn
+ * or push.
+ */
+const passClosingSpeed = (
+  ship: OwnShipObservation,
+  driveThrust: number,
+  outside: number,
+  fight: number,
+): number => {
+  const a = (PASS_BRAKING * driveThrust * ship.power.driveLimit) / ship.mass;
+  const t = ship.turnRoundTime;
+  if (!(a > 0) || !Number.isFinite(t)) return Infinity;
+  const turnBack = a * (Math.sqrt(t * t + (2 * fight) / a) - t);
+  if (outside <= 0) return turnBack;
+  // It coasts while it turns round, then slows from v to the turn-back speed over the rest.
+  return Math.max(turnBack, Math.sqrt(a * a * t * t + turnBack ** 2 + 2 * a * outside) - a * t);
+};
+
+/**
  * A computer captain for one side, at the side's skill (medium if not set; see `SkillProfile`
  * for what each skill does). It knows its own ship's design, and of the enemy only what its side
  * observes: the weapons its sensors make out on the contact and the missiles the enemy launches
@@ -744,28 +771,38 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
   /**
    * A firing pass: rather than brake to a range under fire, turning its engine section to the
    * enemy, the ship builds closing speed straight at the enemy, keeps its nose (and so its
-   * forward armour) on it and flies through the closest pass firing, never braking inside its
-   * reach. Past the enemy, it turns back nose first for another pass, but only while the delta-v
+   * forward armour) on it and flies through the closest pass firing, never braking on the way in
+   * where either ship can fire. Past the enemy, it turns back nose first for another pass, but only while the delta-v
    * it has to spare above `reserve` covers stopping and building the same speed again; otherwise
-   * it withdraws. Returns the orders, or 'withdraw'.
+   * it withdraws. Given a `fight` (the longer of the two reaches), it passes no faster than it can
+   * turn back from before leaving it, slowing to that before it enters, rather than coast far out
+   * and spend hours coming back; outranged, it has none, and passes fast to cut its time under
+   * fire. Returns the orders, or 'withdraw'.
    */
   const firingPass = (
     ship: OwnShipObservation,
     enemy: ContactObservation,
     reserve: number,
+    fight: number | null,
   ): [AttitudeOrder, BurnOrder] | [AttitudeOrder] | 'withdraw' => {
-    const sight = normalize(sub(enemy.position, ship.position));
+    const offset = sub(enemy.position, ship.position);
+    const sight = normalize(offset);
     const relative = sub(ship.velocity, enemy.velocity);
     const spare = Math.max(0, ship.deltaV - reserve);
     passSpeed ??= PASS_FRACTION * spare;
+    const range = Math.hypot(offset.x, offset.y, offset.z);
+    const wantedClosing =
+      fight === null
+        ? passSpeed
+        : Math.min(passSpeed, passClosingSpeed(ship, driveThrust, range - fight, fight));
     const closing = dot(relative, sight);
     const speed = Math.hypot(relative.x, relative.y, relative.z);
     // Drawing apart after a pass, it turns back only if it can afford another.
-    if (closing < 0 && spare < speed + passSpeed) return 'withdraw';
-    const wanted = sub(scale(sight, passSpeed), relative);
+    if (closing < 0 && spare < speed + wantedClosing) return 'withdraw';
+    const wanted = sub(scale(sight, wantedClosing), relative);
     const error = Math.hypot(wanted.x, wanted.y, wanted.z);
     // Close enough to the pass speed, it coasts with its nose on the enemy.
-    if (error <= PASS_TOLERANCE * passSpeed) return [{ type: 'attitude', mode: 'enemy' }];
+    if (error <= PASS_TOLERANCE * wantedClosing) return [{ type: 'attitude', mode: 'enemy' }];
     const throttle = dot(ship.nose, normalize(wanted)) >= ATTACK_RUN_ALIGNMENT ? 1 : 0;
     return [
       { type: 'attitude', mode: 'direction', direction: wanted },
@@ -976,7 +1013,12 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         );
       const pass =
         passing && !ship.withdrawing && !enemy.withdrawing
-          ? firingPass(ship, enemy, reserve)
+          ? firingPass(
+              ship,
+              enemy,
+              reserve,
+              enemyReach >= PASS_RATIO * reach ? null : Math.max(reach, enemyReach),
+            )
           : null;
       const leaving =
         ship.withdrawing ||
