@@ -239,7 +239,7 @@ describe('battle narration', () => {
       'The enemy is now within reach of our weapons.',
       'The enemy has drawn out of our weapons’ reach.',
     ]);
-  });
+  }, 60_000); // Simulates over an hour of battle; takes about 10 s under full-suite load.
 
   it('tells the same unseen enemy damage in one update once', () => {
     const narrator = createNarrator('blue', sides);
