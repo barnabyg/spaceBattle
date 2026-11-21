@@ -626,30 +626,6 @@ describe('computer captain', () => {
 });
 
 describe('two computer captains', () => {
-  it('fight the Lance and the Bastion to a result from the opening pass', () => {
-    const battle = runBattle(
-      {
-        seed: 7,
-        scenario: OPENING_PASS,
-        sides: [
-          { id: 'blue', name: 'Blue', commander: 'computer', design: handMadeDesign('lance') },
-          { id: 'red', name: 'Red', commander: 'computer', design: handMadeDesign('bastion') },
-        ],
-      },
-      { maxTime: 24 * HOUR },
-    );
-    expectDecided(battle);
-  }, 60_000); // Simulates most of a day of battle; takes about 12 s under full-suite load.
-
-  it.each(['lance', 'bastion', 'quiver', 'torch', 'needle', 'rampart', 'bulwark'])(
-    'fight %s against its own design to a result',
-    (design) => {
-      const battle = runBattle(computerDuel(design, design, 200_000 * KM), { maxTime: 24 * HOUR });
-      expectDecided(battle);
-    },
-    30_000,
-  );
-
   it('replay a battle from its seed with an identical event log', () => {
     const setup = { ...computerDuel('bastion', 'lance', 140_000 * KM), seed: 99, timeLimit: HOUR };
     const eventLog = () => {

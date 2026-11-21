@@ -53,6 +53,14 @@ keyed by the Playwright version, after one slow runner spent 12 minutes download
 time. CI still stops at the first failure;
 local runs report all failures, with no automatic retries.
 
+Tests run in parallel. Vitest runs files in parallel but the tests within a file one after
+another, so long battles are split across files (`handMadeBatch1–6`, `rangeBalanceEvaluation1–4`)
+to keep any one file from setting the suite's wall-clock time. Playwright runs every test in
+parallel, whatever its file. CI runs the static checks, the browser suite and each of Vitest's two
+projects (`batches`, the `*Batch*` files, and `unit`, the rest, about equal in work) as separate
+parallel jobs, and keeps Vitest's results between runs so each starts its longest files first.
+Run one project locally with `npm.cmd test -- --project batches`.
+
 These are test-runner changes; manual game verification does not apply. From the repository
 root, run `npm.cmd run verify` to exercise every gate and confirm tests finish within their
 safety limits.

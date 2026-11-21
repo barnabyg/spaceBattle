@@ -190,8 +190,8 @@ force a better outcome.
 
 ### Acceptance and reproduction
 
-Regression coverage is in `src/sim/rangeBalance.test.ts`, at the agreed
-`createBattle` observation boundary:
+Regression coverage is in `src/sim/rangeBalance.test.ts`, and the evaluation battles in
+`src/sim/rangeBalanceEvaluation*.test.ts`, at the agreed `createBattle` observation boundary:
 
 - In the reported opening-pass seed-1 battle, medium and high Sling captains exceed
   15 km/s closing speed and reach less than 200,000 km separation at 9,000 s, with
@@ -213,7 +213,7 @@ Regression coverage is in `src/sim/rangeBalance.test.ts`, at the agreed
 To print the evaluation records from the repository root in PowerShell 7:
 
 ```powershell
-$env:RANGE_REPORT = '1'; try { npm.cmd test -- src/sim/rangeBalance.test.ts --silent=false } finally { Remove-Item Env:RANGE_REPORT }
+$env:RANGE_REPORT = '1'; try { npm.cmd test -- src/sim/rangeBalanceEvaluation --silent=false } finally { Remove-Item Env:RANGE_REPORT }
 ```
 
 For manual verification, run this single preparation/launch command from
