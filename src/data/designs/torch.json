@@ -77,7 +77,7 @@
       "kind": "engine",
       "armour": {
         "type": "ablative",
-        "thickness": 0.01
+        "thickness": 0.02
       },
       "components": [
         {

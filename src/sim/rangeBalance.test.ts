@@ -184,18 +184,21 @@ describe('massive weapon-range mismatches', () => {
       // Half its armour goes some 30,000 km out, under half an hour from its guns' reach at
       // that speed: turning away then would only keep it under fire for longer.
       let worn = false;
-      while (!battle.outcome && !battle.observe('blue').ownShip.adrift) {
+      while (!battle.outcome) {
         battle.advance(10);
         const ship = battle.observe('red').ownShip;
         worn ||= ship.sections.some(
           (section) => section.armour.remaining <= section.armour.thickness / 2,
         );
-        // It withdraws only once the Lance is adrift and it cannot afford another pass.
-        if (!battle.observe('blue').ownShip.adrift) expect(ship.withdrawing).toBe(false);
+        expect(ship.withdrawing).toBe(false);
       }
       expect(worn).toBe(true);
-      // Its guns wreck the Lance's drive. Adrift, the Lance fights on: that alone does not win.
-      expect(battle.observe('blue').ownShip.adrift).toBe(true);
+      // The Lance's engine armour holds its drive, so the guns reach its reactor.
+      expect(battle.outcome.winner).toBe('red');
+      expect(battle.outcome.sides[0]?.loss).toEqual({
+        result: 'destroyed',
+        cause: 'reactor-breach',
+      });
     },
     60_000,
   );

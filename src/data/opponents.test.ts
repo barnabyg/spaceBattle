@@ -14,6 +14,14 @@ describe('opponent specifications', () => {
     expect(new Set(OPPONENTS.map((o) => o.specification.name)).size).toBe(OPPONENTS.length);
   });
 
+  it('armour the engine section at least as thickly as the middle section', () => {
+    for (const { specification } of OPPONENTS) {
+      expect(specification.armour.engine.thickness, specification.name).toBeGreaterThanOrEqual(
+        specification.armour.middle.thickness,
+      );
+    }
+  });
+
   it.each(OPPONENTS.map((o) => [o.specification.name, o] as const))(
     '%s builds into a valid design within its tier’s budget',
     (_, opponent) => {

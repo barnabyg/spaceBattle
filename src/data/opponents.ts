@@ -73,7 +73,7 @@ export const OPPONENTS: readonly Opponent[] = [
       [
         ['heavy', 0.012],
         ['ablative', 0.02],
-        ['ablative', 0.01],
+        ['ablative', 0.02],
       ],
       400e3,
     ),
@@ -95,7 +95,7 @@ export const OPPONENTS: readonly Opponent[] = [
       [
         ['heavy', 0.012],
         ['ablative', 0.02],
-        ['ablative', 0.01],
+        ['ablative', 0.02],
       ],
       400e3,
     ),
@@ -110,7 +110,7 @@ export const OPPONENTS: readonly Opponent[] = [
       [
         ['heavy', 0.012],
         ['ablative', 0.02],
-        ['ablative', 0.01],
+        ['ablative', 0.02],
       ],
       400e3,
     ),
@@ -125,7 +125,7 @@ export const OPPONENTS: readonly Opponent[] = [
       [
         ['ablative', 0.08],
         ['ablative', 0.02],
-        ['ablative', 0.01],
+        ['ablative', 0.02],
       ],
       400e3,
     ),
@@ -140,7 +140,7 @@ export const OPPONENTS: readonly Opponent[] = [
       [
         ['ablative', 0.05],
         ['ablative', 0.02],
-        ['ablative', 0.01],
+        ['ablative', 0.02],
       ],
       400e3,
     ),
@@ -163,7 +163,7 @@ export const OPPONENTS: readonly Opponent[] = [
       [
         ['ablative', 0.01],
         ['ablative', 0.02],
-        ['ablative', 0.01],
+        ['ablative', 0.02],
       ],
       400e3,
     ),
@@ -178,7 +178,7 @@ export const OPPONENTS: readonly Opponent[] = [
       [
         ['heavy', 0.008],
         ['ablative', 0.015],
-        ['ablative', 0.01],
+        ['ablative', 0.015],
       ],
       1_600e3,
     ),
@@ -201,7 +201,7 @@ export const OPPONENTS: readonly Opponent[] = [
       [
         ['heavy', 0.008],
         ['ablative', 0.02],
-        ['ablative', 0.01],
+        ['ablative', 0.02],
       ],
       1_600e3,
     ),
