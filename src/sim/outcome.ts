@@ -1,7 +1,9 @@
 import type { SideId, SideSetup } from './battle';
 import { componentSlots, integrityOfType } from './components';
 import type { ComponentType } from './design';
-import type { ShipState } from './ship';
+import { isAdrift, type ShipState } from './ship';
+import { distance, dot, sub } from './vector';
+import { workingReach } from './weapons';
 
 /** How a destroyed ship was lost. */
 export type DestroyedCause = 'reactor-breach' | 'structural-failure';
@@ -59,20 +61,35 @@ const WEAPON_TYPES: ReadonlySet<ComponentType> = new Set([
 ]);
 
 /**
- * Whether a ship has lost the battle, and how. A reactor breach or structural failure of the
- * middle section destroys it; failing that, it is disabled once it has no working drive or none
- * of its weapons left working. A design built without weapons is never disabled for want of
- * them: it cannot lose what it never had. Failing those, a ship that has run out of propellant
- * without withdrawing is stranded. Withdrawal is judged by the battle (see `WithdrawOrder`).
+ * Whether an adrift ship is out of the fight: no enemy is within its weapons' reach and none is
+ * closing on it, so it cannot bring them to bear unless an enemy chooses to come back.
  */
-export const lossOf = (ship: ShipState): Loss | null => {
+const outOfTheFight = (ship: ShipState, enemies: readonly ShipState[]): boolean => {
+  const reach = workingReach(ship);
+  return enemies.every((enemy) => {
+    const separation = sub(enemy.position, ship.position);
+    const closing = -dot(separation, sub(enemy.velocity, ship.velocity));
+    return distance(enemy.position, ship.position) > reach && !(closing > 0);
+  });
+};
+
+/**
+ * Whether a ship has lost the battle, and how, among `enemies`. A reactor breach or structural
+ * failure of the middle section destroys it; failing that, it is disabled once none of its
+ * weapons is left working, or once it is adrift out of the fight: its drive wrecked, no enemy
+ * within its reach and none closing on it. Adrift with an enemy in reach, it fights on. A design
+ * built without weapons is never disabled for want of them: it cannot lose what it never had.
+ * Failing those, a ship that has run out of propellant without withdrawing is stranded.
+ * Withdrawal is judged by the battle (see `WithdrawOrder`).
+ */
+export const lossOf = (ship: ShipState, enemies: readonly ShipState[]): Loss | null => {
   if (ship.sections.middle.structure <= 0) {
     return { result: 'destroyed', cause: 'structural-failure' };
   }
   if (integrityOfType(ship.design, ship.integrity, 'reactor') <= 0) {
     return { result: 'destroyed', cause: 'reactor-breach' };
   }
-  if (integrityOfType(ship.design, ship.integrity, 'drive') <= 0) {
+  if (isAdrift(ship) && outOfTheFight(ship, enemies)) {
     return { result: 'disabled', cause: 'no-working-drive' };
   }
   const weapons = componentSlots(ship.design).flatMap((slot, i) =>

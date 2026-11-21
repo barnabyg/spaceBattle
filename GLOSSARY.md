@@ -267,8 +267,12 @@ _Avoid_: Concede, surrender, quit
 The end of a battle in which no side lost, so nobody wins: a battle between computer sides ended with "End battle", or a test mode battle that reached its time limit.
 _Avoid_: Stalemate, timeout
 
+**Adrift**:
+A ship whose drive is wrecked. It drifts on its momentum and fights on: its thrusters still turn it and its weapons still fire, but it cannot change course or withdraw.
+_Avoid_: Dead in the water, immobilised
+
 **Disabled**:
-A ship with no working weapons or no working drive; it has lost the battle.
+A ship with no working weapons, or adrift out of the fight: no enemy within its weapons' reach and none closing on it. It has lost the battle.
 
 **Stranded**:
 A ship that has used its reserve without withdrawing and run out of propellant; it has lost the battle and the ship is lost.

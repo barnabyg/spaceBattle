@@ -49,6 +49,7 @@ import {
   burn,
   createShip,
   fireDrive,
+  isAdrift,
   noseOf,
   steer,
   thrusterTorque,
@@ -212,6 +213,8 @@ interface Combatant {
   withdrawn: boolean;
   /** Whether its side has heard it has nothing left to fight with (see `DisarmedEvent`). */
   disarmed: boolean;
+  /** Whether the sides have heard its drive is wrecked (see `AdriftEvent`). */
+  adrift: boolean;
 }
 
 /**
@@ -364,6 +367,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
       impacts: [],
       withdrawn: false,
       disarmed: false,
+      adrift: false,
     };
   });
   let steps = 0;
@@ -803,6 +807,15 @@ export const createBattle = (setup: BattleSetup): Battle => {
     }
   };
 
+  /** Tells every side of each ship whose drive was wrecked in the step: it is adrift. */
+  const drift = (time: number, events: BattleEvent[]) => {
+    for (const c of combatants) {
+      if (c.adrift || !isAdrift(c.ship)) continue;
+      c.adrift = true;
+      events.push({ type: 'adrift', time, side: c.side.id });
+    }
+  };
+
   /**
    * Withdrawing ships that are gone by the end of the step: out of reach of every enemy weapon,
    * or `WITHDRAWAL_TIME` after their order.
@@ -828,7 +841,11 @@ export const createBattle = (setup: BattleSetup): Battle => {
       time,
       combatants.map(({ side, ship, withdrawn }) => ({
         side: side.id,
-        loss: lossOf(ship) ?? (withdrawn ? { result: 'withdrawn' as const } : null),
+        loss:
+          lossOf(
+            ship,
+            combatants.flatMap((c) => (c.side === side ? [] : [c.ship])),
+          ) ?? (withdrawn ? { result: 'withdrawn' as const } : null),
       })),
     );
     if (decided) return decided;
@@ -864,6 +881,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
     resolveArrivals(before, ctx);
     overheatShips(ctx);
     disarm(time, events);
+    drift(time, events);
     leave(time);
     outcome = judgeStep(time);
     if (outcome) events.push({ type: 'battle-ended', time, outcome });
@@ -887,6 +905,9 @@ export const createBattle = (setup: BattleSetup): Battle => {
         (c) => c.side.id !== sideId && c.ship.withdrawingSince !== null,
       );
       const refused =
+        (checked.type === 'withdraw' && isAdrift(ship)
+          ? 'A ship with no working drive cannot withdraw'
+          : null) ??
         (ship.withdrawingSince !== null ? withdrawingRefused(checked) : null) ??
         (withdrawing ? pursuitRefused(checked, pursuerOf(ship, withdrawing.ship)) : null);
       if (refused) throw new Error(refused);

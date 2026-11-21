@@ -14,8 +14,10 @@ import { createComputerCaptain } from './captain';
 import { DECISION_INTERVAL, runBattle, withComputerCaptains } from './command';
 import { designComponent, designComponentsOfType, type Design } from './design';
 import type { Order } from './orders';
+import { IDENTITY } from './quaternion';
 import {
   antiMissileTestDesign,
+  armedTestDesign,
   defendedTestDesign,
   duelSetup,
   launchingTestDesign,
@@ -647,6 +649,23 @@ describe('computer captain', () => {
       type: 'power',
       priorities: ['weapons', 'shields', 'drive', 'capacitors'],
     });
+  });
+
+  it('fights on once adrift, and never orders a withdrawal it cannot make', () => {
+    // Red holds back more delta-v than it has, so with a drive it would withdraw at once.
+    const red: Design = { ...armedTestDesign(), reserve: 1e9 };
+    // Red faces away from blue, so blue's beam burns into its engine section.
+    const setup = duelSetup(armedTestDesign(), red, 20_000 * KM, IDENTITY);
+    const battle = createBattle(setup);
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    while (!battle.observe('red').ownShip.adrift) {
+      if (battle.outcome || battle.time > HOUR) throw new Error('Red never went adrift');
+      battle.advance(1);
+    }
+    const orders = createComputerCaptain(redOf(setup)).decide(battle.observe('red'));
+    expect(orders.map((order) => order.type)).not.toContain('withdraw');
+    expect(orders).toContainEqual({ type: 'weapons', target: 'blue', mode: 'fire-freely' });
+    for (const order of orders) battle.giveOrder('red', order);
   });
 
   it('closes in when nothing has happened for a while', () => {

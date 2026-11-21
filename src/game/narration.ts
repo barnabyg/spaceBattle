@@ -149,6 +149,18 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
         return event.side === viewer
           ? at('We have nothing left to fight with. Withdraw, or end the battle.', 'own', true)
           : null;
+      case 'adrift':
+        return event.side === viewer
+          ? at(
+              'Our drive is wrecked: we are adrift. We can still turn and fire, but cannot change course or withdraw.',
+              'own',
+              true,
+            )
+          : at(
+              `${name(event.side)}'s drive is wrecked: it is adrift, but can still fire.`,
+              'enemy',
+              true,
+            );
       case 'battle-ended': {
         const winner = event.outcome.winner;
         return at(

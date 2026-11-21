@@ -33,6 +33,8 @@ const slowdownReason = (
       return `${name(event.side)} withdrawing`;
     case 'disarmed':
       return `${name(event.side)}: nothing left to fight with`;
+    case 'adrift':
+      return `${name(event.side)} adrift`;
     case 'launch':
       return typeof event.target === 'string'
         ? `missiles launched at ${name(event.target)}`

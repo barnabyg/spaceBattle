@@ -45,6 +45,28 @@ describe('battle narration', () => {
     ]);
   });
 
+  it('tells either side when a ship goes adrift', () => {
+    const narrator = createNarrator('blue', sides);
+    const lines = narrator.narrate(observe(), [
+      { type: 'adrift', time: 10, side: 'blue' },
+      { type: 'adrift', time: 20, side: 'red' },
+    ]);
+    expect(lines).toEqual([
+      {
+        time: 10,
+        text: 'Our drive is wrecked: we are adrift. We can still turn and fire, but cannot change course or withdraw.',
+        about: 'own',
+        major: true,
+      },
+      {
+        time: 20,
+        text: "Red's drive is wrecked: it is adrift, but can still fire.",
+        about: 'enemy',
+        major: true,
+      },
+    ]);
+  });
+
   it('names an enemy part only when the sensors had made it out', () => {
     const lost: BattleEvent = {
       type: 'component-lost',
@@ -217,7 +239,7 @@ describe('battle narration', () => {
       'The enemy is now within reach of our weapons.',
       'The enemy has drawn out of our weapons’ reach.',
     ]);
-  });
+  }, 60_000); // Simulates over an hour of battle; takes about 10 s under full-suite load.
 
   it('tells the same unseen enemy damage in one update once', () => {
     const narrator = createNarrator('blue', sides);

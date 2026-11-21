@@ -7,7 +7,7 @@ const CAUSE_TEXT = {
   'reactor-breach': 'reactor breach',
   'structural-failure': 'structural failure of the middle section',
   'no-working-weapons': 'no working weapons',
-  'no-working-drive': 'no working drive',
+  'no-working-drive': 'adrift out of reach of the enemy',
 } as const;
 
 /** How a side lost, in a few words. */

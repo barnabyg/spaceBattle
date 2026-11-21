@@ -58,6 +58,7 @@ const needsCaptain = (
     case 'detonation':
     case 'magazine-explosion':
     case 'withdrawal':
+    case 'adrift':
     case 'battle-ended':
       return true;
   }

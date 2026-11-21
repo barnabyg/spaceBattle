@@ -105,8 +105,9 @@ test('test mode adds a time limit, the full enemy design, a test log, faster tim
   await result.getByRole('button', { name: 'Replay' }).click();
   await expect(page.getByLabel('Battle time')).toHaveText(/T\+00:00:0\d/);
   await expect(page.getByLabel('Test mode')).toContainText('Seed 42');
-  // The replay gives the player's orders again, at the same moments.
-  await expect(radiators).toContainText('Deployed');
+  // The replay gives the player's orders again, at the same moments. It runs at 1×, so the
+  // radiators take at least their 5 s to deploy, longer on a busy runner.
+  await expect(radiators).toContainText('Deployed', { timeout: SIMULATION_EXPECT_TIMEOUT });
 
   // Switched off again on the main menu, test mode is gone from setup.
   await page.getByRole('button', { name: 'End battle' }).click();
