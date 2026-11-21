@@ -148,6 +148,8 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
       return event.side === viewer
         ? `${time} Nothing left to fight with`
         : `${time} Enemy has nothing left to fight with`;
+    case 'adrift':
+      return event.side === viewer ? `${time} Adrift: drive wrecked` : `${time} Enemy adrift`;
     case 'withdrawal':
       return event.side === viewer
         ? `${time} Withdrawing from the battle${reasonOf(event.reason, true)}`

@@ -746,16 +746,19 @@ export const createOrdersPanel = (giveOrder: (order: Order) => void) => {
         : '';
       // Pressed once the withdrawal is ordered, not while a first click waits for confirmation;
       // it cannot be taken back, so the button is then disabled.
-      withdraw.disabled = ship.withdrawing || observation.outcome !== null;
+      // Adrift, the ship has no drive to withdraw with.
+      withdraw.disabled = ship.withdrawing || ship.adrift || observation.outcome !== null;
       setPressed(withdraw, ship.withdrawing);
       const enemyWithdrawing = observation.contacts.some((c) => c.withdrawing);
       withdrawState.textContent = ship.withdrawing
         ? 'Withdrawing: burning away from the enemy'
-        : enemyWithdrawing
-          ? 'Enemy withdrawing: fire on it, but no pursuit'
-          : ship.reserveWarning
-            ? `Δv near the ${formatKmPerS(ship.reserve)} reserve`
-            : `Reserve ${formatKmPerS(ship.reserve)}`;
+        : ship.adrift
+          ? 'Adrift: no drive to withdraw with'
+          : enemyWithdrawing
+            ? 'Enemy withdrawing: fire on it, but no pursuit'
+            : ship.reserveWarning
+              ? `Δv near the ${formatKmPerS(ship.reserve)} reserve`
+              : `Reserve ${formatKmPerS(ship.reserve)}`;
 
       priorities = ship.power.priorities;
       labelPriorityRows();

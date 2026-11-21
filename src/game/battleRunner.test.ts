@@ -34,6 +34,8 @@ const majorEvents: readonly BattleEvent[] = [
   { type: 'structural-failure', time: 0.1, side: 'blue', section: 'engine' },
   { type: 'withdrawal', time: 0.1, side: 'red', reason: 'reserve' },
   { type: 'disarmed', time: 0.1, side: 'blue' },
+  { type: 'adrift', time: 0.1, side: 'blue' },
+  { type: 'adrift', time: 0.1, side: 'red' },
   {
     type: 'battle-ended',
     time: 0.1,

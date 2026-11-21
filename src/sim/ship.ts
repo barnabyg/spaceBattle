@@ -448,6 +448,13 @@ export const temperatureOf = (ship: ShipState): number =>
   ship.heat / thermalProperties(ship.design).heatCapacity;
 
 /**
+ * Whether the ship is adrift: its drive is wrecked, so it drifts on its momentum. It can still
+ * turn and fire, but it cannot change course or withdraw.
+ */
+export const isAdrift = (ship: ShipState): boolean =>
+  integrityOfType(ship.design, ship.integrity, 'drive') <= 0;
+
+/**
  * The fraction of the drive's full thrust it can use now: no more than its integrity and the
  * ship's temperature allow, nor than the power left for it after higher priorities.
  */

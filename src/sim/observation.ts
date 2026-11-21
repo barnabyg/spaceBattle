@@ -51,6 +51,7 @@ import {
   deltaVOf,
   driveLimit,
   reserveWarning,
+  isAdrift,
   noseOf,
   shipMassProperties,
   temperatureOf,
@@ -475,6 +476,8 @@ export interface OwnShipObservation {
   readonly reserveWarning: boolean;
   /** Whether it is withdrawing from the battle. */
   readonly withdrawing: boolean;
+  /** Whether its drive is wrecked: it fights on as it drifts, but cannot change course or withdraw. */
+  readonly adrift: boolean;
   /** Drive thrust applied in the last step, N. */
   readonly thrust: number;
   /** Thruster torque applied in the last step (body frame), N·m. */
@@ -946,6 +949,7 @@ export const observeOwnShip = (
     reserve: ship.design.reserve,
     reserveWarning: reserveWarning(ship),
     withdrawing: ship.withdrawingSince !== null,
+    adrift: isAdrift(ship),
     thrust: ship.thrust,
     torque: ship.torque,
     rolling: ship.rolling,

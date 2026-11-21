@@ -297,11 +297,12 @@ export const sellShip = (campaign: Campaign, shipId: string): Campaign => {
 
 /**
  * Whether a ship could go into a battle as it is and fight: the battle would not count it lost
- * at the start, and it has delta-v beyond its reserve.
+ * at the start, and it has delta-v beyond its reserve. Judged with no enemy in sight, a ship with
+ * a wrecked drive could never close on one, so it cannot fight.
  */
 export const canFight = (ship: CampaignShip): boolean => {
   const state = createShip(ship.design, ZERO, ZERO, IDENTITY, ship.condition);
-  return lossOf(state) === null && deltaVOf(state) > ship.design.reserve;
+  return lossOf(state, []) === null && deltaVOf(state) > ship.design.reserve;
 };
 
 /**

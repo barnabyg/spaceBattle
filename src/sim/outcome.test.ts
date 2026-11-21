@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createBattle, type Battle, type BattleEvent } from './battle';
-import { designComponent, type Design } from './design';
+import { effectiveRange } from './beams';
+import { designComponent, type Design, type LaserDesign } from './design';
 import { fromAxisAngle, IDENTITY, multiply } from './quaternion';
 import {
   armedTestDesign,
+  armouredAllOver,
   duelSetup,
   FACING_BLUE,
   TEST_LASER,
+  TEST_SENSOR,
   testDesign,
   testSetup,
   testSides,
@@ -107,11 +110,12 @@ describe('battle outcomes', () => {
     expectFrozen(battle);
   });
 
-  it('disables a ship with no working drive', () => {
+  it('disables a ship left adrift with nothing that can reach the enemy', () => {
     // Red faces away from blue, so the beam burns into its unarmoured engine section.
     const battle = createBattle(duelSetup(armedTestDesign(), testDesign(), 20_000 * KM, IDENTITY));
     fireAtRed(battle);
-    fightToTheEnd(battle);
+    const events = fightToTheEnd(battle);
+    expect(events).toContainEqual({ type: 'adrift', time: battle.time, side: 'red' });
     const red = battle.observe('red').ownShip;
     expect(red.sections.find((s) => s.kind === 'engine')?.components[0]).toEqual({
       type: 'drive',
@@ -180,6 +184,104 @@ describe('battle outcomes', () => {
       expect(observation.outcome).toEqual(battle.outcome);
       expect(observation.events.at(-1)).toEqual(ended);
     }
+  });
+});
+
+/** A laser with a quarter of the test laser's mirror, so it reaches a quarter as far. */
+const SHORT_LASER: LaserDesign = { ...TEST_LASER, aperture: 1 };
+const shortArmedDesign = (): Design =>
+  withSection(testDesign(), 'forward', { mounts: [SHORT_LASER] });
+/** Between the short laser's reach and the test laser's: blue reaches red, red cannot answer. */
+const OUTRANGED = (effectiveRange(SHORT_LASER) + effectiveRange(TEST_LASER)) / 2;
+
+/** Steps until red's drive is lost, failing if it has not been within an hour. */
+const untilRedAdrift = (battle: Battle): BattleEvent[] => {
+  const events: BattleEvent[] = [];
+  while (!events.some((e) => e.type === 'adrift' && e.side === 'red')) {
+    if (battle.outcome || battle.time > 3_600) throw new Error('Red never went adrift');
+    events.push(...battle.advance(1));
+  }
+  return events;
+};
+
+describe('a ship with no working drive', () => {
+  it('fights on adrift while the enemy is within its reach', () => {
+    // Red faces away from blue, so blue's beam burns into its engine section; red's sensor is
+    // forward, out of the way, and blue's armour holds red's beam off long enough to see red
+    // fight on.
+    const sensorForward = withSection(
+      withSection(testDesign(), 'engine', { mounts: [] }),
+      'forward',
+      { mounts: [TEST_LASER, TEST_SENSOR] },
+    );
+    const battle = createBattle(
+      duelSetup(armouredAllOver(armedTestDesign()), sensorForward, 20_000 * KM, IDENTITY),
+    );
+    fireAtRed(battle);
+    battle.giveOrder('red', { type: 'weapons', target: 'blue', mode: 'fire-freely' });
+    const events = untilRedAdrift(battle);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'component-lost', side: 'red', component: 'drive' }),
+    );
+    expect(battle.outcome).toBeNull();
+    const red = battle.observe('red');
+    expect(red.ownShip.adrift).toBe(true);
+    expect(red.events).toContainEqual(expect.objectContaining({ type: 'adrift', side: 'red' }));
+    expect(battle.observe('blue').events).toContainEqual(
+      expect.objectContaining({ type: 'adrift', side: 'red' }),
+    );
+    // Red's beam keeps wearing blue's nose.
+    const nose = () =>
+      battle.observe('blue').ownShip.sections.find((s) => s.kind === 'forward')?.armour.remaining ??
+      0;
+    const before = nose();
+    battle.advance(30);
+    expect(battle.outcome).toBeNull();
+    expect(nose()).toBeLessThan(before);
+  });
+
+  it('cannot withdraw once adrift', () => {
+    const battle = createBattle(
+      duelSetup(armedTestDesign(), armedTestDesign(), 20_000 * KM, IDENTITY),
+    );
+    fireAtRed(battle);
+    untilRedAdrift(battle);
+    expect(() => {
+      battle.giveOrder('red', { type: 'withdraw' });
+    }).toThrow(/no working drive/i);
+    expect(battle.observe('red').ownShip.withdrawing).toBe(false);
+  });
+
+  it('is disabled at once when an enemy that outranges it is out of its reach', () => {
+    const battle = createBattle(
+      duelSetup(armedTestDesign(), shortArmedDesign(), OUTRANGED, IDENTITY),
+    );
+    fireAtRed(battle);
+    const events = fightToTheEnd(battle);
+    const adrift = events.find((e) => e.type === 'adrift');
+    expect(adrift).toEqual({ type: 'adrift', time: battle.time, side: 'red' });
+    expect(battle.observe('red').ownShip.weapons.lasers.map((l) => l.integrity)).toEqual([1]);
+    expect(battle.outcome?.winner).toBe('blue');
+    expect(battle.outcome?.sides[1]?.loss).toEqual({
+      result: 'disabled',
+      cause: 'no-working-drive',
+    });
+  });
+
+  it('fights on while it drifts towards an enemy out of its reach', () => {
+    const setup = duelSetup(armedTestDesign(), shortArmedDesign(), OUTRANGED, IDENTITY);
+    const [blueStart, redStart] = setup.scenario.starts;
+    if (!blueStart || !redStart) throw new Error('No starts');
+    const battle = createBattle({
+      ...setup,
+      scenario: {
+        ...setup.scenario,
+        starts: [blueStart, { ...redStart, velocity: vec3(-1_000, 0, 0) }],
+      },
+    });
+    fireAtRed(battle);
+    untilRedAdrift(battle);
+    expect(battle.outcome).toBeNull();
   });
 });
 

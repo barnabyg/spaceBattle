@@ -1020,14 +1020,16 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
               enemyReach >= PASS_RATIO * reach ? null : Math.max(reach, enemyReach),
             )
           : null;
+      // Adrift, it cannot withdraw: it fights on as it drifts.
       const leaving =
         ship.withdrawing ||
-        pass === 'withdraw' ||
-        untenable ||
-        failingApproach ||
-        exposed ||
-        (armed && reach === 0) ||
-        ship.deltaV <= reserve;
+        (!ship.adrift &&
+          (pass === 'withdraw' ||
+            untenable ||
+            failingApproach ||
+            exposed ||
+            (armed && reach === 0) ||
+            ship.deltaV <= reserve));
       /** The first of the reasons to leave that holds, as the captain gives it. */
       const withdrawalReason = (): WithdrawalReason =>
         armed && reach === 0

@@ -241,6 +241,16 @@ export interface DisarmedEvent {
   readonly side: SideId;
 }
 
+/**
+ * A ship's drive was wrecked: it is adrift, fighting on as it drifts but unable to change course
+ * or withdraw. Both sides hear of it: the enemy sees its drive go dark.
+ */
+export interface AdriftEvent {
+  readonly type: 'adrift';
+  readonly time: number;
+  readonly side: SideId;
+}
+
 /** A section's own structure was broken through: it and everything in it are lost. */
 export interface StructuralFailureEvent {
   readonly type: 'structural-failure';
@@ -270,6 +280,7 @@ export type BattleEvent =
   | StructuralFailureEvent
   | WithdrawalEvent
   | DisarmedEvent
+  | AdriftEvent
   | BattleEndedEvent;
 
 /**
@@ -288,6 +299,7 @@ export const involves = (event: BattleEvent, side: SideId): boolean => {
       return event.attacker === side || event.target === side;
     case 'battle-ended':
     case 'withdrawal':
+    case 'adrift':
       return true;
     default:
       return event.side === side;
