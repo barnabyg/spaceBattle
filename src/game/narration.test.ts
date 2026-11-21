@@ -4,6 +4,7 @@ import { effectiveRange } from '../sim/beams';
 import {
   armedTestDesign,
   duelSetup,
+  gunnedTestDesign,
   launchingTestDesign,
   TEST_LASER,
   testDesign,
@@ -132,6 +133,28 @@ describe('battle narration', () => {
       expect.stringMatching(/^A missile launched at us\. Impact in about \d+ min \d+ s\.$/),
     ]);
     expect(lines[0]?.major).toBe(true);
+  });
+
+  it('tells our guns opening fire, with when the first slug arrives, once per volley', () => {
+    // The test gun fires 20 km/s slugs: from 1,000 km the first takes about 50 s.
+    const battle = createBattle(duelSetup(gunnedTestDesign(2), testDesign(), 1_000e3));
+    battle.giveOrder('blue', {
+      type: 'weapons',
+      target: 'red',
+      mode: 'fire-freely',
+      longRangeSlugs: true,
+    });
+    const narrator = createNarrator('blue', sides);
+    const told: string[] = [];
+    while (battle.time < 200) {
+      const events = battle.advance(1);
+      told.push(...narrator.narrate(battle.observe('blue'), events).map((line) => line.text));
+    }
+    const opened = told.filter((text) => text.startsWith('Our guns open fire.'));
+    expect(opened).toHaveLength(1);
+    const seconds = Number(/arrives in about (\d+) s/.exec(opened[0] ?? '')?.[1]);
+    expect(seconds).toBeGreaterThan(40);
+    expect(seconds).toBeLessThan(55);
   });
 
   it('tells each time the ships come into or out of reach, either way', () => {

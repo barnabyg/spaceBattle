@@ -211,6 +211,12 @@ a computer Sling, select **Fire freely** and raise time compression: the guns sh
 the guns should fire from 30,000 km, while the computer Sling keeps closing between short
 sideways pushes rather than spinning.
 
+**Our slugs** in the **Weapons** tab counts the ship's slugs in flight, when the first and the
+last will reach the enemy at their present closing speed, and how many have hit and missed; the
+battle story says "Our guns open fire" with when the first slug arrives. **Incoming slugs** counts
+the enemy's on their way. To check, fire long-range slugs as a Sling: **Our slugs** should count
+down to the first arrival, and the hits and misses should add up as the slugs arrive.
+
 To check manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from
 `C:/docs/git/spaceBattle` in PowerShell 7. Switch on **Test mode**, then start a free battle with
 Blue's Bastion as the player and Red's Lance as the computer in **Head-on**. Target the enemy,

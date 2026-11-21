@@ -16,6 +16,7 @@ import { createNarrationFeed } from './narration';
 import { createNarrator } from '../game/narration';
 import { createSalvoTimeline } from './salvoTimeline';
 import { createSalvoTracker } from '../game/salvos';
+import { createSlugTracker } from '../game/outgoingSlugs';
 import { formatDuration } from './format';
 import { SIDE_COLOURS } from './mapStyle';
 import { createTacticalMap } from './tacticalMap';
@@ -76,6 +77,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
   const narration = createNarrationFeed();
   instruments.element.append(narration.overlay);
   const salvos = createSalvoTracker(viewer.id);
+  const ourSlugs = createSlugTracker(viewer.id);
   const salvoTimeline = createSalvoTimeline((ids) => {
     map.highlight(ids);
   });
@@ -201,7 +203,7 @@ export const createBattleScreen = (runner: BattleRunner, options: BattleScreenOp
     narration.update(now / 1000);
     salvoTimeline.update(salvos.update(observation, events));
     timeControls.update();
-    status.update(observation);
+    status.update(observation, ourSlugs.update(observation, events));
     hits.update(observation, events, now / 1000);
     damage.update(observation);
     if (enemy) enemyPanel?.update(battle.observe(enemy.id));

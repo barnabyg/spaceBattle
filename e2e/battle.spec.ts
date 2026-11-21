@@ -213,7 +213,8 @@ test('a ship with kinetic guns shows its guns, magazine and ammunition', async (
   await startFreeBattle(page, { blue: { design: 'Sling' } });
   await page.keyboard.press(' ');
   await expect(page.getByLabel('Ammunition')).toHaveText('600 of 600 slugs');
-  await expect(page.getByLabel('Slugs in flight')).toHaveText('0 ours · 0 incoming');
+  await expect(page.getByLabel('Our slugs')).toHaveText('None fired');
+  await expect(page.getByLabel('Incoming slugs')).toHaveText('0');
   await page.getByRole('tab', { name: 'Damage', exact: true }).click();
   const damage = page.getByRole('region', { name: 'Damage' });
   await expect(damage.getByText('Kinetic gun (mount)')).toHaveCount(2);

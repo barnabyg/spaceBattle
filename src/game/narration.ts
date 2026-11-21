@@ -81,6 +81,7 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
   let lastContact: ContactObservation | undefined;
   let inOwnReach: boolean | null = null;
   let inEnemyReach: boolean | null = null;
+  let slugsFlying = false;
   const name = (id: string) => sides.find((side) => side.id === id)?.name ?? id;
 
   /** Whether the sensors had made out a part of the contact: a section, or one of its mounts. */
@@ -201,6 +202,35 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
     return lines;
   };
 
+  /** Our guns opening fire after a spell with none of our slugs in flight, and when they arrive. */
+  const volleys = (observation: SideObservation): NarrationLine[] => {
+    const slugs = observation.munitions.filter((m) => m.kind === 'slug' && m.attacker === viewer);
+    const opened = !slugsFlying && slugs.length > 0;
+    slugsFlying = slugs.length > 0;
+    if (!opened) return [];
+    const soonest = Math.min(
+      ...slugs.flatMap((slug) => {
+        const target = observation.contacts.find((c) => c.sideId === slug.target);
+        if (!target) return [];
+        const offset = sub(target.position, slug.position);
+        const drift = sub(target.velocity, slug.velocity);
+        const time = -dot(offset, drift) / dot(drift, drift);
+        return time > 0 ? [time] : [];
+      }),
+    );
+    const when = Number.isFinite(soonest)
+      ? ` First slug arrives in about ${duration(soonest)}.`
+      : '';
+    return [
+      {
+        time: observation.time,
+        text: `Our guns open fire.${when}`,
+        about: 'enemy',
+        major: false,
+      },
+    ];
+  };
+
   /** Coming into or out of reach of the own weapons, and of the enemy's made out. */
   const reaches = (observation: SideObservation): NarrationLine[] => {
     const separation = separationOf(observation);
@@ -246,7 +276,12 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
         const line = describe(event);
         return line ? [line] : [];
       });
-      const lines = [...told, ...launches(events, observation), ...reaches(observation)];
+      const lines = [
+        ...told,
+        ...launches(events, observation),
+        ...volleys(observation),
+        ...reaches(observation),
+      ];
       lastContact = observation.contacts[0];
       // The same line twice in one update, such as several unseen enemy parts lost, is told once.
       return lines.filter((line, i) => lines.findIndex((other) => other.text === line.text) === i);

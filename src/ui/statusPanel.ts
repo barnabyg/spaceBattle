@@ -12,6 +12,7 @@ import { POWER_SYSTEMS } from '../sim/power';
 import { distance, length } from '../sim/vector';
 import { BEAM_TEXT } from './damagePanel';
 import { el } from './el';
+import type { OutgoingSlugs } from '../game/outgoingSlugs';
 import { hasEquipment } from './equipment';
 import {
   formatDuration,
@@ -222,7 +223,11 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
       return held.length > 0 ? held.join(' · ') : '—';
     },
   ],
-  ['Slugs in flight', (o) => inFlight(o, (m) => m.kind === 'slug')],
+  [
+    'Incoming slugs',
+    ({ munitions, ownShip }) =>
+      count(munitions.filter((m) => m.kind === 'slug' && m.target === ownShip.sideId).length),
+  ],
   ['Missiles in flight', (o) => inFlight(o, missileIn('anti-ship'))],
   ['Anti-missile missiles in flight', (o) => inFlight(o, missileIn('anti-missile'))],
   [
@@ -240,6 +245,23 @@ const READOUTS: readonly (readonly [string, (o: SideObservation) => string])[] =
       `${heat.radiatorDeploymentRemaining > 0 ? `Deploying · ${heat.radiatorDeploymentRemaining.toFixed(1)} s` : heat.radiatorsDeployed ? 'Deployed' : 'Retracted'} · ${Math.round(heat.radiatorArea).toLocaleString('en-GB')} m²`,
   ],
 ];
+
+/**
+ * Our slugs: how many are in flight, when the first and last will arrive, and how many have hit
+ * or missed, e.g. "96 in flight · first in 3 min 20 s, last in 16 min 40 s · 4 hit · 12 missed".
+ */
+export const describeOurSlugs = (slugs: OutgoingSlugs | null): string => {
+  if (!slugs) return 'None fired';
+  const tally = `${count(slugs.hits)} hit · ${count(slugs.misses)} missed`;
+  if (slugs.inFlight === 0) return `None in flight · ${tally}`;
+  const arrival =
+    slugs.firstIn === null || slugs.lastIn === null
+      ? 'not closing on the enemy'
+      : slugs.inFlight === 1
+        ? `arrives in ${formatDuration(slugs.firstIn)}`
+        : `first in ${formatDuration(slugs.firstIn)}, last in ${formatDuration(slugs.lastIn)}`;
+  return `${count(slugs.inFlight)} in flight · ${arrival} · ${tally}`;
+};
 
 /** Numbers about the captain's ship and its contact, in real units. */
 export const createStatusPanel = () => {
@@ -265,7 +287,7 @@ export const createStatusPanel = () => {
     'Shields',
     'Beam power',
     'Ammunition',
-    'Slugs in flight',
+    'Incoming slugs',
     'Missiles in flight',
     'Anti-missile missiles in flight',
     'Point defence',
@@ -285,6 +307,9 @@ export const createStatusPanel = () => {
   );
   const powerElement = makeList((label) => powerLabels.includes(label));
   const weaponsElement = makeList((label) => weaponsLabels.includes(label));
+  const ourSlugsLabel = el('dt', { text: 'Our slugs' });
+  const ourSlugs = el('dd', { attrs: { 'aria-label': 'Our slugs' } });
+  weaponsElement.prepend(ourSlugsLabel, ourSlugs);
   const element = el(
     'section',
     { className: 'panel', attrs: { 'aria-label': 'Ship status' } },
@@ -297,7 +322,12 @@ export const createStatusPanel = () => {
     summaryElement,
     powerElement,
     weaponsElement,
-    update(observation: SideObservation) {
+    /** Shows the observation, and `slugs`, what came of our slugs, on a ship with kinetic guns. */
+    update(observation: SideObservation, slugs: OutgoingSlugs | null = null) {
+      const gunned = observation.ownShip.weapons.kineticGuns.length > 0;
+      ourSlugsLabel.hidden = !gunned;
+      ourSlugs.hidden = !gunned;
+      ourSlugs.textContent = describeOurSlugs(slugs);
       READOUTS.forEach(([label, show], i) => {
         const value = values[i];
         const ship = observation.ownShip;
