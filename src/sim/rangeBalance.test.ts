@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
-import { OPENING_PASS, STARTING_SCENARIOS, type StartingScenario } from '../data/scenarios';
+import {
+  HEAD_ON,
+  OPENING_PASS,
+  scenarioFor,
+  STARTING_SCENARIOS,
+  type StartingScenario,
+} from '../data/scenarios';
 import { createBattle, type Battle, type BattleEvent, type CaptainSkill } from './battle';
 import { withComputerCaptains } from './command';
-import { duelSetup, testDesign, withComponent, withSection } from './testing';
+import { duelSetup, testDesign, testSides, withComponent, withSection } from './testing';
 import { distance, dot, normalize, sub } from './vector';
 
 const KM = 1_000;
@@ -55,6 +61,31 @@ describe('responding to standoff fire', () => {
     expect(response).toMatchObject({ type: 'hit', attacker: 'red' });
   }, 60_000);
 
+  it('presses on with a worn nose when its guns will reach sooner than a withdrawal would end', () => {
+    // Head-on, the Sling's attack run wears half its nose away some 20,000 km out. Closing at
+    // over 12 km/s, its guns reach the Lance within the 30 minutes a withdrawal would still
+    // spend under fire, so it keeps on, as before it turned away and coasted past unarmed.
+    const designs = [handMadeDesign('sling'), handMadeDesign('lance')] as const;
+    const battle = withComputerCaptains(
+      createBattle({
+        seed: 1,
+        scenario: scenarioFor(HEAD_ON, designs),
+        sides: testSides(designs).map((side) => ({ ...side, commander: 'computer' as const })),
+      }),
+    );
+    let pressedOn = false;
+    let impact: BattleEvent | undefined;
+    while (!battle.outcome && !impact) {
+      const events = battle.advance(10);
+      impact = events.find((event) => event.type === 'impact' && event.attacker === 'blue');
+      const own = battle.observe('blue').ownShip;
+      const nose = own.sections.find((section) => section.kind === 'forward')?.armour;
+      if (nose && nose.remaining <= nose.thickness / 2 && !own.withdrawing) pressedOn = true;
+    }
+    expect(pressedOn).toBe(true);
+    expect(impact).toMatchObject({ type: 'impact', attacker: 'blue', target: 'red' });
+  }, 60_000);
+
   it('withdraws when a slow Bastion is losing its sensor too fast to return fire', () => {
     const bastion = withComponent(legacyBastion, 'drive', { thrust: 100_000 });
     const battle = withComputerCaptains(
@@ -95,7 +126,7 @@ describe('responding to standoff fire', () => {
       expect(firstHit).toMatchObject({ type: 'hit', attacker: 'red' });
     }, 60_000);
 
-    it('lets the gunboat close under fire, rolling its ablative nose, and still get away', () => {
+    it('lets the gunboat close under fire, rolling its ablative nose, and survive', () => {
       const setup = duelSetup(
         handMadeDesign('lance'),
         handMadeDesign('sling'),
@@ -116,10 +147,8 @@ describe('responding to standoff fire', () => {
       expect(rolled).toBe(true);
       expect(closest).toBeLessThan(10_000 * KM);
       expect(battle.observe('blue').ownShip.energyLedger.beamEmitted).toBeGreaterThan(0);
-      expect(battle.outcome.sides[1]).toMatchObject({
-        loss: { result: 'withdrawn' },
-        shipLost: false,
-      });
+      // It either wins there or gets away; the laser does not destroy it on the way in.
+      expect(battle.outcome.sides[1]).toMatchObject({ shipLost: false });
     }, 60_000);
   });
 });
@@ -135,7 +164,7 @@ const reproduction = (skill: CaptainSkill = 'medium') => {
 
 describe('massive weapon-range mismatches', () => {
   it.each(['medium', 'high'] as const)(
-    'at %s skill builds closing speed and abandons the reported untenable approach with drive and reserve left',
+    'at %s skill builds closing speed and, its guns nearer than a withdrawal would end, presses home with its nose worn',
     (skill) => {
       const battle = reproduction(skill);
       battle.advance(9_000);
@@ -152,24 +181,19 @@ describe('massive weapon-range mismatches', () => {
       expect(distance(own.position, enemy.position)).toBeLessThan(200_000 * KM);
       expect(own.power.priorities[0]).toBe('drive');
       expect(own.withdrawing).toBe(false);
-      while (
-        !battle.outcome &&
-        !battle.observe('red').ownShip.withdrawing &&
-        battle.time < 6 * HOUR
-      )
-        battle.advance(1);
-      const leaving = battle.observe('red').ownShip;
-      expect(leaving.withdrawing).toBe(true);
-      expect(leaving.deltaV).toBeGreaterThan(leaving.reserve);
-      const drive = leaving.sections
-        .flatMap((section) => section.components)
-        .find((component) => component.type === 'drive');
-      expect(drive?.integrity).toBeGreaterThan(0);
-      expect(
-        leaving.sections.some(
+      // Half its armour goes some 30,000 km out, under half an hour from its guns' reach at
+      // that speed: turning away then would only keep it under fire for longer.
+      let worn = false;
+      while (!battle.outcome) {
+        battle.advance(10);
+        const ship = battle.observe('red').ownShip;
+        worn ||= ship.sections.some(
           (section) => section.armour.remaining <= section.armour.thickness / 2,
-        ),
-      ).toBe(true);
+        );
+        expect(ship.withdrawing).toBe(false);
+      }
+      expect(worn).toBe(true);
+      expect(battle.outcome.winner).toBe('red');
     },
     60_000,
   );
@@ -305,10 +329,9 @@ describe('range balance evaluation', () => {
           expect(first.blue).toBeDefined();
           expect(first.red).toBeDefined();
         }
+        // The Sling presses into its guns' reach: it wins there or withdraws, and is not lost.
         if (red === 'sling' && blue === 'lance') {
-          expect(
-            withdrawals.some((event) => event.type === 'withdrawal' && event.side === 'red'),
-          ).toBe(true);
+          expect(battle.outcome.sides[1]?.shipLost).toBe(false);
         }
       },
       120_000,

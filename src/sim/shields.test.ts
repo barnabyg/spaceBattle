@@ -137,8 +137,9 @@ describe('magnetic shields', () => {
     'have no effect on any other weapon: $type',
     (weapon) => {
       const bare = attack(weapon, target(), { seconds: 30 });
-      const shielded = attack(weapon, target([TEST_MAGNETIC_SHIELD]), { seconds: 30 });
-      // Powered throughout, though a slug through the armour may damage it.
+      // In the engine section, out of the way of slugs breaking through the nose.
+      const shielded = attack(weapon, target([TEST_MAGNETIC_SHIELD], 'engine'), { seconds: 30 });
+      // Powered throughout.
       const { demand, supplied } = shielded.red.power.systems.shields;
       expect(demand).toBeGreaterThan(0);
       expect(supplied).toBe(demand);

@@ -118,6 +118,17 @@ export const withSection = (
   ),
 });
 
+/**
+ * A design with heavy armour `thickness` m thick over every section: 5 m stops test slugs and
+ * missiles outright, for tests that count what reaches a ship rather than what it does there.
+ */
+export const armouredAllOver = (design: Design, thickness = 5): Design =>
+  design.sections.reduce(
+    (armoured, section) =>
+      withSection(armoured, section.kind, { armour: { type: 'heavy', thickness } }),
+    design,
+  );
+
 /** A laser for test designs: a 400 MW ultraviolet beam from a 4 m mirror. */
 export const TEST_LASER: LaserDesign = {
   type: 'laser',

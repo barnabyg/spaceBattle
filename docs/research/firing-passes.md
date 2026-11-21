@@ -109,4 +109,4 @@ withdraws.
 The Sling now closes to within about 1,000 km of a laser ship instead of withdrawing from
 114,000 km, and lands slugs on the Needle and the Ward, but it still loses every battle: its guns
 hold their slugs until they cannot be dodged, and it is out-shot at that range. Its kinetic guns
-are a balance question of their own.
+are a balance question of their own. See the [kinetic gun notes](kinetic-guns.md) (#124).

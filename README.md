@@ -190,6 +190,16 @@ order **Close** and select **Roll** once the Lance's laser starts landing: in te
 tab's view of your ship, or your **Damage** tab, should show the forward armour wearing far more
 slowly than without rolling.
 
+A slug or kinetic missile that gets past the armour wrecks what it hits by shock. Its energy
+arrives in microseconds and tears machinery apart without melting it, so 100 kJ per kilogram
+wrecks a component or a section's structure, where a beam needs 1 MJ per kilogram. A computer
+captain whose armour is half worn on an attack run or firing pass presses on if it will reach its
+own weapons' range within 30 minutes. A withdrawal would keep it under fire that long anyway.
+Further out, it withdraws as before. To check it, start a free battle in **Head-on** with both
+sides computer captains, a Sling against a Lance, and raise time compression. The Sling should take
+laser fire for hours on the way in, then disable or destroy the Lance within a few slugs once
+inside about 600 km.
+
 To check manually, run `npm.cmd ci; if ($LASTEXITCODE -eq 0) { npm.cmd run dev }` from
 `C:/docs/git/spaceBattle` in PowerShell 7. Switch on **Test mode**, then start a free battle with
 Blue's Bastion as the player and Red's Lance as the computer in **Head-on**. Target the enemy,

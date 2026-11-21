@@ -12,6 +12,7 @@ import type { Order } from './orders';
 import { componentSlots } from './components';
 import { fullCondition } from './ship';
 import {
+  armouredAllOver,
   duelSetup,
   gunnedTestDesign,
   TEST_LASER,
@@ -202,7 +203,8 @@ describe('sensors and contacts', () => {
     /** The share of 100 slugs fired from 15,000 km at a ship sitting still that hit it. */
     const hitRate = (trackingError: number) => {
       const blue = withSensor(gunnedTestDesign(100), { trackingError });
-      const battle = createBattle(duelSetup(blue, testDesign(), 15_000 * KM));
+      // Armoured to outlast every slug, so each one that hits counts.
+      const battle = createBattle(duelSetup(blue, armouredAllOver(testDesign()), 15_000 * KM));
       battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
       const hits = battle
         .advance(1_200)
