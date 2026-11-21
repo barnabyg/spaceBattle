@@ -7,9 +7,13 @@ import {
   armedTestDesign,
   defendedTestDesign,
   duelSetup,
-  gunnedTestDesign,
   launchingTestDesign,
+  roundsMagazine,
   TEST_ANTI_MISSILE_MISSILE,
+  TEST_KINETIC_GUN,
+  TEST_POINT_DEFENCE,
+  testMagazine,
+  withSection,
   TEST_NUCLEAR_MISSILE,
   testDesign,
   testSetup,
@@ -29,6 +33,7 @@ const majorEvents: readonly BattleEvent[] = [
   { type: 'armour-breached', time: 0.1, side: 'blue', section: 'forward' },
   { type: 'structural-failure', time: 0.1, side: 'blue', section: 'engine' },
   { type: 'withdrawal', time: 0.1, side: 'red', reason: 'reserve' },
+  { type: 'disarmed', time: 0.1, side: 'blue' },
   {
     type: 'battle-ended',
     time: 0.1,
@@ -253,8 +258,13 @@ describe('battle runner', () => {
   });
 
   it('keeps time compression when a slug hits', () => {
-    // Red is left to an idle player: the computer would dodge a slug from this far off.
-    const setup = duelSetup(gunnedTestDesign(1), testDesign(), 1_000e3);
+    // Red is left to an idle player: the computer would dodge a slug from this far off. Blue's
+    // point defence keeps it armed once its one slug is spent, so that does not slow time either.
+    const blue = withSection(testDesign(), 'forward', {
+      components: [testMagazine(1), roundsMagazine(100)],
+      mounts: [TEST_KINETIC_GUN, TEST_POINT_DEFENCE],
+    });
+    const setup = duelSetup(blue, testDesign(), 1_000e3);
     const battle = createBattle({
       ...setup,
       sides: setup.sides.map((side) => ({ ...side, commander: 'player' })),
@@ -306,7 +316,8 @@ describe('battle runner', () => {
 
   it('keeps time compression when point defence shoots down a missile', () => {
     const battle = createBattle(
-      duelSetup(launchingTestDesign(1), defendedTestDesign({ mounts: 4 }), 500e3),
+      // A missile to spare, so running out does not slow time either.
+      duelSetup(launchingTestDesign(2), defendedTestDesign({ mounts: 4 }), 500e3),
     );
     battle.giveOrder('blue', { type: 'launch', target: 'red', missiles: 1 });
     const r = createBattleRunner(battle);

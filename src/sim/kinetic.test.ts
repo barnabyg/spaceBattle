@@ -308,3 +308,28 @@ describe('fire control', () => {
     expect(own(battle, 'blue').weapons.longRangeSlugs).toBe(true);
   });
 });
+
+describe('running out', () => {
+  /** Blue's events while it fires freely at red 100 km off for `seconds`. */
+  const firing = (design: Design, seconds: number) => {
+    const battle = createBattle(duelSetup(design, testDesign(), 100 * KM));
+    fireAtRed(battle);
+    return { battle, events: battle.advance(seconds) };
+  };
+
+  it("tells a ship's side once it has nothing left to fight with", () => {
+    const { battle, events } = firing(gunnedTestDesign(3), 30);
+    expect(own(battle, 'blue').weapons.ammunition.slugs).toBe(0);
+    const disarmed = events.filter((e) => e.type === 'disarmed');
+    expect(disarmed).toHaveLength(1);
+    expect(disarmed[0]).toMatchObject({ type: 'disarmed', side: 'blue' });
+    // It concerns only its own side.
+    expect(battle.observe('red').events.some((e) => e.type === 'disarmed')).toBe(false);
+    expect(battle.observe('blue').events.some((e) => e.type === 'disarmed')).toBe(true);
+  });
+
+  it('never tells a ship that still has a working beam weapon, or one built unarmed', () => {
+    expect(firing(armedTestDesign(), 30).events.some((e) => e.type === 'disarmed')).toBe(false);
+    expect(firing(testDesign(), 30).events.some((e) => e.type === 'disarmed')).toBe(false);
+  });
+});

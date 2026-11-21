@@ -144,6 +144,10 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
       return `${time} ${COMPONENT_TEXT[event.component]} lost (${SECTION_TEXT[event.section].toLowerCase()})`;
     case 'structural-failure':
       return `${time} ${SECTION_TEXT[event.section]} section structural failure`;
+    case 'disarmed':
+      return event.side === viewer
+        ? `${time} Nothing left to fight with`
+        : `${time} Enemy has nothing left to fight with`;
     case 'withdrawal':
       return event.side === viewer
         ? `${time} Withdrawing from the battle${reasonOf(event.reason, true)}`

@@ -9,6 +9,7 @@ import type { ComponentType, SectionKind } from '../sim/design';
 import { targetsMissile } from '../sim/missile';
 import { dot, length, sub } from '../sim/vector';
 import { knownEnemyReach, ownReach, separationOf } from './advance';
+import { ammunitionStocks, type AmmunitionStock } from './ammunition';
 import { withdrawalReasonText } from './withdrawal';
 
 /** One line of the battle's story, as the viewing side's captain hears it. */
@@ -83,6 +84,8 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
   let inOwnReach: boolean | null = null;
   let inEnemyReach: boolean | null = null;
   let slugsFlying = false;
+  /** Each kind of ammunition's level as last told, by name; empty until the first update. */
+  const ammunition = new Map<string, AmmunitionStock['level']>();
   const name = (id: string) => sides.find((side) => side.id === id)?.name ?? id;
 
   /** Whether the sensors had made out a part of the contact: a section, or one of its mounts. */
@@ -142,6 +145,10 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
         const who = own ? 'We are' : `${name(event.side)} is`;
         return at(`${who} withdrawing${why ? `: ${why}` : ''}.`, own ? 'own' : 'enemy', true);
       }
+      case 'disarmed':
+        return event.side === viewer
+          ? at('We have nothing left to fight with. Withdraw, or end the battle.', 'own', true)
+          : null;
       case 'battle-ended': {
         const winner = event.outcome.winner;
         return at(
@@ -201,6 +208,24 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
         about: 'enemy',
         major: false,
       });
+    }
+    return lines;
+  };
+
+  /** Each kind of our ammunition running low, and running out. */
+  const stocks = (observation: SideObservation): NarrationLine[] => {
+    const lines: NarrationLine[] = [];
+    for (const stock of ammunitionStocks(observation.ownShip)) {
+      const was = ammunition.get(stock.name);
+      ammunition.set(stock.name, stock.level);
+      if (was === undefined || was === stock.level) continue;
+      const text =
+        stock.level === 'empty'
+          ? `Out of ${stock.noun}.`
+          : stock.level === 'low' && was === 'ok'
+            ? `${stock.name} running low: ${stock.left.toLocaleString('en-GB')} of ${stock.capacity.toLocaleString('en-GB')} left.`
+            : null;
+      if (text) lines.push({ time: observation.time, text, about: 'own', major: false });
     }
     return lines;
   };
@@ -279,7 +304,9 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
         const line = describe(event);
         return line ? [line] : [];
       });
+      // What ran low or out comes before what follows from it, such as having nothing left.
       const lines = [
+        ...stocks(observation),
         ...told,
         ...launches(events, observation),
         ...volleys(observation),

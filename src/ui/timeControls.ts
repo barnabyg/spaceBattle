@@ -31,6 +31,8 @@ const slowdownReason = (
       return `${name(event.side)}: ${SECTION_TEXT[event.section].toLowerCase()} section lost`;
     case 'withdrawal':
       return `${name(event.side)} withdrawing`;
+    case 'disarmed':
+      return `${name(event.side)}: nothing left to fight with`;
     case 'launch':
       return typeof event.target === 'string'
         ? `missiles launched at ${name(event.target)}`

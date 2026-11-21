@@ -81,6 +81,7 @@ import {
   type PointDefenceTargets,
   type Salvo,
   workingReach,
+  designReach,
 } from './weapons';
 
 export { TIME_STEP };
@@ -209,6 +210,8 @@ interface Combatant {
   impacts: ImpactLanding[];
   /** Whether it has withdrawn: left the battle by withdrawal. */
   withdrawn: boolean;
+  /** Whether its side has heard it has nothing left to fight with (see `DisarmedEvent`). */
+  disarmed: boolean;
 }
 
 /**
@@ -360,6 +363,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
       beamsLanding: [],
       impacts: [],
       withdrawn: false,
+      disarmed: false,
     };
   });
   let steps = 0;
@@ -784,6 +788,22 @@ export const createBattle = (setup: BattleSetup): Battle => {
   };
 
   /**
+   * Tells the side of each ship built to fight once it has nothing left to fight with, and none
+   * of its slugs or missiles is still on its way.
+   */
+  const disarm = (time: number, events: BattleEvent[]) => {
+    for (const c of combatants) {
+      if (c.disarmed || designReach(c.ship.design) === 0 || workingReach(c.ship) > 0) continue;
+      const side = c.side.id;
+      if (slugs.some((s) => s.attacker === side) || missiles.some((m) => m.attacker === side)) {
+        continue;
+      }
+      c.disarmed = true;
+      events.push({ type: 'disarmed', time, side: c.side.id });
+    }
+  };
+
+  /**
    * Withdrawing ships that are gone by the end of the step: out of reach of every enemy weapon,
    * or `WITHDRAWAL_TIME` after their order.
    */
@@ -843,6 +863,7 @@ export const createBattle = (setup: BattleSetup): Battle => {
     const ctx = { time, random, events };
     resolveArrivals(before, ctx);
     overheatShips(ctx);
+    disarm(time, events);
     leave(time);
     outcome = judgeStep(time);
     if (outcome) events.push({ type: 'battle-ended', time, outcome });

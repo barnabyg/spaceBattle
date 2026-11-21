@@ -79,6 +79,13 @@ free battle as Bastion against a computer Lance and **Advance until** **Enemy in
 enemy is now within reach of our weapons." should appear over the instrument view and stay in the
 **Damage** tab.
 
+The battle story also says when a kind of ammunition runs low (a quarter of a load left) and when
+it runs out. Once the ship has nothing left that can reach the enemy, every weapon lost or out of
+ammunition, and none of its own slugs or missiles is still on its way, a bold line says "We have
+nothing left to fight with. Withdraw, or end the battle." and time compression drops to 1×. To
+check, start a free battle as Sling against a computer Lance in **Head-on**, select **Fire
+freely** and **Long-range slugs**, and raise time compression until the magazine is empty.
+
 **Damage control**: in the **Damage** tab, each damaged component that a field repair can help has a
 **Repair** button. The crew then restore it at 0.2% integrity a second up to 75%, one component at a
 time; the row shows "repairing", or "repair paused under fire" for 30 seconds after its section is

@@ -135,6 +135,24 @@ describe('battle narration', () => {
     expect(lines[0]?.major).toBe(true);
   });
 
+  it('tells our ammunition running low and out, then that we have nothing left', () => {
+    // Eight slugs: low at two left, then out, then the gun is no use.
+    const battle = createBattle(duelSetup(gunnedTestDesign(8), testDesign(), 100e3));
+    battle.giveOrder('blue', { type: 'weapons', target: 'red', mode: 'fire-freely' });
+    const narrator = createNarrator('blue', sides);
+    const lines = [];
+    while (battle.time < 30) {
+      const events = battle.advance(1);
+      lines.push(...narrator.narrate(battle.observe('blue'), events));
+    }
+    const own = lines.filter((line) => line.about === 'own');
+    expect(own.map((line) => [line.text, line.major])).toEqual([
+      ['Slugs running low: 2 of 8 left.', false],
+      ['Out of slugs.', false],
+      ['We have nothing left to fight with. Withdraw, or end the battle.', true],
+    ]);
+  });
+
   it('says why a ship withdraws', () => {
     const narrator = createNarrator('blue', sides);
     const told = narrator
