@@ -10,6 +10,8 @@ export default defineConfig({
   expect: { timeout: UI_EXPECT_TIMEOUT },
   // Bounds the entire browser suite, including the campaign's longer safety limit.
   globalTimeout: 20 * 60_000,
+  // Every test opens its own page, so tests in one file can run on different workers.
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   // Stop at the first failure in CI only; local runs report every failure.
   maxFailures: process.env.CI ? 1 : 0,

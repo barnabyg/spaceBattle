@@ -5,11 +5,11 @@ on:
   push:
     branches: [main]
 
+# The gates run as parallel jobs; the run is green only when every job is.
 jobs:
-  verify:
+  checks:
     runs-on: ubuntu-latest
-    # Leave room for installation, all gates and the browser suite's 20-minute hang limit.
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -17,6 +17,49 @@ jobs:
           node-version: 24
           cache: npm
       # The dedicated audit step below checks both production and development dependencies.
+      - run: npm ci --no-audit
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run audit
+      - run: npm run build
+
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # A failure in either half cancels the other, as the single job stopped at the first failure.
+      fail-fast: true
+      matrix:
+        # Vitest projects that split the work about evenly; Vitest's own --shard splits by file
+        # count, which put twice as much battle time on one runner as on the other.
+        project: [batches, unit]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit
+      # Vitest starts the files that took longest last time first. Without its results from an
+      # earlier run it orders them by size, and the short files that fight long battles go last.
+      - uses: actions/cache@v6
+        with:
+          path: node_modules/.vite/vitest
+          key: vitest-results-${{ runner.os }}-${{ matrix.project }}-${{ github.run_id }}
+          restore-keys: vitest-results-${{ runner.os }}-${{ matrix.project }}-
+      - run: npm run test -- --project ${{ matrix.project }}
+
+  e2e:
+    runs-on: ubuntu-latest
+    # Leave room for installation and the browser suite's 20-minute hang limit.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
       - run: npm ci --no-audit
       - name: Find the Playwright version
         id: playwright
@@ -37,12 +80,6 @@ jobs:
       # Nor a sound device: give it a PulseAudio server with a silent sink, so Web Audio can start.
       - run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libegl1 libegl-mesa0 pulseaudio
       - run: pulseaudio --start --exit-idle-time=-1 && pactl load-module module-null-sink && pactl info
-      - run: npm run format:check
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run test
-      - run: npm run audit
-      - run: npm run build
       - run: xvfb-run -a npm run e2e -- --headed
       - uses: actions/upload-artifact@v7
         if: failure()
