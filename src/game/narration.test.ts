@@ -107,7 +107,7 @@ describe('battle narration', () => {
         energy: 1e12,
       },
     ],
-    ['a withdrawal', { type: 'withdrawal', time: 1, side: 'red' }],
+    ['a withdrawal', { type: 'withdrawal', time: 1, side: 'red', reason: 'reserve' }],
     [
       'the battle ending',
       { type: 'battle-ended', time: 1, outcome: { time: 1, winner: 'blue', sides: [] } },
@@ -133,6 +133,20 @@ describe('battle narration', () => {
       expect.stringMatching(/^A missile launched at us\. Impact in about \d+ min \d+ s\.$/),
     ]);
     expect(lines[0]?.major).toBe(true);
+  });
+
+  it('says why a ship withdraws', () => {
+    const narrator = createNarrator('blue', sides);
+    const told = narrator
+      .narrate(observe(), [
+        { type: 'withdrawal', time: 1, side: 'red', reason: 'no-pass' },
+        { type: 'withdrawal', time: 1, side: 'blue', reason: 'ordered' },
+      ])
+      .map((line) => line.text);
+    expect(told).toEqual([
+      'Red is withdrawing: it cannot afford another firing pass.',
+      'We are withdrawing.',
+    ]);
   });
 
   it('tells our guns opening fire, with when the first slug arrives, once per volley', () => {

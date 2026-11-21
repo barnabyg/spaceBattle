@@ -35,6 +35,11 @@ describe('withdrawal', () => {
     battle.giveOrder('blue', { type: 'point-defence', priority: 'missiles-then-ship' });
     battle.giveOrder('red', { type: 'withdraw' });
     expect(battle.observe('red').ownShip.withdrawing).toBe(true);
+    // A withdrawal the captain simply orders gives no other reason.
+    expect(battle.step().find((e) => e.type === 'withdrawal')).toMatchObject({
+      side: 'red',
+      reason: 'ordered',
+    });
 
     const outcome = toTheEnd(battle, 30 * MINUTE);
     expect(outcome.time).toBeLessThan(5 * MINUTE);
@@ -52,7 +57,12 @@ describe('withdrawal', () => {
     battle.advance(MINUTE);
     battle.giveOrder('red', { type: 'withdraw' });
     const events = battle.advance(MINUTE);
-    expect(events).toContainEqual({ type: 'withdrawal', time: MINUTE, side: 'red' });
+    expect(events).toContainEqual({
+      type: 'withdrawal',
+      time: MINUTE,
+      side: 'red',
+      reason: 'ordered',
+    });
     // It turns and burns away from the enemy.
     expect(separation(battle)).toBeGreaterThan(50_000 * KM);
     const outcome = toTheEnd(battle, 2 * 30 * MINUTE);

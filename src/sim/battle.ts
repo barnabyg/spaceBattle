@@ -963,7 +963,12 @@ export const createBattle = (setup: BattleSetup): Battle => {
               enemy.burn = null;
             }
           }
-          pending.push({ type: 'withdrawal', time: ship.withdrawingSince, side: sideId });
+          pending.push({
+            type: 'withdrawal',
+            time: ship.withdrawingSince,
+            side: sideId,
+            reason: checked.reason ?? 'ordered',
+          });
           break;
         }
       }

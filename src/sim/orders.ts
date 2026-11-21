@@ -190,7 +190,18 @@ export interface PointDefenceOrder {
  */
 export interface WithdrawOrder {
   readonly type: 'withdraw';
+  /** Why the captain withdraws; 'ordered' if left out. */
+  readonly reason?: WithdrawalReason;
 }
+
+/**
+ * Why a ship withdraws: its captain simply ordered it, or a computer captain judged that its
+ * delta-v is down to its reserve, it has nothing left to fight with, it cannot afford another
+ * firing pass, its armour is worn too thin on an attack run, a damaged sensor or drive would fail
+ * before it could fire, or the enemy outranges it by too much to close.
+ */
+export type WithdrawalReason =
+  'ordered' | 'reserve' | 'disarmed' | 'no-pass' | 'armour-worn' | 'failing' | 'outranged';
 
 /** An instruction from a side's captain to its ship. */
 export type Order =

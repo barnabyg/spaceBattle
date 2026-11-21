@@ -39,6 +39,7 @@ import type {
   RollOrder,
   ShieldsOrder,
   WeaponsOrder,
+  WithdrawalReason,
 } from './orders';
 import type { PowerSystem } from './power';
 import { designReach } from './weapons';
@@ -985,6 +986,21 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         exposed ||
         (armed && reach === 0) ||
         ship.deltaV <= reserve;
+      /** The first of the reasons to leave that holds, as the captain gives it. */
+      const withdrawalReason = (): WithdrawalReason =>
+        armed && reach === 0
+          ? 'disarmed'
+          : ship.deltaV <= reserve
+            ? 'reserve'
+            : pass === 'withdraw'
+              ? 'no-pass'
+              : exposed
+                ? 'armour-worn'
+                : failingApproach
+                  ? 'failing'
+                  : untenable
+                    ? 'outranged'
+                    : 'ordered';
       // A withdrawing ship takes no other course, and the rules forbid pursuing one.
       const moving = !leaving && !enemy.withdrawing;
       const dodge =
@@ -1005,7 +1021,7 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         passOrders ??
         (goal && turning ? armourTowards(ship, enemy, goal) : goal);
       const orders: Order[] = [
-        ...(leaving ? [{ type: 'withdraw' } as const] : []),
+        ...(leaving ? [{ type: 'withdraw', reason: withdrawalReason() } as const] : []),
         weapons,
         pointDefence,
         antiMissile,

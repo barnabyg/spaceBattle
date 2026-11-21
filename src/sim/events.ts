@@ -1,6 +1,7 @@
 import type { SideId } from './battle';
 import type { ComponentType, SectionKind, WarheadType } from './design';
 import type { MissileTarget } from './missile';
+import type { WithdrawalReason } from './orders';
 import type { BattleOutcome } from './outcome';
 import type { Vec3 } from './vector';
 
@@ -96,6 +97,8 @@ export interface WithdrawalEvent {
   readonly type: 'withdrawal';
   readonly time: number;
   readonly side: SideId;
+  /** Why it withdraws (see `WithdrawalReason`). */
+  readonly reason: WithdrawalReason;
 }
 
 /** A side's weapon shot down an enemy missile in flight; it leaves the battle. */

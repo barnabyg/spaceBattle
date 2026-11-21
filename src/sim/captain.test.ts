@@ -182,9 +182,10 @@ describe('computer captain', () => {
     let closing = closingSpeed();
     let entering: number | null = null;
     let slowest = Infinity;
+    const events: BattleEvent[] = [];
     while (passes < 2 && !red.withdrawing) {
       if (battle.outcome || battle.time > 12 * HOUR) throw new Error('The passes never ended');
-      battle.advance(10);
+      events.push(...battle.advance(10));
       red = battle.observe('red').ownShip;
       const now = closingSpeed();
       // Inside the Bastion's reach on the first approach, it never brakes.
@@ -200,10 +201,11 @@ describe('computer captain', () => {
     expect(red.energyLedger.beamEmitted).toBeGreaterThan(0);
     // Delta-v to spare after its first pass took it back for a second...
     expect(passes).toBe(2);
-    // ...but not for a third: it withdraws with its reserve intact.
-    battle.advance(60);
+    // ...but not for a third: it withdraws with its reserve intact, and says why.
+    events.push(...battle.advance(60));
     red = battle.observe('red').ownShip;
     expect(red.withdrawing).toBe(true);
+    expect(events.find((e) => e.type === 'withdrawal')).toMatchObject({ reason: 'no-pass' });
     expect(red.deltaV).toBeGreaterThan(red.reserve);
   }, 60_000); // Simulates hours of battle; takes a few seconds.
 

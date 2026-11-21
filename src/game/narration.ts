@@ -9,6 +9,7 @@ import type { ComponentType, SectionKind } from '../sim/design';
 import { targetsMissile } from '../sim/missile';
 import { dot, length, sub } from '../sim/vector';
 import { knownEnemyReach, ownReach, separationOf } from './advance';
+import { withdrawalReasonText } from './withdrawal';
 
 /** One line of the battle's story, as the viewing side's captain hears it. */
 export interface NarrationLine {
@@ -135,10 +136,12 @@ export const createNarrator = (viewer: SideId, sides: readonly SideSetup[]) => {
         return event.target === viewer
           ? at(`Nuclear warhead went off ${km(event.distance)} from us!`, 'own', true)
           : at(`Our nuclear warhead went off ${km(event.distance)} from the enemy.`, 'enemy', true);
-      case 'withdrawal':
-        return event.side === viewer
-          ? at('We are withdrawing.', 'own', true)
-          : at(`${name(event.side)} is withdrawing.`, 'enemy', true);
+      case 'withdrawal': {
+        const own = event.side === viewer;
+        const why = withdrawalReasonText(event.reason, own);
+        const who = own ? 'We are' : `${name(event.side)} is`;
+        return at(`${who} withdrawing${why ? `: ${why}` : ''}.`, own ? 'own' : 'enemy', true);
+      }
       case 'battle-ended': {
         const winner = event.outcome.winner;
         return at(

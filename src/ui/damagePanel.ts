@@ -4,6 +4,8 @@ import type { BeamKind, HitEvent, ImpactKind, InterceptWeapon } from '../sim/eve
 import { targetsMissile } from '../sim/missile';
 import type { ComponentAddress } from '../sim/orders';
 import { REPAIR_CAP } from '../sim/repair';
+import { withdrawalReasonText } from '../game/withdrawal';
+import type { WithdrawalReason } from '../sim/orders';
 import { el } from './el';
 import { formatBattleTime, formatGJ, formatKilotons, formatKm, formatMm, formatMW } from './format';
 
@@ -54,6 +56,12 @@ export const INTERCEPT_TEXT: Readonly<Record<InterceptWeapon, string>> = {
 };
 
 /** How many of the latest events the log shows. */
+/** Why a ship withdraws, as a clause to follow the log line; empty for a plain order. */
+const reasonOf = (reason: WithdrawalReason, own: boolean): string => {
+  const text = withdrawalReasonText(reason, own);
+  return text ? ` · ${text}` : '';
+};
+
 const LOG_LENGTH = 6;
 
 /** Integrity as a percentage that only reads 100% when undamaged and 0% when lost. */
@@ -138,8 +146,8 @@ const describeEvent = (event: BattleEvent, viewer: SideId): string => {
       return `${time} ${SECTION_TEXT[event.section]} section structural failure`;
     case 'withdrawal':
       return event.side === viewer
-        ? `${time} Withdrawing from the battle`
-        : `${time} Enemy withdrawing: no pursuit`;
+        ? `${time} Withdrawing from the battle${reasonOf(event.reason, true)}`
+        : `${time} Enemy withdrawing: no pursuit${reasonOf(event.reason, false)}`;
     case 'battle-ended':
       return `${time} Battle over`;
   }

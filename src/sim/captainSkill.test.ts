@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { handMadeDesign } from '../data/designs';
 import { effectiveRange } from './beams';
-import { createBattle, type Battle, type BattleSetup, type CaptainSkill } from './battle';
+import {
+  createBattle,
+  type Battle,
+  type BattleEvent,
+  type BattleSetup,
+  type CaptainSkill,
+} from './battle';
 import { withComputerCaptains } from './command';
 import type { Design } from './design';
 import {
@@ -63,8 +69,9 @@ describe('computer captain skill', () => {
         duelSetup(handMadeDesign('lance'), empty, 100_000 * KM),
         skill,
       );
-      battle.advance(10);
+      const events = battle.advance(10);
       expect(battle.observe('red').ownShip.withdrawing).toBe(true);
+      expect(events.find((e) => e.type === 'withdrawal')).toMatchObject({ reason: 'disarmed' });
     },
   );
 
@@ -74,11 +81,13 @@ describe('computer captain skill', () => {
     const battle = againstIdlePlayer(duelSetup(testDesign(), design, 300_000 * KM), 'low');
     let red = battle.observe('red').ownShip;
     expect(red.withdrawing).toBe(false);
+    const events: BattleEvent[] = [];
     while (!red.withdrawing) {
       if (battle.time > 12 * HOUR) throw new Error('Red never withdrew');
-      battle.advance(MINUTE);
+      events.push(...battle.advance(MINUTE));
       red = battle.observe('red').ownShip;
     }
+    expect(events.find((e) => e.type === 'withdrawal')).toMatchObject({ reason: 'reserve' });
     expect(red.deltaV).toBeLessThanOrEqual(red.reserve);
     expect(red.deltaV).toBeGreaterThan(0.9 * red.reserve);
   }, 20_000);

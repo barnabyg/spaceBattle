@@ -28,7 +28,7 @@ const runner = () => createBattleRunner(createBattle(testSetup()));
 const majorEvents: readonly BattleEvent[] = [
   { type: 'armour-breached', time: 0.1, side: 'blue', section: 'forward' },
   { type: 'structural-failure', time: 0.1, side: 'blue', section: 'engine' },
-  { type: 'withdrawal', time: 0.1, side: 'red' },
+  { type: 'withdrawal', time: 0.1, side: 'red', reason: 'reserve' },
   {
     type: 'battle-ended',
     time: 0.1,
