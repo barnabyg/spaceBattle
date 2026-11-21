@@ -21,7 +21,9 @@ import { ARMOUR } from './armour';
 import { WITHDRAWAL_TIME } from './engagement';
 import { BASE_TEMPERATURE, OVERHEAT_TEMPERATURE, radiativeLimit } from './heat';
 import { missileReach, reachOfDeltaV } from './missile';
+import { HULLS, hullLength } from './hull';
 import { REPAIR_CAP } from './repair';
+import { TIME_STEP } from './time';
 import type {
   AntiMissileOrder,
   AttitudeOrder,
@@ -39,7 +41,18 @@ import type {
 } from './orders';
 import type { PowerSystem } from './power';
 import { designReach } from './weapons';
-import { distance, dot, normalize, perpendiculars, scale, sub, type Vec3 } from './vector';
+import {
+  add,
+  distance,
+  dot,
+  length,
+  normalize,
+  perpendiculars,
+  scale,
+  sub,
+  type Vec3,
+  ZERO,
+} from './vector';
 
 /**
  * A side's commander as the battle sees it: it decides on orders from what its side observes,
@@ -179,8 +192,13 @@ const SPEED_TOLERANCE = 0.1;
  * close enough for its slugs to arrive sooner, and dodges enemy slugs that will arrive later.
  */
 const DODGE_TIME = 20;
-/** Dodging, the captain changes the direction it pushes in this often, s. */
-const JINK_PERIOD = 15;
+/**
+ * The captain dodges a slug that would hit only once it is this close to arriving, s: soon
+ * enough to turn across its path and push clear before `DODGE_TIME`.
+ */
+const DODGE_WINDOW = 3 * DODGE_TIME;
+/** Dodging, the captain pushes this many times harder than it needs to, to be sure. */
+const DODGE_MARGIN = 2;
 /** A captain turns its armour to the enemy while within this fraction of the range it wants. */
 const SETTLED_BAND = 0.25;
 /** An attitude this close to the one ordered (the cosine of the angle) is the same order. */
@@ -482,34 +500,68 @@ const timeToClosest = (
 };
 
 /**
- * The orders that dodge enemy slugs still too far off to hit a ship that moves: the ship pushes
- * across the line of fire at full thrust, turning a quarter turn every `JINK_PERIOD`, so the
- * enemy's fire control, which leads on the ship's acceleration as it sees it when firing, never
- * knows where it will be. None while no such slug is on its way.
+ * How far a munition will pass from the ship's path, across its own line of flight, `time`
+ * seconds from now if the ship moves with `acceleration`, m.
+ */
+const missAcross = (
+  ship: OwnShipObservation,
+  munition: { readonly position: Vec3; readonly velocity: Vec3 },
+  time: number,
+  acceleration: Vec3,
+): number => {
+  const drift = sub(munition.velocity, ship.velocity);
+  const offset = sub(
+    add(sub(munition.position, ship.position), scale(drift, time)),
+    scale(acceleration, 0.5 * time * time),
+  );
+  const path = normalize(drift);
+  return length(sub(offset, scale(path, dot(offset, path))));
+};
+
+/**
+ * The orders that dodge enemy slugs that would hit the ship, whether it coasts or keeps up its
+ * present burn, once they are within `DODGE_WINDOW` of arriving but still too far off to hit a
+ * ship that moves: it turns across the slugs' path, the way nearest its nose, and pushes just
+ * hard enough for them to pass `clearance` metres clear. One push clears every slug fired
+ * before it, and the enemy's fire control leads on the ship's acceleration as it sees it when
+ * firing, so slugs fired during the push miss once it stops. Waiting until the slugs are close
+ * leaves the ship on its course between dodges, rather than turning back and forth at every
+ * new slug. None while no such slug is on its way.
  */
 const jink = (
   observation: SideObservation,
   side: SideId,
-  enemy: ContactObservation,
+  clearance: number,
+  thrust: number,
 ): [AttitudeOrder, BurnOrder] | null => {
   const ship = observation.ownShip;
-  const dodging = observation.munitions.some(
-    (m) =>
-      m.kind === 'slug' &&
-      m.target === side &&
-      Number.isFinite(timeToClosest(ship, m)) &&
-      timeToClosest(ship, m) > DODGE_TIME,
-  );
-  if (!dodging) return null;
-  const sight = normalize(sub(enemy.position, ship.position));
-  // Two directions across the line of sight, square to it and to each other.
-  const [across, other] = perpendiculars(sight);
-  const directions = [across, other, scale(across, -1), scale(other, -1)];
-  const direction =
-    directions[Math.floor(observation.time / JINK_PERIOD) % directions.length] ?? across;
+  let worst: { need: number; path: Vec3 } | null = null;
+  for (const m of observation.munitions) {
+    if (m.kind !== 'slug' || m.target !== side) continue;
+    const time = timeToClosest(ship, m);
+    if (!Number.isFinite(time) || time <= DODGE_TIME || time > DODGE_WINDOW) continue;
+    const miss = Math.min(
+      missAcross(ship, m, time, ZERO),
+      missAcross(ship, m, time, ship.acceleration),
+    );
+    if (miss >= clearance) continue;
+    // The change of velocity across its path that takes it clear in the time left.
+    const need = (clearance + miss) / time;
+    if (!worst || need > worst.need) worst = { need, path: sub(m.velocity, ship.velocity) };
+  }
+  if (!worst) return null;
+  const path = normalize(worst.path);
+  const across = sub(ship.nose, scale(path, dot(ship.nose, path)));
+  const direction = length(across) > 0.1 ? normalize(across) : perpendiculars(path)[0];
+  const aligned = dot(ship.nose, direction) >= ATTACK_RUN_ALIGNMENT;
+  const acceleration = thrust / ship.mass;
   return [
     { type: 'attitude', mode: 'direction', direction },
-    { type: 'burn', throttle: 1, duration: 2 * JINK_PERIOD },
+    {
+      type: 'burn',
+      throttle: aligned ? 1 : 0,
+      duration: aligned ? Math.max(TIME_STEP, (DODGE_MARGIN * worst.need) / acceleration) : 1,
+    },
   ];
 };
 
@@ -562,6 +614,8 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
   const arsenal = enemyArsenal();
   const countered = counteredBy(setup.design);
   const driveThrust = designComponent(setup.design, 'drive').thrust;
+  // A slug passing within the hull's length of its centre would hit it, near enough.
+  const clearance = hullLength(HULLS[setup.design.hullSize]);
   // Whether it was built to harm a ship: point defence counts, anti-missile missiles do not.
   const armed =
     designReach(setup.design) > 0 ||
@@ -943,7 +997,8 @@ export const createComputerCaptain = (setup: SideSetup): Captain => {
         ship.deltaV <= reserve;
       // A withdrawing ship takes no other course, and the rules forbid pursuing one.
       const moving = !leaving && !enemy.withdrawing;
-      const dodge = moving && profile.predicts ? jink(observation, side, enemy) : null;
+      const dodge =
+        moving && profile.predicts ? jink(observation, side, clearance, driveThrust) : null;
       // Across a very large disadvantage, an attack run builds speed faster than a pass would;
       // inside its own reach the pass takes over, and it does not brake.
       const attack = moving
